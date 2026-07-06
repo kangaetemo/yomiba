@@ -1,20 +1,43 @@
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base
+
+
 class Series(Base):
     __tablename__ = "series"
 
-    id
-    publisher_id
+    id: Mapped[int] = mapped_column(primary_key=True)
 
-    title
-    slug
+    publisher_id: Mapped[int] = mapped_column(
+        ForeignKey("publishers.id"),
+        nullable=False,
+        index=True,
+    )
 
-    description
+    title: Mapped[str] = mapped_column(String(255))
 
-    status
+    slug: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        index=True,
+    )
 
-    cover_url
+    status: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
 
-volumes: Mapped[list["Volume"]] = relationship(
-    back_populates="series",
-    cascade="all, delete-orphan",
-)
-    
+    cover_path: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    publisher: Mapped["Publisher"] = relationship(
+        back_populates="series"
+    )
+
+    volumes: Mapped[list["Volume"]] = relationship(
+        back_populates="series",
+        cascade="all, delete-orphan",
+    )
