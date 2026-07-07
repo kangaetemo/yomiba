@@ -1,24 +1,33 @@
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SearchResult(BaseModel):
+    # Scraper bilgisi
+    source_name: str
+    source_id: str | None = None
+
+    # Ürün bilgisi
     title: str
+    series_title: str
     volume_number: float | None = None
 
+    # Kimlik bilgileri
     isbn: str | None = None
 
-    price: Decimal
-
-    product_url: str
-
-    image_url: str | None = None
-
+    # Yayın bilgileri
     publisher: str | None = None
-
     author: str | None = None
 
-    in_stock: bool
+    # Satış bilgileri
+    price: Decimal
+    currency: str = "TRY"
+    in_stock: bool = True
 
-    store: str
+    # Linkler
+    product_url: str
+    image_url: str | None = None
+
+    # İleride sıralama için
+    relevance: float = Field(default=1.0)

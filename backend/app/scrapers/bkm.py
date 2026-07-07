@@ -3,20 +3,13 @@ import re
 from decimal import Decimal
 
 import httpx
-
+from app.utils.title_parser import parse_title
 from app.scrapers.models import SearchResult
 
 
 class BKMScraper:
     API_URL = "https://bkm-best.wawlabs.com/search_v2"
 
-    def _extract_volume(self, title: str) -> float | None:
-        match = re.search(r"(\d+(?:\.\d+)?)$", title)
-
-        if match:
-            return float(match.group(1))
-
-        return None
 
     def search(self, query: str) -> list[SearchResult]:
 
@@ -54,7 +47,7 @@ class BKMScraper:
         results: list[SearchResult] = []
 
         for item in data["res"]:
-
+            series_title, volume_number = parse_title(item["title"])
             price = Decimal(
                 item["price_sell"]
                 .replace(".", "")
@@ -63,16 +56,26 @@ class BKMScraper:
 
             results.append(
                 SearchResult(
+                    store_name="BKM Kitap",
+                    store_id=item["id"],
+
                     title=item["title"],
-                    volume_number=self._extract_volume(item["title"]),
+                    series_title=series_title,
+                    volume_number=volume_number,
+
                     isbn=item.get("gtin"),
-                    price=price,
-                    product_url=item["link"],
-                    image_url=item["image"],
+
                     publisher=item.get("publisher"),
                     author=item.get("writer"),
+
+                    price=price,
+                    currency="TRY",
+
                     in_stock=item["stock_level"] != "0",
-                    store="BKM Kitap",
+
+                    product_url=item["link"],
+                    image_url=item["image"],
+
                 )
             )
 
