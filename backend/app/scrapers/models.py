@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 
 class SearchResult(BaseModel):
     # Scraper bilgisi
-    source_name: str
-    source_id: str | None = None
+    store_name: str
+    store_id: str | None = None
 
     # Ürün bilgisi
     title: str
