@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -12,6 +12,14 @@ if TYPE_CHECKING:
 
 class Series(Base):
     __tablename__ = "series"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "publisher_id",
+            "title",
+            name="uq_series_publisher_title",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -28,7 +36,7 @@ class Series(Base):
 
     slug: Mapped[str] = mapped_column(
         String(255),
-        unique=True,
+        nullable=False,
         index=True,
     )
 

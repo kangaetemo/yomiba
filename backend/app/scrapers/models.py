@@ -19,6 +19,7 @@ class SearchResult(BaseModel):
     # Yayın bilgileri
     publisher: str | None = None
     author: str | None = None
+    language: str | None = None
 
     # Satış bilgileri
     price: Decimal

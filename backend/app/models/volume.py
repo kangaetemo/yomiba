@@ -25,10 +25,10 @@ class Volume(Base):
         nullable=False,
     )
 
-    isbn: Mapped[str] = mapped_column(
+    isbn: Mapped[str | None] = mapped_column(
         String(20),
         unique=True,
-        index=True,
+        nullable=True,
     )
 
     cover_url: Mapped[str | None] = mapped_column(

@@ -75,6 +75,7 @@ class BKMScraper:
 
                     product_url=item["link"],
                     image_url=item["image"],
+                    language="tr",
 
                 )
             )

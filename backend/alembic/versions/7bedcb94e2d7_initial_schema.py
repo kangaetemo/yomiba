@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 8d8658d0ed34
+Revision ID: 7bedcb94e2d7
 Revises: 
-Create Date: 2026-07-07 09:54:55.067267
+Create Date: 2026-07-07 13:49:51.743094
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '8d8658d0ed34'
+revision: str = '7bedcb94e2d7'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -43,20 +43,21 @@ def upgrade() -> None:
     sa.Column('status', sa.String(length=50), nullable=True),
     sa.Column('cover_url', sa.String(length=500), nullable=True),
     sa.ForeignKeyConstraint(['publisher_id'], ['publishers.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('publisher_id', 'title', name='uq_series_publisher_title')
     )
     op.create_index(op.f('ix_series_publisher_id'), 'series', ['publisher_id'], unique=False)
-    op.create_index(op.f('ix_series_slug'), 'series', ['slug'], unique=True)
+    op.create_index(op.f('ix_series_slug'), 'series', ['slug'], unique=False)
     op.create_table('volumes',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('series_id', sa.Integer(), nullable=False),
     sa.Column('volume_number', sa.Float(), nullable=False),
-    sa.Column('isbn', sa.String(length=20), nullable=False),
+    sa.Column('isbn', sa.String(length=20), nullable=True),
     sa.Column('cover_url', sa.String(length=500), nullable=True),
     sa.ForeignKeyConstraint(['series_id'], ['series.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('isbn')
     )
-    op.create_index(op.f('ix_volumes_isbn'), 'volumes', ['isbn'], unique=True)
     op.create_index(op.f('ix_volumes_series_id'), 'volumes', ['series_id'], unique=False)
     op.create_table('store_listings',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -93,7 +94,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_store_listings_store_id'), table_name='store_listings')
     op.drop_table('store_listings')
     op.drop_index(op.f('ix_volumes_series_id'), table_name='volumes')
-    op.drop_index(op.f('ix_volumes_isbn'), table_name='volumes')
     op.drop_table('volumes')
     op.drop_index(op.f('ix_series_slug'), table_name='series')
     op.drop_index(op.f('ix_series_publisher_id'), table_name='series')

@@ -9,6 +9,10 @@ from app.models.publisher import Publisher
 from app.scrapers.models import SearchResult
 from app.models.price_history import PriceHistory
 from datetime import datetime
+from app.utils.normalize import (
+    normalize_publisher,
+    normalize_series_title,
+)
 
 
 class ImportService:
@@ -18,7 +22,9 @@ class ImportService:
     def import_results(self, results: list[SearchResult]):
         for result in results:
 
-            publisher = self.get_or_create_publisher(result.publisher)
+            publisher = self.get_or_create_publisher(
+                normalize_publisher(result.publisher)
+            )
 
             series = self.get_or_create_series(
                 publisher,
@@ -95,18 +101,39 @@ class ImportService:
         result: SearchResult,
     ) -> Volume:
 
-        volume = None
-
+        # 1) Önce ISBN ile ara
         if result.isbn:
+
             volume = self.session.scalar(
                 select(Volume).where(
-                    Volume.isbn == result.isbn
+                    Volume.isbn == result.isbn,
                 )
             )
 
+            if volume:
+                return volume
+
+        # 2) Sonra seri + cilt numarası ile ara
+        volume = self.session.scalar(
+            select(Volume).where(
+                Volume.series_id == series.id,
+                Volume.volume_number == result.volume_number,
+            )
+        )
+
         if volume:
+
+            # ISBN sonradan geldiyse doldur
+            if not volume.isbn and result.isbn:
+                volume.isbn = result.isbn
+
+            # Kapak yoksa ekle
+            if not volume.cover_url and result.image_url:
+                volume.cover_url = result.image_url
+
             return volume
 
+        # 3) Yoksa oluştur
         volume = Volume(
             series_id=series.id,
             volume_number=result.volume_number,
