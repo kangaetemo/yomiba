@@ -1,5 +1,6 @@
 from app.db.session import SessionLocal
 
+from app.scrapers.amazon import AmazonScraper
 from app.scrapers.bkm import BKMScraper
 from app.scrapers.dr import DRScraper
 
@@ -7,6 +8,7 @@ from app.services.import_service import ImportService
 
 
 SCRAPERS = [
+    AmazonScraper(),
     BKMScraper(),
     DRScraper(),
 ]
@@ -20,17 +22,11 @@ def main():
 
         print(f"\n=== {scraper.__class__.__name__} ===")
 
-        try:
+        results = scraper.search("berserk")
 
-            results = scraper.search("berserk")
+        print(f"{len(results)} sonuç bulundu.")
 
-            print(f"{len(results)} sonuç bulundu.")
-
-            all_results.extend(results)
-
-        except Exception as e:
-
-            print(f"HATA: {e}")
+        all_results.extend(results)
 
     print(f"\nToplam {len(all_results)} sonuç import edilecek.\n")
 

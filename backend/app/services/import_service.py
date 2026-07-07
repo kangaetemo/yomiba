@@ -167,12 +167,15 @@ class ImportService:
         result: SearchResult,
     ) -> StoreListing:
 
-        listing = self.session.scalar(
-            select(StoreListing).where(
-                StoreListing.volume_id == volume.id,
-                StoreListing.store_id == store.id,
+        listing = (
+            self.session.query(StoreListing)
+            .filter_by(
+                store_name=result.store_name,
+                external_id=result.store_id,
             )
+            .first()
         )
+        
 
         price_changed = False
 
