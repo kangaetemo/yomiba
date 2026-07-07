@@ -1,7 +1,12 @@
-from sqlalchemy import Boolean, String
+from typing import TYPE_CHECKING
+
+from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.store_listing import StoreListing
 
 
 class Store(Base):
@@ -12,17 +17,15 @@ class Store(Base):
     name: Mapped[str] = mapped_column(
         String(100),
         unique=True,
+        nullable=False,
     )
 
     base_url: Mapped[str] = mapped_column(
         String(255),
-    )
-
-    enabled: Mapped[bool] = mapped_column(
-        Boolean,
-        default=True,
+        nullable=False,
     )
 
     listings: Mapped[list["StoreListing"]] = relationship(
-        back_populates="store"
+        back_populates="store",
+        cascade="all, delete-orphan",
     )

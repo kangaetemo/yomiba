@@ -1,7 +1,13 @@
+from typing import TYPE_CHECKING
+
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.publisher import Publisher
+    from app.models.volume import Volume
 
 
 class Series(Base):
@@ -15,7 +21,10 @@ class Series(Base):
         index=True,
     )
 
-    title: Mapped[str] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
 
     slug: Mapped[str] = mapped_column(
         String(255),
@@ -28,7 +37,7 @@ class Series(Base):
         nullable=True,
     )
 
-    cover_path: Mapped[str | None] = mapped_column(
+    cover_url: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
     )
