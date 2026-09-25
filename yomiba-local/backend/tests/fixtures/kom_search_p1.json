@@ -1,0 +1,38 @@
+[
+  {
+    "id": 12442,
+    "name": "K\u0131z\u0131l Sa\u00e7l\u0131 Pamuk Prenses Cilt 3",
+    "sku": "9786258630282",
+    "is_in_stock": true,
+    "permalink": "https://komikseyler.com.tr/kizil-sacli-pamuk-prenses-cilt-3/",
+    "images": [{"src": "https://komikseyler.com.tr/wp-content/uploads/kpp3.jpg", "thumbnail": "https://komikseyler.com.tr/wp-content/uploads/kpp3-min.jpg"}],
+    "prices": {"price": "17500", "regular_price": "25000", "sale_price": "17500", "price_html": "175,00 \u20ba", "currency_code": "TRY", "currency_minor_unit": 2, "currency_symbol": "\u20ba"}
+  },
+  {
+    "id": 11001,
+    "name": "Manga SET (5 Kitap)",
+    "sku": "9786258639999",
+    "is_in_stock": true,
+    "permalink": "https://komikseyler.com.tr/manga-set-5-kitap/",
+    "images": [{"src": "https://komikseyler.com.tr/wp-content/uploads/set.jpg"}],
+    "prices": {"price": "62500", "regular_price": "62500", "sale_price": "", "price_html": "625,00 \u20ba", "currency_code": "TRY", "currency_minor_unit": 2, "currency_symbol": "\u20ba"}
+  },
+  {
+    "id": 13002,
+    "name": "Vanitas Nova Cilt 1",
+    "sku": "KSY-13002",
+    "is_in_stock": false,
+    "permalink": "https://komikseyler.com.tr/vanitas-nova-cilt-1/",
+    "images": [{"src": "https://komikseyler.com.tr/wp-content/uploads/vn1.jpg"}],
+    "prices": {"price": "22500", "regular_price": "22500", "sale_price": "", "price_html": "225,00 \u20ba", "currency_code": "TRY", "currency_minor_unit": 2, "currency_symbol": "\u20ba"}
+  },
+  {
+    "id": 14001,
+    "name": "Manga &#8211; Bir Antholoji",
+    "sku": "",
+    "is_in_stock": true,
+    "permalink": "https://komikseyler.com.tr/manga-bir-antholoji/",
+    "images": [{"src": "https://komikseyler.com.tr/wp-content/uploads/ant.jpg"}],
+    "prices": {"price": "15000", "regular_price": "15000", "sale_price": "", "price_html": "150,00 \u20ba", "currency_code": "TRY", "currency_minor_unit": 2, "currency_symbol": "\u20ba"}
+  }
+]

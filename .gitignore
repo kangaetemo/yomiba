@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Environment
+.env
+
+# Local databases
+*.db
+*.db-wal
+*.db-shm
+*.db.bak
+*.db.bak-*
+*.bak
+*.bak-*
+backups/
+/yomiba-*.zip
+*.sqlite3
+
+# Node (frontend)
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# Research / scratch
+research/
+/tmp/

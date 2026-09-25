@@ -1,0 +1,31 @@
+{
+  "res": [
+    {
+      "ix": 7,
+      "id": "903790",
+      "title": "One Piece 52. Cilt",
+      "category_org": "Edebiyat Kitapları > Çizgi Roman Kitapları",
+      "brand": "Gerekli Şeyler Yayıncılık",
+      "link": "https://bkmkitap.com/one-piece-52",
+      "price": "240,00",
+      "sale_price": "180,00",
+      "image": "https://cdn.bkmkitap.com/one-piece-52-13829380-90-K.jpg",
+      "writer": "Eiiçiro Oda",
+      "publisher": "gerekli şeyler yayıncılık",
+      "category": "Edebiyat Kitapları",
+      "rating": "0",
+      "stock_level": "1",
+      "gtin": "9786256031760",
+      "discount_ratio": "25",
+      "price_not_discounted": "240,00",
+      "price_sell": "180,00",
+      "scheduled_rule": []
+    }
+  ],
+  "default_banner": [],
+  "static_content_results": {},
+  "facet_fields": {},
+  "total_item_count": 6,
+  "no_result": false,
+  "query": {"q": "one piece"}
+}
