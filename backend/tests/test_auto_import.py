@@ -61,7 +61,7 @@ def seed_catalog(sessions, *results):
     search serves. The catalog-only import would skip the products on a
     bare DB, so the catalog rows must exist first."""
     from app.normalization import normalize_text, parse_volume_title
-    from app.models import Publisher
+    from app.models import Publisher, Volume
 
     session = sessions()
     try:
@@ -89,6 +89,11 @@ def seed_catalog(sessions, *results):
                 session.add(
                     CatalogSeries(series_id=series.id, mangakol_slug=f"seed-{series.id}")
                 )
+                exists = series
+            number = parsed.volume_number or 1
+            if session.scalar(select(Volume.id).where(Volume.series_id == exists.id, Volume.volume_number == number)) is None:
+                session.add(Volume(series_id=exists.id, volume_number=number))
+                session.flush()
         session.commit()
     finally:
         session.close()
@@ -327,6 +332,11 @@ def test_scraper_failure_keeps_existing_data(sessions, runner_factory):
 
 def test_partial_scraper_success_retained(sessions, runner_factory):
     seed_catalog(sessions, make_result("bkm", "Frieren 1", "200"))
+    from app.models import Volume
+    with sessions() as session:
+        series = session.scalar(select(Series))
+        session.add(Volume(series_id=series.id, volume_number=2))
+        session.commit()
     set_fresh(sessions, normalized_query_key("frieren"), minutes_ago=120)
 
     runner = runner_factory(
@@ -405,7 +415,7 @@ def test_fresh_results_return_without_waiting(sessions, runner_factory):
         outcome = search_service.search_with_auto_import(session, "berserk", runner)
     finally:
         session.close()
-    assert outcome.matches[0].volume_count == 4  # refresh landed
+    assert outcome.matches[0].volume_count == 3  # store refresh cannot extend the catalog
 
 
 # -- 9. import status represented correctly ----------------------------------------------

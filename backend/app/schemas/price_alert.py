@@ -32,5 +32,7 @@ class PriceAlertIn(BaseModel):
       without changing the threshold.
     """
 
-    threshold_price: int | None = Field(default=None, ge=1)
+    #: Upper bound = 10 million TRY; anything larger is a typo and would
+    #: overflow SQLite INTEGER at extreme values (L1).
+    threshold_price: int | None = Field(default=None, ge=1, le=1_000_000_000)
     is_active: bool | None = None

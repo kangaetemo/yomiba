@@ -124,6 +124,15 @@ class Settings:
         os.getenv("CATALOG_GATE_TIMEOUT_SECONDS", "900")
     )
 
+    # A (volume, store) listing keeps its product: another product of the
+    # same store resolving to the same volume (a different printing or
+    # edition) only replaces it when cheaper, when the current product is
+    # out of stock, or when the current product has not been seen for this
+    # many hours. Prevents A/B price flips between import runs.
+    listing_product_switch_hours: float = float(
+        os.getenv("LISTING_PRODUCT_SWITCH_HOURS", "48")
+    )
+
     # Periodic catalog sync (scheduler). Only active when the app runs with
     # auto_init (production shape — tests run auto_init=False and never
     # start it). The first run happens one full interval AFTER process
@@ -143,6 +152,11 @@ class Settings:
     ).strip().lower() in {"1", "true", "yes", "on"}
     price_refresh_interval_hours: float = float(
         os.getenv("PRICE_REFRESH_INTERVAL_HOURS", "12")
+    )
+    # After a (re)start the first cycle is derived from persisted freshness
+    # (catch-up when stale) but never sooner than this settle delay.
+    price_refresh_startup_delay_minutes: float = float(
+        os.getenv("PRICE_REFRESH_STARTUP_DELAY_MINUTES", "10")
     )
 
     # Scraper reliability: retries, backoff and politeness.

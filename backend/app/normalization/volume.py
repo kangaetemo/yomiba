@@ -13,8 +13,8 @@ Parsing is intentionally conservative:
   * A small number range ("1-5", "1 – 12") marks the item as a collection.
     Large ranges (e.g. fragments of an ISBN such as "978-605") are NOT
     collections.
-  * When nothing matches, ``volume_number`` is ``None`` (the import layer
-    maps that to the :data:`UNNUMBERED_VOLUME` sentinel).
+  * When nothing matches, ``volume_number`` is ``None``. Store import must
+    resolve safely or reject; it never creates a sentinel volume.
 """
 
 from __future__ import annotations
@@ -28,7 +28,11 @@ _MAX_VOLUME = 300
 
 # Markers that explicitly introduce a volume number.
 _VOLUME_MARKER_RE = re.compile(
-    r"(?:(?:cilt|c|vol(?:ume)?|bant|say[ıi]|no|s)\b\.?\s*[:#]?\s*|\(\s*|[:\-–#]\s*)(\d{1,4})\b",
+    # The marker must be a whole word: without the leading \b the "s" of
+    # "Happiness 8" / "Made in Abyss 11" was read as an "S 8" marker and the
+    # series title lost its last letter ("happines"), so the most common
+    # store format "<Title> <N>" never matched titles ending in s/c/no.
+    r"(?:\b(?:cilt|c|vol(?:ume)?|bant|say[ıi]|no|s)\b\.?\s*[:#]?\s*|\(\s*|(?<!\d)[:\-–#]\s*)(\d{1,4})\b",
     re.IGNORECASE,
 )
 # Number placed before the marker: "2 Cilt", "4. Cilt".
@@ -46,12 +50,12 @@ _MID_DASH_NUMBER_RE = re.compile(r"\b(\d{1,3})\s+[-\u2013]\s+(?=[^\W\d])")
 _RANGE_RE = re.compile(r"\b(\d{1,4})\s*[-–]\s*(\d{1,4})\b")
 # Words that strongly indicate a collection / boxed set / separate edition.
 _COLLECTION_WORD_RE = re.compile(
-    r"\b(box|set|toplu|koleksiyon|collection|complete|deluxe|box\s*set|seri\s*set)\b",
+    r"\b(box|set|seti|kutu|bundle|toplu|koleksiyon|collection|complete|deluxe|box\s*set|seri\s*set)\b",
     re.IGNORECASE,
 )
 
-# Sentinel stored in ``volumes.volume_number`` for unnumbered items
-# (boxes / complete sets / single items without a volume). Negative numbers
+# Legacy sentinel stored in ``volumes.volume_number`` for unresolved items.
+# It does not prove a box/set product type. Negative numbers
 # never occur in real volume numbering, so this is collision-free and keeps
 # the (series_id, volume_number) uniqueness constraint effective for them.
 UNNUMBERED_VOLUME = -1
@@ -62,6 +66,7 @@ class VolumeParseResult:
     base_title: str
     volume_number: int | None
     is_collection: bool = False
+    evidence: str | None = None
 
 
 def _is_volume_range(text: str) -> bool:
@@ -106,22 +111,21 @@ def parse_volume_title(title: str | None) -> VolumeParseResult:
     if _is_volume_range(text) or _COLLECTION_WORD_RE.search(text):
         return VolumeParseResult(_strip_volume_tokens(text), None, is_collection=True)
 
-    volume: int | None = None
-    match = _VOLUME_MARKER_RE.search(text)
-    if match:
-        volume = int(match.group(1))
-    else:
-        match = _VOLUME_AFTER_RE.search(text)
-        if match:
-            volume = int(match.group(1))
-        else:
-            match = _MID_DASH_NUMBER_RE.search(text)
-            if match and int(match.group(1)) <= _MAX_VOLUME:
-                volume = int(match.group(1))
-            else:
-                match = _TRAILING_NUMBER_RE.search(text)
-                if match:
-                    volume = int(match.group(1))
-
-    base = _strip_volume_tokens(text)
-    return VolumeParseResult(base, volume, False)
+    # Reject numeric metadata rather than treating a year, price or ISBN
+    # fragment as a volume. Do not strip unrecognized numbers from the title.
+    if re.search(r"\b(?:isbn|edition|bask[ıi]|fiyat|y[ıi]l)\b|\d[.,]\d|\b\d{10,13}\b", text, re.I):
+        return VolumeParseResult(text, None, evidence="numeric_metadata")
+    numbers = {int(m.group(1)) for pattern in (_VOLUME_MARKER_RE, _VOLUME_AFTER_RE, _MID_DASH_NUMBER_RE, _TRAILING_NUMBER_RE)
+               for m in pattern.finditer(text) if 0 <= int(m.group(1)) <= _MAX_VOLUME}
+    if len(numbers) > 1:
+        return VolumeParseResult(text, None, evidence="ambiguous_numbers")
+    for pattern, evidence in (
+        (_VOLUME_MARKER_RE, "marker"), (_VOLUME_AFTER_RE, "number_before_marker"),
+        (_MID_DASH_NUMBER_RE, "bilingual"), (_TRAILING_NUMBER_RE, "trailing_number"),
+    ):
+        match = pattern.search(text)
+        if match and 0 <= int(match.group(1)) <= _MAX_VOLUME:
+            base = (text[:match.start()] + " " + text[match.end():]).strip(" \t:;.,-–#()[]")
+            base = re.sub(r"\s+", " ", base)
+            return VolumeParseResult(base, int(match.group(1)), evidence=evidence)
+    return VolumeParseResult(text, None)

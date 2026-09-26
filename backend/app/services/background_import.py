@@ -91,6 +91,11 @@ class ImportLock:
         self._lock = threading.Lock()
         self._holders: dict[str, str] = {}
         self._shared_holders: dict[str, set[str]] = {}
+        #: Announced exclusive intent per key (writer preference): while a
+        #: catalog sync waits for the gate, NEW shared holders must queue
+        #: behind it; otherwise a continuously fed price-refresh queue keeps
+        #: the shared gate held forever and the sync starves.
+        self._exclusive_intent: dict[str, int] = {}
 
     def acquire(
         self, key: str, holder: str, timeout: float | None = None, *, shared: bool = False
@@ -105,10 +110,10 @@ class ImportLock:
             with self._lock:
                 current = self._holders.get(key)
                 shared_holders = self._shared_holders.get(key, set())
-                if shared and current is None:
+                if shared and current is None and not self._exclusive_intent.get(key):
                     self._shared_holders.setdefault(key, set()).add(holder)
                     return True
-                if current is None and not shared_holders:
+                if not shared and current is None and not shared_holders:
                     self._holders[key] = holder
                     return True
                 if not shared and current == holder:  # re-entrancy safety
@@ -127,6 +132,17 @@ class ImportLock:
                 shared_holders.discard(holder)
                 if not shared_holders:
                     del self._shared_holders[key]
+
+    def set_exclusive_intent(self, key: str, active: bool) -> None:
+        """Announce (or withdraw) that an exclusive holder is waiting for
+        ``key``. Existing shared holders finish normally; new shared
+        acquisitions wait until the exclusive holder has come and gone."""
+        with self._lock:
+            count = self._exclusive_intent.get(key, 0) + (1 if active else -1)
+            if count > 0:
+                self._exclusive_intent[key] = count
+            else:
+                self._exclusive_intent.pop(key, None)
 
     def holder(self, key: str) -> str | None:
         with self._lock:

@@ -8,7 +8,8 @@ import { CollectionStatusPicker } from "@/components/CollectionStatusPicker";
 import { WishlistToggle } from "@/components/WishlistToggle";
 import { PriceAlertForm } from "@/components/PriceAlertForm";
 import { ApiError } from "@/lib/api";
-import { currentUser } from "@/services/auth";
+import { volumeLabel as labelFor } from "@/lib/volumeLabel";
+import { currentUserOrNull } from "@/services/auth";
 import { getPriceAlert, getPriceHistory, getVolume, getWishlist } from "@/services/catalog";
 import type { PriceAlert, PriceHistory, WishlistState } from "@/types";
 
@@ -26,9 +27,7 @@ export async function generateMetadata({
   if (!Number.isInteger(numId) || numId <= 0) return { title: "Cilt bulunamadı" };
   try {
     const detail = await getVolume(numId);
-    const vol =
-      detail.number === null ? "Kutu" : `Cilt ${detail.number}`;
-    return { title: `${detail.series.title} ${vol}` };
+    return { title: `${detail.series.title} ${labelFor(detail.number)}` };
   } catch {
     return { title: "Cilt bulunamadı" };
   }
@@ -47,8 +46,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
     throw e;
   }
 
-  const volumeLabel =
-    detail.number === null ? "Kutu Seti" : `Cilt ${detail.number}`;
+  const volumeLabel = labelFor(detail.number);
 
   // The API already returns listings sorted by price ascending (cheapest
   // first, no-price last); the first priced listing is the cheapest.
@@ -65,7 +63,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
   const historyListings = (history?.listings ?? []).filter(
     (l) => l.points.length > 0,
   );
-  const user = await currentUser();
+  const user = await currentUserOrNull();
 
   // Wishlist / price-alert initial states (same graceful degradation).
   let wishlist: WishlistState | null = null;
@@ -150,9 +148,14 @@ export default async function VolumePage({ params }: VolumePageProps) {
           </span>
         </h2>
 
-        {detail.stores.length === 0 ? (
+        {detail.unverified ? (
+          <div className="rounded-xl border border-amber-900/60 bg-amber-950/30 p-8 text-center text-sm text-amber-300/80">
+            Bu kaydın cilt numarası doğrulanamadı; eski mağaza fiyatları
+            güncel olmadığı için gösterilmiyor.
+          </div>
+        ) : detail.stores.length === 0 ? (
           <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">
-            Bu cilt için henüz mağaza listelmesi yok.
+            Bu cilt için henüz mağaza listelemesi yok.
           </div>
         ) : (
           <div className="space-y-3">

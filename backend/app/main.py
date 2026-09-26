@@ -91,10 +91,14 @@ def create_app(auto_init: bool = True) -> FastAPI:
                 logger.info("startup: price scheduler started")
             app.state.price_refresh_scheduler = price_refresh
             if auto_init and settings.catalog_sync_enabled:
+                from .services.background_import import SYNC_GATE_KEY
+
                 scheduler = CatalogSyncScheduler(
                     lambda: try_start_sync(runner),
                     settings.catalog_sync_interval_hours * 3600.0,
                     gate_wait_seconds=settings.catalog_gate_timeout_seconds,
+                    poll_seconds=min(60.0, max(1.0, settings.catalog_gate_timeout_seconds / 10)),
+                    announce_intent=lambda active: runner.lock.set_exclusive_intent(SYNC_GATE_KEY, active),
                 )
                 scheduler.start()
                 logger.info("startup: catalog scheduler started")
@@ -141,7 +145,7 @@ def create_app(auto_init: bool = True) -> FastAPI:
         # Public search/prices can use ordinary cache policy. Any response
         # tied to a session, and all auth/personal endpoints, must not be
         # stored by a shared intermediary.
-        personal_path = request.url.path.startswith("/auth/") or any(
+        personal_path = request.url.path.startswith(("/auth/", "/me/")) or any(
             marker in request.url.path for marker in ("/wishlist", "/price-alert", "/collection-status")
         )
         if personal_path or request.cookies.get("yomiba_session"):

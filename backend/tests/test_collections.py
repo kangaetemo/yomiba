@@ -18,7 +18,7 @@ ISBN = "9786051234567"
 
 
 def _seed_berserk(import_service, db_session) -> tuple[int, int, int]:
-    seed_catalog_series(db_session, "Berserk", "Athica Yayınları")
+    seed_catalog_series(db_session, "Berserk", "Athica Yayınları", volumes=(1, 2))
     do_import(
         import_service,
         db_session,

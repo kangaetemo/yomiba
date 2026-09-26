@@ -18,7 +18,10 @@ export default function ErrorPage({
       </p>
       <h1 className="text-2xl font-bold text-neutral-50">Bir şeyler ters gitti</h1>
       <p className="text-sm text-neutral-500">
-        {error.message || "Beklenmedik bir hata oluştu."}
+        Sunucuya şu anda ulaşılamıyor olabilir. Birazdan tekrar deneyin.
+        {error.digest && (
+          <span className="mt-1 block text-xs text-neutral-600">Hata kodu: {error.digest}</span>
+        )}
       </p>
       <button
         onClick={reset}

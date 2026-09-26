@@ -17,7 +17,7 @@ def seeded(import_service, db_session, client):
 
     # Catalog-only imports: the catalog series must exist BEFORE the store
     # import (they stand in for what the mangakol sync registered).
-    seed_catalog_series(db_session, "Berserk", "Athica Yayınları")
+    seed_catalog_series(db_session, "Berserk", "Athica Yayınları", volumes=(1, 2))
     seed_catalog_series(db_session, "Berserk of Gluttony", "Shonen Jump")
     do_import(
         import_service,

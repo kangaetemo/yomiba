@@ -1,6 +1,6 @@
 """Multi-printing dedup regression tests.
 
-A store may list several printings of the same volume (different ISBNs) as
+A store may list several printings of the same volume (duplicate offers) as
 separate products — e.g. BKM sells "Titana Saldırısı: Çöküşten Önce 3" under
 two ISBNs at two prices. A volume has exactly one listing per store, so one
 import run must not flip the listing's price between the printings (that
@@ -118,7 +118,7 @@ class TestMultiPrinting:
                 _result(
                     "Titana Saldırı - Çöküşten Önce 3",
                     price="201.60",
-                    isbn="9786255607966",
+                    isbn="9786256449824",
                     url="https://bkm.example/pricier",
                 ),
                 _result(
@@ -151,7 +151,7 @@ class TestMultiPrinting:
                 _result(
                     "Titana Saldırı - Çöküşten Önce 3",
                     price="201.60",
-                    isbn="9786255607966",
+                    isbn="9786256449824",
                     url="https://bkm.example/pricier",
                 ),
             ],
@@ -169,7 +169,7 @@ class TestMultiPrinting:
         pricier = _result(
             "Titana Saldırı - Çöküşten Önce 3",
             price="201.60",
-            isbn="9786255607966",
+            isbn="9786256449824",
             url="https://bkm.example/pricier",
         )
         cheap = _result(
@@ -228,7 +228,7 @@ class TestMultiPrinting:
                 _result(
                     "Titana Saldırı - Çöküşten Önce 3",
                     price=None,
-                    isbn="9786255607966",
+                    isbn="9786256449824",
                     url="https://bkm.example/no-price",
                 ),
                 _result(

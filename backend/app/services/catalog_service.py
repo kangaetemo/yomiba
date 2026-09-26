@@ -8,12 +8,41 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import case, or_, select
+from sqlalchemy import and_, case, exists, not_, or_, select
 from sqlalchemy.orm import Session
 
 from ..models import CatalogSeries, PriceHistory, Series, StoreListing, Volume
 from ..normalization import normalize_text
 from ..normalization.volume import UNNUMBERED_VOLUME
+
+
+def legacy_phantom_condition():
+    """SQL condition for a legacy store-created phantom volume.
+
+    ``volume_number == -1`` alone is not enough: the Mangakol catalog sync may
+    legitimately register an unnumbered item. Store imports can no longer
+    attach ISBNs or listings to ``-1`` rows, so a ``-1`` row that carries an
+    ISBN or listings is a legacy phantom left over from the old import bug.
+    Such rows stay in the DB (cleanup needs an approved, evidence-based merge)
+    but are not exposed as catalog volumes and their frozen prices are hidden.
+    """
+    return and_(
+        Volume.volume_number == UNNUMBERED_VOLUME,
+        or_(
+            Volume.isbn.isnot(None),
+            exists().where(StoreListing.volume_id == Volume.id),
+        ),
+    )
+
+
+def is_legacy_phantom(session: Session, volume: Volume) -> bool:
+    if volume.volume_number != UNNUMBERED_VOLUME:
+        return False
+    if volume.isbn is not None:
+        return True
+    return session.scalar(
+        select(StoreListing.id).where(StoreListing.volume_id == volume.id).limit(1)
+    ) is not None
 
 
 def _volume_order():
@@ -50,6 +79,9 @@ class SeriesDetail:
 class VolumeDetail:
     volume: Volume
     listings: list[StoreListing]
+    #: Legacy store phantom: kept reachable (user rows may point at it) but
+    #: its frozen listings are not shown as current prices.
+    unverified: bool = False
 
 
 @dataclass
@@ -100,7 +132,7 @@ def search_series(session: Session, query: str) -> list[SeriesMatch]:
     series_ids = [s.id for s in series_rows]
     volumes = session.scalars(
         select(Volume)
-        .where(Volume.series_id.in_(series_ids))
+        .where(Volume.series_id.in_(series_ids), not_(legacy_phantom_condition()))
         .order_by(*_volume_order())
     ).all()
 
@@ -124,7 +156,9 @@ def get_series(session: Session, series_id: int) -> SeriesDetail | None:
         return None
 
     volumes = session.scalars(
-        select(Volume).where(Volume.series_id == series_id).order_by(*_volume_order())
+        select(Volume)
+        .where(Volume.series_id == series_id, not_(legacy_phantom_condition()))
+        .order_by(*_volume_order())
     ).all()
 
     stats: dict[int, VolumeStats] = {}
@@ -163,6 +197,8 @@ def get_volume(session: Session, volume_id: int) -> VolumeDetail | None:
     volume = session.get(Volume, volume_id)
     if volume is None or not _is_catalog_series(session, volume.series_id):
         return None
+    if is_legacy_phantom(session, volume):
+        return VolumeDetail(volume=volume, listings=[], unverified=True)
 
     # Cheapest first; listings without a price go last.
     nulls_last = case((StoreListing.price.is_(None), 1), else_=0)
@@ -178,6 +214,8 @@ def get_price_history(session: Session, volume_id: int) -> PriceHistoryDetail | 
     volume = session.get(Volume, volume_id)
     if volume is None or not _is_catalog_series(session, volume.series_id):
         return None
+    if is_legacy_phantom(session, volume):
+        return PriceHistoryDetail(volume=volume, entries=[])
 
     listings = session.scalars(
         select(StoreListing).where(StoreListing.volume_id == volume_id)

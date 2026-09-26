@@ -66,6 +66,7 @@ _DROP_SQL = text(
     JOIN stores st ON st.id = sl.store_id
     WHERE d.prev_price IS NOT NULL
       AND d.price < d.prev_price
+      AND v.volume_number >= 0
       AND d.checked_at >= :cutoff
     ORDER BY d.checked_at DESC, d.listing_id DESC
     """

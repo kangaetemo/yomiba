@@ -40,10 +40,14 @@ Production's pre-existing-file rule remains unchanged.
 | `CORS_ORIGINS` | Trusted browser frontend origins | Yes before browser use | Actual trusted HTTPS origin; API-only smoke can use the Railway URL |
 | `AUTH_COOKIE_SECURE` | HTTPS-only session cookie | Yes | `1` |
 | `AUTH_SESSION_DAYS` | Server session and cookie lifetime | No | `30` (default) |
+| `AUTH_DEVICE_SECRET` | HMAC secret for trusted-device cookies (owner can log in while a third party rate-limits the email) | Recommended | Long random value; set in Railway, never commit |
+| `AUTO_MIGRATION_BACKUP` | Online backup before a pending migration (`*.pre-migration-*.bak` next to the DB) | No | `1` (default) |
 | `CATALOG_SYNC_ENABLED` | Catalog scheduler | Yes for first smoke | `0`, later deliberate `1` |
 | `CATALOG_SYNC_INTERVAL_HOURS` | Catalog cycle interval | No | `24` (default) |
 | `PRICE_REFRESH_ENABLED` | Price scheduler | Yes for first smoke | `0`, later deliberate `1` |
 | `PRICE_REFRESH_INTERVAL_HOURS` | Price cycle interval | No | `12` (default) |
+| `PRICE_REFRESH_STARTUP_DELAY_MINUTES` | Settle delay before a catch-up cycle after restart | No | `10` (default) |
+| `LISTING_PRODUCT_SWITCH_HOURS` | Hours before a listing may switch to another product of the same store | No | `48` (default) |
 | `IMPORT_MAX_CONCURRENT_JOBS` | Import worker count | No | `2` (default) |
 | `IMPORT_QUEUE_CAPACITY` | Pending import limit | No | `16` (default) |
 | `IMPORT_LOCK_TIMEOUT_SECONDS` | Query lock wait | No | `120` (default) |
@@ -72,7 +76,7 @@ Do not supply credentials in documentation or commit them to the repository.
 ## First deployment smoke procedure
 
 1. Create an isolated Railway **staging** service from a reviewed source
-   artifact. This workspace has no `.git` directory. Do not upload the local
+   artifact. Deploy from a reviewed Git commit rather than a folder upload. Do not upload the local
    `backend/yomiba.db`, backup files, or kit ZIPs; `.gitignore` alone does not
    protect a direct folder upload. Set Root Directory `/backend`.
 2. Configure the start command above, one replica, `/data` volume, `/ready`

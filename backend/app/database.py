@@ -91,14 +91,65 @@ SessionLocal: sessionmaker[Session] = sessionmaker(
 )
 
 
+def backup_before_migration(url: str, head: str) -> Path | None:
+    """Online-backup a file SQLite DB before Alembic changes its schema.
+
+    Migrations are forward-only (0005 refuses to downgrade), so starting the
+    app against an older database — e.g. a developer running uvicorn next to
+    the real ``backend/yomiba.db`` — must never be the only copy. Returns the
+    backup path, or None when nothing needs migrating (already at head, new
+    or empty file, non-SQLite). Raises if the backup cannot be verified, so
+    the migration does not run unprotected.
+    """
+    import sqlite3
+    from datetime import datetime, timezone
+
+    from sqlalchemy.engine import make_url
+
+    parsed = make_url(url)
+    if parsed.get_backend_name() != "sqlite" or not parsed.database or parsed.database == ":memory:":
+        return None
+    source = Path(parsed.database).resolve()
+    if not source.is_file() or source.stat().st_size == 0:
+        return None
+    with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not tables:
+            return None
+        current = None
+        if "alembic_version" in tables:
+            row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
+            current = row[0] if row else None
+    if current == head:
+        return None
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    target = source.with_name(f"{source.name}.pre-migration-{current or 'unversioned'}-{stamp}.bak")
+    with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as src, sqlite3.connect(target) as dst:
+        src.backup(dst)
+    with sqlite3.connect(target.as_uri() + "?mode=ro", uri=True) as check:
+        if check.execute("PRAGMA quick_check").fetchone() != ("ok",):
+            raise RuntimeError(f"pre-migration backup failed quick_check: {target}")
+    logger.warning("pre-migration backup written: %s (from revision %s to %s)", target, current, head)
+    return target
+
+
 def init_db() -> None:
     """Apply all pending schema migrations (Alembic) to head.
 
     The baseline migration is idempotent (``CREATE TABLE IF NOT EXISTS``),
     so an un-stamped legacy database created by an older ``create_all``-based
     release migrates cleanly on its first startup instead of crashing.
+    A file SQLite database that is not yet at head is first copied with the
+    online backup API (disable only deliberately via
+    ``AUTO_MIGRATION_BACKUP=0``).
     """
+    import os
+
     from . import models  # noqa: F401  (ensure models are registered)
+    from .readiness import expected_revision
+
+    if os.getenv("AUTO_MIGRATION_BACKUP", "1").strip().lower() not in {"0", "false", "no", "off"}:
+        backup_before_migration(get_settings().database_url, expected_revision())
 
     from alembic import command
     from alembic.config import Config

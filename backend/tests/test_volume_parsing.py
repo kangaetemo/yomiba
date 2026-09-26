@@ -77,7 +77,7 @@ def test_mid_dash_number_single_digit():
 def test_mid_dash_requires_letter_after_dash():
     # ISBN fragment: digit-dash-digit is NOT a volume marker.
     r = parse("978-605-360072-5")
-    assert r.volume_number == 605  # pre-existing behaviour, unchanged
+    assert r.volume_number is None  # ISBN fragments are not volume numbers
     # A four-digit number before a dash is not a plausible volume.
     r = parse("1001 Gece - Masallar")
     assert r.volume_number is None

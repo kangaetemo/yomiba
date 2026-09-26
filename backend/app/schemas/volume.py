@@ -37,6 +37,9 @@ class VolumeOut(BaseModel):
     stores: list[VolumeStoreOut] = []
     #: Collection status; ``None`` when the volume is not tracked.
     collection_status: CollectionStatus | None = None
+    #: True for a legacy store-created phantom (unresolved ``-1`` row). Its
+    #: frozen store listings are withheld until an approved cleanup.
+    unverified: bool = False
 
 
 class VolumeCollectionStatusIn(BaseModel):

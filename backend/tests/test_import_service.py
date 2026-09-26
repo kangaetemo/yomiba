@@ -69,7 +69,7 @@ def seed_catalog_series(
     title: str,
     publisher: str,
     original: str | None = None,
-    volumes=(),
+    volumes=(1,),
 ):
     """A catalog-shaped series (like the mangakol sync creates): registered
     in the catalog manifest, so the catalog-only import may enrich it
@@ -214,7 +214,7 @@ def test_isbn_wins_over_publisher_claim(import_service, db_session):
 
 
 def test_no_publisher_single_candidate_merges(import_service, db_session):
-    seed_catalog_series(db_session, "Berserk", "Athica Yayınları", volumes=(1,))
+    seed_catalog_series(db_session, "Berserk", "Athica Yayınları", volumes=(1, 2))
     do_import(
         import_service,
         db_session,
@@ -284,7 +284,7 @@ def test_unnumbered_item_gets_sentinel_and_dedups(import_service, db_session):
     )
     volumes = db_session.scalars(select(Volume)).all()
     assert len(volumes) == 1
-    assert volumes[0].volume_number == UNNUMBERED_VOLUME
+    assert volumes[0].volume_number == 1  # safe single-volume fallback
     assert db_session.scalar(select(func.count()).select_from(StoreListing)) == 2
 
 
@@ -464,7 +464,7 @@ def test_bilingual_title_bridges_to_catalog_series(import_service, db_session):
     do_import(
         import_service,
         db_session,
-        make_result("bkm", "One Punch Man 3 - Tek Yumruk", "100", publisher="Akılçelen"),
+        make_result("bkm", "One Punch Man 3 - Tek Yumruk", "100", publisher="Akılçelen Kitaplar"),
     )
     assert db_session.scalar(select(func.count()).select_from(Series)) == 1
     vol3 = db_session.scalar(
@@ -484,7 +484,7 @@ def test_original_title_alone_bridges(import_service, db_session):
     do_import(
         import_service,
         db_session,
-        make_result("dr", "One Punch Man (Cilt 5)", "90", publisher="Viz Media"),
+        make_result("dr", "One Punch Man (Cilt 5)", "90"),
     )
     assert db_session.scalar(select(func.count()).select_from(Series)) == 1
     vol5 = db_session.scalar(
@@ -563,7 +563,7 @@ def test_catalog_berserk_gets_listing(import_service, db_session):
     )
 
 
-def test_catalog_new_volume_is_added(import_service, db_session):
+def test_catalog_missing_volume_is_rejected(import_service, db_session):
     """A catalog series gets a brand-new volume from the store (how a new
     volume of a catalog manga becomes listed)."""
     seed_catalog_series(db_session, "Berserk", "Athica Yayınları", volumes=(1,))
@@ -576,4 +576,5 @@ def test_catalog_new_volume_is_added(import_service, db_session):
         v.volume_number
         for v in db_session.scalars(select(Volume)).all()
     }
-    assert vols == {1, 5}
+    assert vols == {1}
+    assert import_service.last_reason == "volume_not_found"

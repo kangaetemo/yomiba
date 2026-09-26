@@ -10,10 +10,9 @@ catalog manifest:
 
 * a product matching no existing catalog series is **skipped** — a store
   import never creates Series (or Publisher) rows;
-* existing catalog series keep receiving new volumes, listings and price
-  history (that is how a catalog manga's new volume gets listed);
-* the ISBN / edition matching rules are unchanged — they simply never fall
-  through to a creation step anymore.
+* existing positive catalog volumes receive listings and price history;
+* missing volumes and conflicting ISBNs are rejected. A store never creates
+  Volume identities; catalog sync owns them.
 
 Resolution priorities (strongest first):
   1. ISBN          -> globally unique; the same ISBN is the same physical
@@ -31,13 +30,15 @@ import continues with the remaining stores.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import (
     CatalogSeries,
     PriceHistory,
@@ -54,10 +55,10 @@ from ..normalization import (
     normalize_text,
     parse_volume_title,
 )
-from ..normalization.volume import UNNUMBERED_VOLUME
 from ..scrapers import SearchResult
 from ..scrapers.registry import get_scrapers
 from ..scrapers.base import BaseScraper
+from ..scrapers.relevance import check_manga_relevance
 from ..utils import from_cents, to_cents, utcnow
 
 logger = logging.getLogger("yomiba.import")
@@ -66,6 +67,16 @@ logger = logging.getLogger("yomiba.import")
 #: the edition cannot be determined unambiguously. It keeps unknown items
 #: isolated from real editions instead of corrupting them.
 UNKNOWN_PUBLISHER = "Bilinmiyor"
+
+#: Separate editions that must never attach to a normal catalog volume.
+_EDITION_CONFLICT_RE = r"\b(?:omnibus|hardcover|collector|special edition|ozel baski)\b"
+#: Remainder (after a catalog title prefix) that is a plain volume token.
+_REMAINDER_VOLUME_RE = re.compile(
+    r"(?:(?:cilt|c|vol|volume|bant|sayi|no)\s*)?0*(\d{1,3})(?:\s*(?:cilt|c))?"
+)
+_REMAINDER_COLLECTION_RE = re.compile(
+    r"\b(?:box|set|seti|kutu|bundle|toplu|koleksiyon|collection|complete|deluxe)\b|\b\d{1,3}\s+\d{1,3}\b"
+)
 
 
 class ImportAction(str, Enum):
@@ -85,6 +96,7 @@ class StoreImportResult:
     errors: int = 0
     #: Set when the scraper itself failed (transport / parse / block).
     error: str | None = None
+    reasons: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -124,6 +136,7 @@ class ImportService:
         #: Optional pre-built scraper list (used by tests). When omitted,
         #: scrapers are instantiated from the registry per import run.
         self.scrapers = scrapers
+        self.last_reason: str | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -139,7 +152,8 @@ class ImportService:
         Multi-printing handling: a store may list several printings of the
         same volume (different ISBNs at different prices). Results are first
         resolved to their (volume, store) target and grouped per target; only
-        the cheapest priced printing of each group is imported. Without this
+        the cheapest priced in-stock printing of each group is imported
+        (falling back to unavailable products if none are in stock). Without this
         the listing's price would flip between the printings on every check,
         fabricating price history and fake drops.
         """
@@ -191,6 +205,8 @@ class ImportService:
                     continue
                 if target is None:
                     store_report.skipped += 1
+                    reason = self.last_reason or "no_series_match"
+                    store_report.reasons[reason] = store_report.reasons.get(reason, 0) + 1
                     continue
                 volume, store = target
                 groups.setdefault((volume.id, store.id), []).append(
@@ -198,11 +214,11 @@ class ImportService:
                 )
 
             # Phase 2: import one representative per (volume, store) group —
-            # the cheapest priced printing wins; unpriced ones never hide a
-            # priced one.
+            # prefer available products, then the cheapest priced printing.
             for (volume_id, store_id), items in groups.items():
-                priced = [(p, r) for p, r in items if p is not None]
-                best = min(priced, key=lambda t: t[0])[1] if priced else items[0][1]
+                available = [(p, r) for p, r in items if r.in_stock] or items
+                priced = [(p, r) for p, r in available if p is not None]
+                best = min(priced, key=lambda t: t[0])[1] if priced else available[0][1]
                 if len(items) > 1:
                     logger.info(
                         "import: %d printings of the same volume at %s for %r; "
@@ -213,6 +229,7 @@ class ImportService:
                         from_cents(to_cents(best.price)),
                     )
                     store_report.skipped += len(items) - 1
+                    store_report.reasons["duplicate"] = store_report.reasons.get("duplicate", 0) + len(items) - 1
                 volume = self.session.get(Volume, volume_id)
                 store = self.session.get(Store, store_id)
                 try:
@@ -233,7 +250,12 @@ class ImportService:
                     store_report.updated += 1
                 else:
                     store_report.skipped += 1
+                    reason = self.last_reason or "skipped"
+                    store_report.reasons[reason] = store_report.reasons.get(reason, 0) + 1
 
+            logger.info("import matching summary: store=%s results=%d matched=%d rejected=%s errors=%d",
+                        store_report.store_code, store_report.results_found,
+                        store_report.created + store_report.updated, store_report.reasons, store_report.errors)
         report.finished_at = utcnow()
         return report
 
@@ -258,18 +280,25 @@ class ImportService:
         Returns None (with a log line) when the result must be skipped: no
         title/url, collection, no derivable series, no matching catalog
         series, or an ISBN outside the catalog. Never writes listings; may
-        create the target volume via _resolve_volume — the caller commits or
+        enrich ISBN/cover on an existing target — the caller commits or
         rolls back as usual.
         """
+        self.last_reason = None
         title = (result.title or "").strip()
         if not title or not result.product_url:
-            logger.debug("import: skipping result without title/url: %r", result.title)
-            return None
+            return self._reject("invalid_result")
+
+        if not check_manga_relevance(title=title, publisher=result.publisher, isbn=result.isbn,
+                                     category=result.category).accept:
+            return self._reject("non_book_product")
 
         parsed = parse_volume_title(title)
+        if re.search(_EDITION_CONFLICT_RE, normalize_text(title)):
+            return self._reject("edition_conflict")
         if parsed.is_collection:
-            logger.debug("import: skipping collection %r", title)
-            return None
+            # "Kaiju No: 8 - 8 No'lu Canavar 3" looks like a "8 - 8" range
+            # only because the catalog title itself contains numbers.
+            return self._catalog_title_fallback(result, "box_set")
 
         series_raw = result.series_title or parsed.base_title
         series_key = normalize_text(series_raw)
@@ -282,7 +311,7 @@ class ImportService:
         elif parsed.volume_number is not None:
             volume_number = parsed.volume_number
         else:
-            volume_number = UNNUMBERED_VOLUME
+            volume_number = None
 
         store = self._resolve_store(result.store_id, result.store_name)
         isbn = normalize_isbn(result.isbn)
@@ -301,9 +330,22 @@ class ImportService:
                         title,
                         isbn,
                     )
-                    return None
-                self._backfill_cover(volume, result)
-                return (volume, store)
+                    return self._reject("non_catalog_volume")
+                if volume.volume_number < 0:
+                    # Legacy phantom (old import bug) still holds this ISBN.
+                    # It is not a catalog identity: never attach to it, and
+                    # never move/copy the ISBN (unique). Resolve the product
+                    # by title/number like an ISBN-less result instead, so
+                    # the real catalog volume is no longer starved.
+                    logger.info(
+                        "import: ISBN %s is held by legacy phantom volume %s; "
+                        "resolving %r without ISBN",
+                        isbn, volume.id, title,
+                    )
+                    isbn = None
+                else:
+                    self._backfill_cover(volume, result)
+                    return (volume, store)
 
         # Read-only publisher resolution: a store import never creates
         # Publisher rows (catalog-only).
@@ -313,22 +355,111 @@ class ImportService:
             if publisher is not None:
                 series = self._resolve_series_for_publisher(publisher, series_key)
             else:
-                # Unknown publisher claim: only the bilingual bridge
-                # (title-based, unambiguous identity) is trusted. A plain
-                # title match must NOT merge this product into a different
-                # edition that happens to be the catalog's only candidate.
-                series = self._find_series_by_bilingual_key(series_key)
+                # An unrecognized publisher cannot prove edition identity.
+                series = None
         else:
             series = self._resolve_series_no_publisher(series_key)
 
+        if series is None and series_key.endswith(" manga") and parsed.volume_number is not None:
+            # A store's generic suffix is only a secondary exact key. Never
+            # use prefix/fuzzy matching or drop edition words.
+            shorter = series_key.removesuffix(" manga")
+            if publisher_name:
+                series = self._resolve_series_for_publisher(publisher, shorter) if publisher else None
+            else:
+                series = self._resolve_series_no_publisher(shorter)
         if series is None:
-            logger.info(
-                "import: skipping %r — no existing catalog series (catalog-only)",
-                title,
-            )
-            return None
+            if parsed.evidence in {"numeric_metadata", "ambiguous_numbers"}:
+                reason = "ambiguous_volume"
+            else:
+                reason = "publisher_conflict" if publisher_name else "no_series_match"
+            return self._catalog_title_fallback(result, reason)
+        if result.volume_number is not None and parsed.volume_number is not None and result.volume_number != parsed.volume_number:
+            return self._reject("ambiguous_volume")
+        if parsed.evidence in {"numeric_metadata", "ambiguous_numbers"}:
+            return self._reject("ambiguous_volume")
         volume = self._resolve_volume(series, isbn, volume_number, result)
+        if volume is None:
+            return None
         return (volume, store)
+
+    def _catalog_title_fallback(self, result: SearchResult, reason: str):
+        """Second chance for catalog titles the generic parser misreads.
+
+        The generic parser cannot tell "Mob Psycho 100 Cilt 2", "Dövüş Sınıfı
+        3 Cilt 2", "Disney Manga - 6 Süper Kahraman", "Kaiju No: 8 - 8 No'lu
+        Canavar 3" or "Mavi Kutu 4" (collection word in the title) apart from
+        volume numbers, ranges or box sets. Runs only after the normal path
+        rejected the product. The product title must START with the exact
+        normalized title of a catalog series; only the remainder is parsed,
+        and it must be empty or a plain volume token ("3", "cilt 3", "3 cilt")
+        with no collection words or ranges.
+        Anything else keeps the original rejection ``reason``. Never creates
+        rows and never guesses between editions.
+        """
+        title_key = normalize_text(result.title)
+        remainder_number = None
+        match = self._catalog_series_prefix(title_key, (result.publisher or "").strip())
+        if match is None:
+            return self._reject(reason)
+        series, remainder = match
+        if remainder:
+            if _REMAINDER_COLLECTION_RE.search(remainder):
+                return self._reject("box_set")
+            token = _REMAINDER_VOLUME_RE.fullmatch(remainder)
+            if token is None:
+                return self._reject(reason)
+            remainder_number = int(token.group(1))
+        store = self._resolve_store(result.store_id, result.store_name)
+        isbn = normalize_isbn(result.isbn)
+        if isbn:
+            holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
+            if holder is not None and not self._series_is_catalog(holder.series_id):
+                return self._reject("non_catalog_volume")
+            if holder is not None and holder.volume_number < 0:
+                isbn = None  # legacy phantom keeps it; see _resolve_target
+        volume = self._resolve_volume(series, isbn, remainder_number, result, title_verified=True)
+        if volume is None:
+            return None
+        logger.info("import: %r matched catalog title %r by prefix", result.title, series.title)
+        return (volume, store)
+
+    def _catalog_series_prefix(self, title_key: str, publisher_name: str):
+        """Longest catalog series title that prefixes ``title_key`` at a word
+        boundary; returns ``(series, remainder)`` or None."""
+        if not title_key:
+            return None
+        publisher_id = None
+        if publisher_name:
+            publisher = self._find_publisher(publisher_name)
+            if publisher is None:
+                return None
+            publisher_id = publisher.id
+        query = select(Series).where(
+            Series.id.in_(select(CatalogSeries.series_id).distinct()),
+            Series.normalized_title.isnot(None),
+        )
+        if publisher_id is not None:
+            query = query.where(Series.publisher_id == publisher_id)
+        best: list[Series] = []
+        best_len = 0
+        for series in self.session.scalars(query):
+            key = series.normalized_title or ""
+            if not key:
+                continue
+            if title_key != key and not title_key.startswith(key + " "):
+                continue
+            if len(key) > best_len:
+                best, best_len = [series], len(key)
+            elif len(key) == best_len:
+                best.append(series)
+        if len(best) != 1:
+            return None
+        return best[0], title_key[best_len:].strip()
+
+    def _reject(self, reason: str):
+        self.last_reason = reason
+        return None
 
     # ------------------------------------------------------------------
     # Entity resolution
@@ -470,15 +601,40 @@ class ImportService:
         self,
         series: Series,
         isbn: str | None,
-        volume_number: int,
+        volume_number: int | None,
         result: SearchResult,
-    ) -> Volume:
+        *,
+        title_verified: bool = False,
+    ) -> Volume | None:
         # 1) ISBN is the strongest cross-store identifier: globally unique.
         if isbn:
             volume = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
             if volume is not None:
+                if not self._series_is_catalog(volume.series_id):
+                    return self._reject("non_catalog_volume")
                 self._backfill_cover(volume, result)
                 return volume
+
+        # Unknown products cannot create a catalog identity. Only a series
+        # with exactly one positive volume, numbered 1, can use this fallback.
+        if volume_number is None and not title_verified:
+            title_key = normalize_text(parse_volume_title(result.title).base_title)
+            allowed_titles = {series.normalized_title}
+            if series.original_title:
+                allowed_titles.update({series.original_title,
+                    f"{series.original_title} {series.normalized_title}",
+                    f"{series.normalized_title} {series.original_title}"})
+            if title_key not in allowed_titles:
+                return self._reject("ambiguous_volume")
+        if volume_number is None:
+            real = self.session.scalars(select(Volume).where(
+                Volume.series_id == series.id, Volume.volume_number >= 0,
+            )).all()
+            if len(real) != 1 or real[0].volume_number != 1:
+                return self._reject("no_volume_number")
+            volume_number = 1
+        if volume_number < 0:
+            return self._reject("no_volume_number")
 
         # 2) series + volume number (the edition-aware dedup key).
         volume = self.session.scalar(
@@ -491,34 +647,31 @@ class ImportService:
             if isbn and volume.isbn is None:
                 volume.isbn = isbn  # enrich the existing volume
             elif isbn and volume.isbn != isbn:
-                logger.warning(
-                    "import: ISBN conflict for volume %s (series %s, no %s): "
-                    "keeping %s, ignoring %s",
-                    volume.id,
-                    series.id,
-                    volume_number,
-                    volume.isbn,
-                    isbn,
-                )
+                return self._reject("isbn_conflict")
             self._backfill_cover(volume, result)
             return volume
 
-        # 3) Create a new volume in the resolved series.
-        volume = Volume(
-            series_id=series.id,
-            volume_number=volume_number,
-            isbn=isbn,
-            cover_url=result.image_url,
-        )
-        self.session.add(volume)
-        self.session.flush()
-        logger.info(
-            "import: created volume series=%s number=%s isbn=%s",
-            series.id,
-            volume_number,
-            isbn,
-        )
-        return volume
+        return self._reject("volume_not_found")
+
+    @staticmethod
+    def _may_switch_product(
+        listing: StoreListing, result: SearchResult, price_cents: int | None, now: datetime
+    ) -> bool:
+        # Never replace an available offer with an unavailable product;
+        # keep the identity stable when both are unavailable, even if stale.
+        if not result.in_stock:
+            return False
+        if not listing.in_stock:
+            return True
+        last = listing.last_checked
+        if last is None:
+            return True
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        window = timedelta(hours=get_settings().listing_product_switch_hours)
+        if now - last >= window:
+            return True
+        return price_cents is not None and (listing.price is None or price_cents < listing.price)
 
     @staticmethod
     def _backfill_cover(volume: Volume, result: SearchResult) -> None:
@@ -531,6 +684,10 @@ class ImportService:
     def _upsert_listing(
         self, volume: Volume, store: Store, result: SearchResult
     ) -> ImportAction:
+        # Final write boundary: every resolution path must remain catalog-only.
+        if not self._series_is_catalog(volume.series_id):
+            self.last_reason = "non_catalog_volume"
+            return ImportAction.SKIPPED
         now = utcnow()
         price_cents = to_cents(result.price)
 
@@ -559,8 +716,27 @@ class ImportService:
                 )
             return ImportAction.CREATED
 
-        price_changed = price_cents is not None and listing.price != price_cents
-        if price_cents is not None:
+        product_changed = listing.product_url != result.product_url
+        if product_changed and not self._may_switch_product(
+            listing, result, price_cents, now
+        ):
+            # A different product of the same store resolved to this volume
+            # (another printing / edition). Switching back and forth between
+            # products across import runs fabricates price history and fake
+            # drops. Only an in-stock candidate may replace it, using the
+            # stock / price / freshness policy above.
+            self.last_reason = "other_product"
+            logger.info(
+                "import: keeping listing %s on %s; ignoring other product %s",
+                listing.id, listing.product_url, result.product_url,
+            )
+            return ImportAction.SKIPPED
+
+        # A product switch is not a price change of the old product. Keep
+        # existing history, but do not fabricate a transition on the switch.
+        # Subsequent same-product changes use the new product's price.
+        price_changed = not product_changed and price_cents is not None and listing.price != price_cents
+        if price_cents is not None or product_changed:
             listing.price = price_cents
         listing.in_stock = result.in_stock
         listing.product_url = result.product_url

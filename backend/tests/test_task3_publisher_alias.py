@@ -232,6 +232,7 @@ def test_variant_publisher_reuses_canonical_publisher_and_series(
     volume1 = Volume(series_id=series.id, volume_number=1,
                      isbn="9786255607362")
     db_session.add(volume1)
+    db_session.add(Volume(series_id=series.id, volume_number=2))
     db_session.flush()
 
     import_service.import_result(

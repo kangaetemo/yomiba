@@ -6,6 +6,8 @@
  * - In server components, the backend is reached directly via BACKEND_URL.
  */
 
+import { backendBaseUrl } from "@/lib/backendUrl";
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -19,10 +21,27 @@ export class ApiError extends Error {
 function apiBase(): string {
   if (typeof window === "undefined") {
     // Server component: talk to the backend directly.
-    return process.env.BACKEND_URL || "http://127.0.0.1:8000";
+    return backendBaseUrl();
   }
   // Browser: same-origin, proxied by Next.js rewrites.
-  return "/api";
+  return (process.env.NEXT_PUBLIC_API_BASE || "/api").replace(/\/+$/, "");
+}
+
+/** Turn a FastAPI error body into one readable message. 422 validation
+ * errors carry a list of `{loc, msg}` objects, not a string. */
+function errorDetail(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) =>
+        item && typeof item === "object" && "msg" in item
+          ? String((item as { msg: unknown }).msg)
+          : "",
+      )
+      .filter(Boolean);
+    if (messages.length > 0) return messages.join(" ");
+  }
+  return fallback;
 }
 
 async function request<T>(
@@ -47,8 +66,7 @@ async function request<T>(
     try {
       const body: unknown = await res.json();
       if (body && typeof body === "object" && "detail" in body) {
-        const d = (body as { detail: unknown }).detail;
-        detail = typeof d === "string" ? d : JSON.stringify(d);
+        detail = errorDetail((body as { detail: unknown }).detail, detail);
       }
     } catch {
       // Non-JSON error body; keep the default detail.

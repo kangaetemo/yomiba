@@ -3,8 +3,9 @@
 A Volume belongs to exactly one Series. Uniqueness is enforced per series:
 the same volume number cannot appear twice inside one series.
 
-``volume_number`` uses :data:`UNNUMBERED_VOLUME` (-1) for items without a
-volume number (boxes / sets / unnumbered singles), which keeps the unique
+``volume_number`` uses :data:`UNNUMBERED_VOLUME` (-1) for legacy unresolved
+items; it does not prove a box/set. Zero is a valid explicit volume number.
+The sentinel keeps the unique
 constraint effective for them as well.
 """
 
@@ -33,7 +34,7 @@ class Volume(Base):
     series_id: Mapped[int] = mapped_column(
         ForeignKey("series.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    #: 1, 2, 3, ... for real volumes; UNNUMBERED_VOLUME (-1) for boxes/sets.
+    #: 0, 1, 2, ... for real volumes; UNNUMBERED_VOLUME (-1) for unresolved legacy rows.
     volume_number: Mapped[int] = mapped_column(
         Integer, nullable=False, default=UNNUMBERED_VOLUME
     )

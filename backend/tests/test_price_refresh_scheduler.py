@@ -9,8 +9,8 @@ Covered behaviour:
   is skipped — the same anti-hammering rule search_with_auto_import uses;
 * a key already running in the runner is not double-submitted;
 * an empty record table is a no-op;
-* no pass before the first interval (no catch-up at startup — same
-  restart contract as the catalog sync scheduler);
+* no pass before the settle delay (capped by the interval); stale catalogs
+  catch up after it instead of waiting a full interval (M8);
 * a tick that raises does not kill the scheduler loop;
 * clean start()/stop() lifecycle (idempotent start).
 
@@ -335,3 +335,36 @@ def test_auto_init_disabled_flag_blocks_price_refresh(monkeypatch, engine):
 def test_auto_init_false_never_wires_price_refresh(client):
     # every existing API test runs this shape: no scheduler, ever
     assert client.app.state.price_refresh_scheduler is None
+
+
+# -- restart catch-up (M8) ------------------------------------------------------------
+
+def test_first_due_catches_up_stale_catalog_after_settle_delay(sessions):
+    from app.utils import utcnow
+
+    _add_catalog(sessions, "berserk")
+    _seed(sessions, "berserk", success_minutes_ago=13 * 60, attempt_minutes_ago=13 * 60)
+    sched = PriceRefreshScheduler(_StubRunner(), sessions, interval_seconds=12 * 3600,
+                                  startup_delay_seconds=600)
+    due = sched._first_due_at()  # noqa: SLF001 - test access
+    assert timedelta(minutes=9) < due - utcnow() <= timedelta(minutes=10)
+
+
+def test_first_due_keeps_remaining_interval_for_fresh_catalog(sessions):
+    from app.utils import utcnow
+
+    _add_catalog(sessions, "berserk")
+    _seed(sessions, "berserk", success_minutes_ago=60, attempt_minutes_ago=60)
+    sched = PriceRefreshScheduler(_StubRunner(), sessions, interval_seconds=12 * 3600,
+                                  startup_delay_seconds=600)
+    due = sched._first_due_at()  # noqa: SLF001
+    assert timedelta(hours=10, minutes=59) < due - utcnow() <= timedelta(hours=11)
+
+
+def test_first_due_never_imported_series_is_due_after_delay(sessions):
+    from app.utils import utcnow
+
+    _add_catalog(sessions, "berserk")
+    sched = PriceRefreshScheduler(_StubRunner(), sessions, interval_seconds=12 * 3600,
+                                  startup_delay_seconds=600)
+    assert sched._first_due_at() - utcnow() <= timedelta(minutes=10)  # noqa: SLF001

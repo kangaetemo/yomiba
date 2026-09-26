@@ -170,15 +170,15 @@ def test_a_isbn_conflict_keeps_existing_and_warns(import_service, db_session, ca
 
     # The *listing* is new for D&R, but the *volume* is the existing one:
     # the stored ISBN survives the conflict.
-    assert action is ImportAction.CREATED
+    assert action is ImportAction.SKIPPED
     volume = db_session.scalar(select(Volume))
     assert volume.isbn == "9786051111111"  # not overwritten
-    assert any("ISBN conflict" in r.message for r in caplog.records)
+    assert import_service.last_reason == "isbn_conflict"
     assert (
         db_session.scalar(
             select(func.count()).select_from(StoreListing).where(StoreListing.volume_id == volume.id)
         )
-        == 2  # bkm + dr listings on the same (single) volume
+        == 1  # conflicting ISBN cannot attach the D&R listing
     )
 
 
@@ -257,8 +257,8 @@ def test_a_same_isbn_conflicting_series_title_no_phantom_series(
 def test_b_same_title_volume_different_publishers_no_isbn_stay_separate(import_service, db_session):
     """'Berserk 2' Athica and 'Berserk 2' Dark Horse: two volumes, no merge
     (both editions are catalog series, so the products land on their own)."""
-    seed_catalog_series(db_session, "Berserk", "Athica Yayınları")
-    seed_catalog_series(db_session, "Berserk", "Dark Horse")
+    seed_catalog_series(db_session, "Berserk", "Athica Yayınları", volumes=(2,))
+    seed_catalog_series(db_session, "Berserk", "Dark Horse", volumes=(2,))
     do_import(
         import_service,
         db_session,
@@ -301,7 +301,7 @@ def test_b_same_title_volume_different_publishers_no_isbn_stay_separate(import_s
 # C — within one edition: merge without ISBN
 # ---------------------------------------------------------------------------
 def test_c_cross_store_no_isbn_same_publisher_merges(import_service, db_session):
-    seed_catalog_series(db_session, "Berserk", "Athica Yayınları")
+    seed_catalog_series(db_session, "Berserk", "Athica Yayınları", volumes=(2,))
     do_import(
         import_service,
         db_session,
@@ -350,7 +350,7 @@ def test_c_normalization_variants_merge(import_service, db_session):
 
 
 def test_c_no_publisher_single_candidate_merges(import_service, db_session):
-    seed_catalog_series(db_session, "Berserk", "Athica Yayınları", volumes=(1,))
+    seed_catalog_series(db_session, "Berserk", "Athica Yayınları", volumes=(1, 2))
     do_import(
         import_service,
         db_session,
@@ -524,7 +524,7 @@ def _service_with(db_session, results_by_store: dict, price_by_store: dict) -> I
 def test_f_second_run_updates_only_no_new_rows(db_session):
     seed_catalog_series(db_session, "Berserk", "Athica Yayınları")
     before = counts(db_session)
-    assert before == {"publishers": 1, "series": 1, "volumes": 0, "listings": 0, "history": 0}
+    assert before == {"publishers": 1, "series": 1, "volumes": 1, "listings": 0, "history": 0}
 
     first = _service_with(db_session, {"bkm": ["Berserk 1"], "dr": ["Berserk 1"], "amazon": ["Berserk 1"]}, {})
     report1 = first.run_import("berserk")
@@ -558,7 +558,7 @@ def test_f_unnumbered_and_collection_items_stay_stable_across_runs(db_session):
     assert r1.total_created == 1  # collection skipped
     assert r1.total_skipped == 1
     volume = db_session.scalar(select(Volume))
-    assert volume.volume_number == UNNUMBERED_VOLUME
+    assert volume.volume_number == 1
 
     r2 = _service_with(db_session, {"bkm": titles}, {}).run_import("berserk")
     assert r2.total_updated == 1

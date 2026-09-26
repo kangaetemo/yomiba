@@ -30,3 +30,4 @@ npm-debug.log*
 # Research / scratch
 research/
 /tmp/
+.audit-cache/

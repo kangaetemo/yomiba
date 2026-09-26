@@ -67,6 +67,7 @@ def _build_volume_out(session: Session, volume_id: int, user_id: int | None = No
         ),
         stores=stores,
         collection_status=collections_service.get_volume_status(session, user_id, volume_id),  # type: ignore[arg-type]
+        unverified=detail.unverified,
     )
 
 

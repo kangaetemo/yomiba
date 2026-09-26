@@ -31,11 +31,16 @@ class PriceRefreshScheduler:
         interval_seconds: float,
         *,
         poll_seconds: float = 30.0,
+        startup_delay_seconds: float | None = None,
     ) -> None:
         self._runner = runner
         self._session_factory = session_factory
         self._interval = max(interval_seconds, 1.0)
         self._poll = max(poll_seconds, 0.05)
+        if startup_delay_seconds is None:
+            startup_delay_seconds = get_settings().price_refresh_startup_delay_minutes * 60.0
+        #: Short settle time after a (re)start before a catch-up cycle.
+        self._startup_delay = min(max(startup_delay_seconds, 0.0), self._interval)
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._lock = threading.RLock()
@@ -58,12 +63,54 @@ class PriceRefreshScheduler:
             return
         self._stop.clear()
         with self._lock:
-            self._next_scheduled_at = utcnow() + timedelta(seconds=self._interval)
+            self._next_scheduled_at = self._first_due_at()
         self._thread = threading.Thread(
             target=self._loop, name="yomiba-price-refresh", daemon=True
         )
         self._thread.start()
         logger.info("price refresh scheduler started (interval %.1fh)", self._interval / 3600)
+
+    def _first_due_at(self) -> datetime:
+        """When the first cycle after a (re)start should run.
+
+        Restarts (e.g. every Railway redeploy) must not postpone refreshes by
+        a full interval each time: the schedule is derived from persisted
+        ImportRecord freshness. If the stalest catalog query last succeeded
+        more than one interval ago (or never), a catch-up cycle starts after
+        a short settle delay; otherwise the cycle is due when that query
+        reaches one interval of age.
+        """
+        now = utcnow()
+        try:
+            with self._session_factory() as session:
+                keys = {
+                    normalized_query_key(title)
+                    for (title,) in session.execute(
+                        select(Series.title)
+                        .join(CatalogSeries, CatalogSeries.series_id == Series.id)
+                        .distinct()
+                    )
+                }
+                keys.discard("")
+                successes = {
+                    r.normalized_query: aware_datetime(r.last_success_at)
+                    for r in session.scalars(
+                        select(ImportRecord).where(ImportRecord.normalized_query.in_(keys))
+                    )
+                } if keys else {}
+        except Exception:  # noqa: BLE001 - fall back to the plain interval
+            logger.exception("price refresh: could not derive first due time")
+            return now + timedelta(seconds=self._interval)
+        if not keys:
+            return now + timedelta(seconds=self._interval)
+        stalest = [successes.get(key) for key in keys]
+        if any(value is None for value in stalest):
+            wait = 0.0
+        else:
+            oldest = min(v for v in stalest if v is not None)
+            wait = (oldest + timedelta(seconds=self._interval) - now).total_seconds()
+        wait = min(max(wait, self._startup_delay), self._interval)
+        return now + timedelta(seconds=wait)
 
     def stop(self, timeout: float = 10.0) -> None:
         self._stop.set()

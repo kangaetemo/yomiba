@@ -31,7 +31,10 @@ const nextConfig: NextConfig = {
   // preview origin so client components (search, etc.) stay functional.
   allowedDevOrigins,
   async rewrites() {
-    const backend = process.env.BACKEND_URL || "http://127.0.0.1:8000";
+    // Trailing slash stripped: "https://api.example/" must not yield "//path".
+    const backend = (process.env.BACKEND_URL || "http://127.0.0.1:8000")
+      .trim()
+      .replace(/\/+$/, "");
     return [
       {
         source: "/api/:path*",

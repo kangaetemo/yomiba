@@ -36,6 +36,11 @@ starting the new backend against the real database.
   The browser uses the frontend's same-origin `/api` rewrite. Verify that the
   proxy forwards `Origin` and `Set-Cookie`; do not trust arbitrary
   `X-Forwarded-For` values for authentication or rate limiting.
+- `AUTH_DEVICE_SECRET` (long random value, set in the host's secret store)
+  keeps trusted-device cookies valid across restarts.
+- Startup writes an online backup (`<db>.pre-migration-<rev>-<UTC>.bak`,
+  next to the DB) before applying a pending Alembic migration
+  (`AUTO_MIGRATION_BACKUP=1`, default). Keep volume headroom for one DB copy.
 - `PRICE_REFRESH_ENABLED=1`, `PRICE_REFRESH_INTERVAL_HOURS=12`,
   `CATALOG_SYNC_ENABLED=1`, `CATALOG_SYNC_INTERVAL_HOURS=24`,
   `IMPORT_MAX_CONCURRENT_JOBS=2`, and `IMPORT_QUEUE_CAPACITY=16` are the

@@ -49,6 +49,7 @@ class CatalogSyncScheduler:
         *,
         gate_wait_seconds: float = 900.0,
         poll_seconds: float = 60.0,
+        announce_intent: Callable[[bool], None] | None = None,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
@@ -56,6 +57,10 @@ class CatalogSyncScheduler:
         self._interval_seconds = interval_seconds
         self._gate_wait_seconds = gate_wait_seconds
         self._poll_seconds = poll_seconds
+        #: Called with True while the tick waits for a held catalog gate and
+        #: with False afterwards, so the gate can stop admitting new store
+        #: imports (writer preference) instead of starving the sync.
+        self._announce_intent = announce_intent
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -129,18 +134,27 @@ class CatalogSyncScheduler:
         while waiting.
         """
         deadline = time.monotonic() + max(0.0, self._gate_wait_seconds)
-        while True:
-            result = self._start_sync()
-            if result != "gate_held":
-                return result
-            if self._stop_event.is_set():
-                return None
-            if time.monotonic() >= deadline:
-                logger.warning(
-                    "scheduled catalog sync skipped: a store import still "
-                    "holds the catalog write gate after %.0fs",
-                    max(0.0, self._gate_wait_seconds),
-                )
-                return "gate_held"
-            if self._stop_event.wait(self._poll_seconds):
-                return None
+        announced = False
+        try:
+            while True:
+                result = self._start_sync()
+                if result != "gate_held":
+                    return result
+                if self._stop_event.is_set():
+                    return None
+                if time.monotonic() >= deadline:
+                    logger.warning(
+                        "scheduled catalog sync skipped: a store import still "
+                        "holds the catalog write gate after %.0fs",
+                        max(0.0, self._gate_wait_seconds),
+                    )
+                    return "gate_held"
+                if not announced and self._announce_intent is not None:
+                    self._announce_intent(True)
+                    announced = True
+                    logger.info("catalog sync waiting for the gate; new store imports pause")
+                if self._stop_event.wait(self._poll_seconds):
+                    return None
+        finally:
+            if announced:
+                self._announce_intent(False)
