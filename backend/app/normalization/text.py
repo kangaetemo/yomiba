@@ -72,6 +72,42 @@ def normalize_publisher(value: str | None) -> str:
     return normalize_text(value)
 
 
+# Corporate / format words that Turkish stores append to (or drop from) a
+# publisher's name inconsistently: "Gerekli Şeyler" vs "Gerekli Şeyler
+# Yayıncılık", "Kurukafa" vs "Kurukafa Yayınevi", "Presstij" vs "Presstij
+# Kitap". Only TRAILING occurrences are removed, so distinctive words such
+# as "Çocuk" or "Genç" ("Timaş Çocuk" vs "Timaş Yayınları") stay.
+_PUBLISHER_SUFFIX_WORDS = frozenset(
+    {
+        "yayincilik", "yayinciligi", "yayinlari", "yayinlar", "yayinevi",
+        "yayin", "yay", "yayimcilik", "yayinevleri",
+        "kitaplari", "kitapligi", "kitaplik", "kitap", "kitaplar", "kitabevi",
+        "basim", "dagitim", "grubu", "grup", "ve", "tic", "san", "ltd", "sti",
+        "as", "a", "s", "publishing", "publications", "press", "books",
+    }
+)
+
+
+def publisher_family_key(value: str | None) -> str:
+    """Looser publisher key used ONLY as a secondary check.
+
+    ``normalize_publisher`` minus trailing corporate/format words, with the
+    remaining words joined without spaces ("Komik Şeyler" == "Komikşeyler",
+    "Kara Karga" == "Karakarga"). Returns "" when nothing distinctive is
+    left. Callers must still require an exact series-title match and an
+    unambiguous candidate; this key alone never proves edition identity.
+
+    >>> publisher_family_key("Gerekli Şeyler Yayıncılık")
+    'gerekliseyler'
+    >>> publisher_family_key("Timaş Çocuk") != publisher_family_key("Timaş Yayınları")
+    True
+    """
+    words = normalize_publisher(value).split()
+    while words and words[-1] in _PUBLISHER_SUFFIX_WORDS:
+        words.pop()
+    return "".join(words)
+
+
 def slugify(value: str | None) -> str:
     """Build a URL-friendly slug from a (already or not) normalized title."""
     key = normalize_text(value)

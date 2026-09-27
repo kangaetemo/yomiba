@@ -197,7 +197,7 @@ def test_real_startup_migrates_only_temporary_database(monkeypatch, tmp_path):
             with engine.connect() as connection:
                 assert connection.exec_driver_sql("PRAGMA journal_mode").scalar() == "wal"
                 assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
-                assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0005_user_accounts"
+                assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0006_publisher_alias_by_name"
     finally:
         engine.dispose()
 
@@ -234,7 +234,7 @@ def test_startup_rejects_engine_config_mismatch(monkeypatch, engine):
 def _tiny_yomiba_db(path):
     with sqlite3.connect(path) as connection:
         connection.execute("CREATE TABLE alembic_version(version_num TEXT)")
-        connection.execute("INSERT INTO alembic_version VALUES ('0005_user_accounts')")
+        connection.execute("INSERT INTO alembic_version VALUES ('0006_publisher_alias_by_name')")
         connection.execute("CREATE TABLE series(id INTEGER PRIMARY KEY, title TEXT)")
         connection.execute("INSERT INTO series VALUES (1, 'Example')")
         connection.execute("CREATE TABLE catalog_series(series_id INTEGER)")

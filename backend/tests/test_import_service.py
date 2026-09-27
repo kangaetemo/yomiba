@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
@@ -512,18 +514,37 @@ def test_bilingual_bridge_never_merges_different_series(import_service, db_sessi
     assert db_session.scalar(select(func.count()).select_from(Volume)) == 3
 
 
-def test_bilingual_ambiguous_skips_bridge(import_service, db_session):
-    """Two catalog editions sharing the same original+local pair: the
-    bridge must refuse (never guess); catalog-only, the product is skipped."""
+@pytest.mark.parametrize("publisher", [None, "Bilinmeyen Yayınevi"])
+def test_bilingual_ambiguous_skips_bridge(import_service, db_session, publisher):
+    """Two catalog editions sharing the same original+local pair and no
+    publisher evidence that separates them: the bridge must refuse (never
+    guess); catalog-only, the product is skipped."""
     _catalog_series(db_session, "Tek Yumruk", "one punch man", "Akılçelen Kitaplar")
+    _catalog_series(db_session, "Tek Yumruk", "one punch man", "Diğer Yayınevi")
+    actions = do_import(
+        import_service,
+        db_session,
+        make_result("bkm", "One Punch Man 3 - Tek Yumruk", "100", publisher=publisher),
+    )
+    assert actions == [ImportAction.SKIPPED]
+    # only the two seeded catalog series — nothing created
+    assert db_session.scalar(select(func.count()).select_from(Series)) == 2
+
+
+def test_bilingual_two_editions_publisher_family_picks_one(import_service, db_session):
+    """Same two editions, but the store names the publisher without its
+    suffix ("Akılçelen" for "Akılçelen Kitaplar"): that identifies exactly
+    one edition, so this is not a guess."""
+    akil = _catalog_series(db_session, "Tek Yumruk", "one punch man", "Akılçelen Kitaplar")
     _catalog_series(db_session, "Tek Yumruk", "one punch man", "Diğer Yayınevi")
     actions = do_import(
         import_service,
         db_session,
         make_result("bkm", "One Punch Man 3 - Tek Yumruk", "100", publisher="Akılçelen"),
     )
-    assert actions == [ImportAction.SKIPPED]
-    # only the two seeded catalog series — nothing created
+    assert actions == [ImportAction.CREATED]
+    listing = db_session.scalar(select(StoreListing))
+    assert listing.volume.series_id == akil.id
     assert db_session.scalar(select(func.count()).select_from(Series)) == 2
 
 

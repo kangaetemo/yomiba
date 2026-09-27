@@ -54,6 +54,7 @@ from ..normalization import (
     normalize_publisher,
     normalize_text,
     parse_volume_title,
+    publisher_family_key,
 )
 from ..scrapers import SearchResult
 from ..scrapers.registry import get_scrapers
@@ -137,6 +138,8 @@ class ImportService:
         #: scrapers are instantiated from the registry per import run.
         self.scrapers = scrapers
         self.last_reason: str | None = None
+        #: Lazily built {publisher_family_key: {publisher ids}} (read-only).
+        self._family_index: dict[str, set[int]] | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -186,6 +189,7 @@ class ImportService:
 
             # Phase 1: resolve every result to its (volume, store) target.
             groups: dict[tuple[int, int], list[tuple[int | None, SearchResult]]] = {}
+            conflict_publishers: dict[str, int] = {}
             for result in results:
                 try:
                     target = self._resolve_target(result)
@@ -207,6 +211,9 @@ class ImportService:
                     store_report.skipped += 1
                     reason = self.last_reason or "no_series_match"
                     store_report.reasons[reason] = store_report.reasons.get(reason, 0) + 1
+                    if reason == "publisher_conflict":
+                        name = (result.publisher or "").strip()
+                        conflict_publishers[name] = conflict_publishers.get(name, 0) + 1
                     continue
                 volume, store = target
                 groups.setdefault((volume.id, store.id), []).append(
@@ -256,6 +263,10 @@ class ImportService:
             logger.info("import matching summary: store=%s results=%d matched=%d rejected=%s errors=%d",
                         store_report.store_code, store_report.results_found,
                         store_report.created + store_report.updated, store_report.reasons, store_report.errors)
+            if conflict_publishers:
+                top = sorted(conflict_publishers.items(), key=lambda kv: -kv[1])[:5]
+                logger.info("import publisher conflicts: store=%s query=%r publishers=%s",
+                            store_report.store_code, query, top)
         report.finished_at = utcnow()
         return report
 
@@ -367,8 +378,11 @@ class ImportService:
             if publisher is not None:
                 series = self._resolve_series_for_publisher(publisher, series_key)
             else:
-                # An unrecognized publisher cannot prove edition identity.
                 series = None
+            if series is None:
+                # Same publisher spelled with/without a corporate suffix
+                # ("Gerekli Şeyler" vs "Gerekli Şeyler Yayıncılık").
+                series = self._resolve_series_by_publisher_family(publisher_name, series_key)
         else:
             series = self._resolve_series_no_publisher(series_key)
 
@@ -378,6 +392,8 @@ class ImportService:
             shorter = series_key.removesuffix(" manga")
             if publisher_name:
                 series = self._resolve_series_for_publisher(publisher, shorter) if publisher else None
+                if series is None:
+                    series = self._resolve_series_by_publisher_family(publisher_name, shorter)
             else:
                 series = self._resolve_series_no_publisher(shorter)
         if series is None:
@@ -448,18 +464,20 @@ class ImportService:
         boundary; returns ``(series, remainder)`` or None."""
         if not title_key:
             return None
-        publisher_id = None
+        publisher_ids: set[int] | None = None
         if publisher_name:
             publisher = self._find_publisher(publisher_name)
-            if publisher is None:
+            publisher_ids = set(self._publisher_family_ids(publisher_name))
+            if publisher is not None:
+                publisher_ids.add(publisher.id)
+            if not publisher_ids:
                 return None
-            publisher_id = publisher.id
         query = select(Series).where(
             Series.id.in_(select(CatalogSeries.series_id).distinct()),
             Series.normalized_title.isnot(None),
         )
-        if publisher_id is not None:
-            query = query.where(Series.publisher_id == publisher_id)
+        if publisher_ids is not None:
+            query = query.where(Series.publisher_id.in_(publisher_ids))
         best: list[Series] = []
         best_len = 0
         for series in self.session.scalars(query):
@@ -574,6 +592,59 @@ class ImportService:
         # Bilingual bridge: "One Punch Man 3 - Tek Yumruk" carries both
         # titles of an existing (catalog) series.
         return self._find_series_by_bilingual_key(series_key, publisher_id=publisher.id)
+
+    def _publisher_family_ids(self, raw_name: str | None) -> set[int]:
+        """Ids of existing publishers in the same family as ``raw_name``
+        (see ``publisher_family_key``). Read-only; empty when unknown."""
+        key = publisher_family_key(raw_name)
+        if not key:
+            return set()
+        if self._family_index is None:
+            index: dict[str, set[int]] = {}
+            for pid, name in self.session.execute(select(Publisher.id, Publisher.name)):
+                fkey = publisher_family_key(name)
+                if fkey:
+                    index.setdefault(fkey, set()).add(pid)
+            self._family_index = index
+        return set(self._family_index.get(key, ()))
+
+    def _resolve_series_by_publisher_family(
+        self, publisher_name: str, series_key: str
+    ) -> Series | None:
+        """Secondary edition check for publisher spelling variants.
+
+        The store's publisher did not resolve (or resolved to a publisher
+        without this title). Accept a catalog series only when its normalized
+        title equals ``series_key`` exactly (or via the strict bilingual
+        bridge) AND its publisher is in the same family as the store's
+        publisher, AND exactly one such series exists. Never guesses
+        between editions and never creates rows.
+        """
+        ids = self._publisher_family_ids(publisher_name)
+        if not ids or not series_key:
+            return None
+        candidates = self.session.scalars(
+            select(Series).where(
+                Series.publisher_id.in_(ids),
+                Series.normalized_title == series_key,
+                Series.id.in_(select(CatalogSeries.series_id).distinct()),
+            )
+        ).all()
+        if not candidates:
+            bridged = {
+                s.id: s
+                for pid in ids
+                if (s := self._find_series_by_bilingual_key(series_key, publisher_id=pid)) is not None
+            }
+            candidates = list(bridged.values())
+        if len(candidates) != 1:
+            return None
+        series = candidates[0]
+        logger.debug(
+            "import: publisher %r matched catalog publisher of %r by family key",
+            publisher_name, series.title,
+        )
+        return series
 
     def _resolve_series_no_publisher(self, series_key: str) -> Series | None:
         """No publisher information: use the single unambiguous catalog

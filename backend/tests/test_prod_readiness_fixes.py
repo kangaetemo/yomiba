@@ -322,7 +322,7 @@ def test_m7_backup_written_only_when_schema_is_behind(tmp_path):
         c.execute("CREATE TABLE series(id INTEGER PRIMARY KEY, title TEXT)")
         c.execute("INSERT INTO series VALUES (1, 'Kept')")
     before = db.read_bytes()
-    backup = backup_before_migration(f"sqlite:///{db}", "0005_user_accounts")
+    backup = backup_before_migration(f"sqlite:///{db}", "0006_publisher_alias_by_name")
     assert backup is not None and backup.name.startswith("old.db.pre-migration-0004_catalog_exclusion-")
     with sqlite3.connect(backup) as c:
         assert c.execute("SELECT title FROM series").fetchone() == ("Kept",)
@@ -330,8 +330,8 @@ def test_m7_backup_written_only_when_schema_is_behind(tmp_path):
     # at head / empty file / missing file -> nothing to do
     assert backup_before_migration(f"sqlite:///{db}", "0004_catalog_exclusion") is None
     empty = tmp_path / "empty.db"; empty.touch()
-    assert backup_before_migration(f"sqlite:///{empty}", "0005_user_accounts") is None
-    assert backup_before_migration(f"sqlite:///{tmp_path / 'missing.db'}", "0005_user_accounts") is None
+    assert backup_before_migration(f"sqlite:///{empty}", "0006_publisher_alias_by_name") is None
+    assert backup_before_migration(f"sqlite:///{tmp_path / 'missing.db'}", "0006_publisher_alias_by_name") is None
 
 
 def test_m7_real_startup_backs_up_before_migrating(monkeypatch, tmp_path):

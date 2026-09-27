@@ -61,7 +61,7 @@ def test_init_db_creates_alias_table_on_fresh_database(alembic_url):
         assert "publisher_aliases" in tables
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0005_user_accounts"
+        ).fetchone()[0] == "0006_publisher_alias_by_name"
         # No publisher rows on a fresh database -> no seeds.
         assert conn.execute(
             "SELECT COUNT(*) FROM publisher_aliases").fetchone()[0] == 0
@@ -106,10 +106,52 @@ def test_migration_seeds_aliases_when_publishers_present(alembic_url):
         assert (rows[0]) == ("gerekli seyler", 2)
         assert ("komik seyler", 204) in rows
         assert ("kara karga yayinlari", 713) in rows
-        # Idempotent: running the migration again must not duplicate.
+        # These publisher rows only share the ids of the original database
+        # ("Yayin-2" is not "Gerekli Şeyler Yayıncılık"): 0006 removes the
+        # id-based seeds that point at the wrong publisher, never duplicates.
         command.upgrade(config, "head")
         assert conn.execute(
-            "SELECT COUNT(*) FROM publisher_aliases").fetchone()[0] == SEED_COUNT
+            "SELECT COUNT(*) FROM publisher_aliases").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_0006_repoints_aliases_by_publisher_name(alembic_url):
+    """A database whose publisher ids differ from the original one (e.g.
+    rebuilt from the catalog): 0003's id seeds are wrong or missing; 0006
+    maps each alias to the publisher with the intended NAME."""
+    from alembic import command
+    from alembic.config import Config
+
+    backend_dir = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_dir / "alembic"))
+    command.upgrade(config, "0002_original_title")
+    engine = create_engine(f"sqlite:///{alembic_url}",
+                           connect_args={"check_same_thread": False})
+    with engine.begin() as conn:
+        # id 2 is an unrelated publisher here; the real targets live elsewhere.
+        for pid, name in [(2, "Başka Yayınevi"), (50, "Gerekli Şeyler Yayıncılık"),
+                          (51, "Karakarga")]:
+            conn.execute(
+                text("INSERT INTO publishers (id, name, normalized_name) VALUES (:pid, :name, :norm)"),
+                {"pid": pid, "name": name, "norm": normalize_publisher(name)},
+            )
+    engine.dispose()
+    command.upgrade(config, "0003_publisher_alias")
+
+    import sqlite3
+
+    conn = sqlite3.connect(alembic_url)
+    try:
+        assert conn.execute("SELECT publisher_id FROM publisher_aliases "
+                            "WHERE normalized_alias = 'gerekli seyler'").fetchone() == (2,)
+        command.upgrade(config, "head")
+        rows = dict(conn.execute("SELECT normalized_alias, publisher_id FROM publisher_aliases"))
+        assert rows == {"gerekli seyler": 50, "kara karga yayinlari": 51}
+        command.upgrade(config, "head")  # idempotent
+        assert dict(conn.execute(
+            "SELECT normalized_alias, publisher_id FROM publisher_aliases")) == rows
     finally:
         conn.close()
 
