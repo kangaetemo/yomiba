@@ -10,6 +10,7 @@
 import Link from "next/link";
 import type { CollectionStatus, SeriesVolume } from "@/types";
 import { PriceBadge } from "@/components/PriceBadge";
+import { volumeLabel } from "@/lib/volumeLabel";
 
 const STATUS_CHIP: Record<CollectionStatus, string> = {
   owned: "bg-emerald-500/10 text-emerald-400",
@@ -24,7 +25,7 @@ const STATUS_LABEL: Record<CollectionStatus, string> = {
 };
 
 export function VolumeCard({ volume }: { volume: SeriesVolume }) {
-  const label = volume.number === null ? "Kutu Seti" : `Cilt ${volume.number}`;
+  const label = volumeLabel(volume.number);
   const storeLabel =
     volume.store_count === 0
       ? "Henüz mağaza yok"

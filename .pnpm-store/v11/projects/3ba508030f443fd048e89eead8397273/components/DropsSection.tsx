@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getJson } from "@/lib/api";
+import { volumeLabel } from "@/lib/volumeLabel";
 
 /**
  * DropsSection (server component): "Son indirimler" strip on the home page.
@@ -14,7 +15,7 @@ interface Drop {
   volume_id: number;
   series_id: number;
   series_title: string;
-  volume_number: number | null; // -1 = Kutu (no volume number)
+  volume_number: number | null; // 0 is a real volume; negative = unresolved.
   store_name: string;
   old_price: number | null;
   new_price: number | null;
@@ -39,11 +40,6 @@ function timeAgo(iso: string): string {
   return `${Math.round(h / 24)} gün önce`;
 }
 
-function volumeLabel(n: number | null): string {
-  if (n === null || n < 0) return "Kutu";
-  return `Cilt ${n}`;
-}
-
 export async function DropsSection() {
   let drops: Drop[] = [];
   try {
@@ -60,8 +56,9 @@ export async function DropsSection() {
           🔥 Son indirimler
         </h2>
         <p className="mt-1.5 text-sm text-neutral-500">
-          Son 24 saatte gözlenen fiyat düşüşü yok. Fiyatlar her aramanda ve
-          24 saatte bir otomatik kontrol edilir; düşüş olursa burada görünecek.
+          Son 24 saatte gözlenen fiyat düşüşü yok. Fiyatlar düzenli olarak
+          (varsayılan 12 saatte bir) otomatik kontrol edilir; düşüş olursa
+          burada görünecek.
         </p>
       </section>
     );

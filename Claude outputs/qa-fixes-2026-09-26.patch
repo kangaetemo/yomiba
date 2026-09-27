@@ -1,0 +1,2324 @@
+diff --git a/backend/.env.example b/backend/.env.example
+index add2e9f..ddb1da3 100644
+--- a/backend/.env.example
++++ b/backend/.env.example
+@@ -17,6 +17,14 @@ CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+ # Local HTTP only. Leave AUTH_COOKIE_SECURE=1 in HTTPS environments.
+ AUTH_COOKIE_SECURE=0
+ AUTH_SESSION_DAYS=30
++# HMAC secret for the "trusted device" cookie that lets an account owner log
++# in while a third party has rate-limited their email. Use a long random
++# value in staging/production; if unset, a per-process random secret is used
++# (device cookies then expire on every restart).
++AUTH_DEVICE_SECRET=
++# Startup takes an online SQLite backup before any pending Alembic migration
++# (next to the DB file, *.pre-migration-*.bak). Disable only deliberately.
++AUTO_MIGRATION_BACKUP=1
+ 
+ # Scraper behaviour
+ SCRAPER_TIMEOUT=20
+@@ -39,6 +47,12 @@ IMPORT_QUEUE_CAPACITY=16
+ # Full CatalogSeries price refresh cycle; catalog sync has its own scheduler.
+ PRICE_REFRESH_ENABLED=1
+ PRICE_REFRESH_INTERVAL_HOURS=12
++# After a restart the first refresh follows persisted freshness (catch-up
++# when stale) but waits at least this settle delay.
++PRICE_REFRESH_STARTUP_DELAY_MINUTES=10
++# A store listing keeps its product unless another product is cheaper, the
++# current one is out of stock, or unseen for this many hours.
++LISTING_PRODUCT_SWITCH_HOURS=48
+ # How long a background import waits for its query's lock when a manual
+ # /import holds it (shared per-query import lock).
+ IMPORT_LOCK_TIMEOUT_SECONDS=120
+diff --git a/backend/PRODUCTION.md b/backend/PRODUCTION.md
+index fa7b24a..36b7654 100644
+--- a/backend/PRODUCTION.md
++++ b/backend/PRODUCTION.md
+@@ -36,6 +36,11 @@ starting the new backend against the real database.
+   The browser uses the frontend's same-origin `/api` rewrite. Verify that the
+   proxy forwards `Origin` and `Set-Cookie`; do not trust arbitrary
+   `X-Forwarded-For` values for authentication or rate limiting.
++- `AUTH_DEVICE_SECRET` (long random value, set in the host's secret store)
++  keeps trusted-device cookies valid across restarts.
++- Startup writes an online backup (`<db>.pre-migration-<rev>-<UTC>.bak`,
++  next to the DB) before applying a pending Alembic migration
++  (`AUTO_MIGRATION_BACKUP=1`, default). Keep volume headroom for one DB copy.
+ - `PRICE_REFRESH_ENABLED=1`, `PRICE_REFRESH_INTERVAL_HOURS=12`,
+   `CATALOG_SYNC_ENABLED=1`, `CATALOG_SYNC_INTERVAL_HOURS=24`,
+   `IMPORT_MAX_CONCURRENT_JOBS=2`, and `IMPORT_QUEUE_CAPACITY=16` are the
+diff --git a/backend/RAILWAY_STAGING.md b/backend/RAILWAY_STAGING.md
+index 914561c..c7a7853 100644
+--- a/backend/RAILWAY_STAGING.md
++++ b/backend/RAILWAY_STAGING.md
+@@ -40,10 +40,14 @@ Production's pre-existing-file rule remains unchanged.
+ | `CORS_ORIGINS` | Trusted browser frontend origins | Yes before browser use | Actual trusted HTTPS origin; API-only smoke can use the Railway URL |
+ | `AUTH_COOKIE_SECURE` | HTTPS-only session cookie | Yes | `1` |
+ | `AUTH_SESSION_DAYS` | Server session and cookie lifetime | No | `30` (default) |
++| `AUTH_DEVICE_SECRET` | HMAC secret for trusted-device cookies (owner can log in while a third party rate-limits the email) | Recommended | Long random value; set in Railway, never commit |
++| `AUTO_MIGRATION_BACKUP` | Online backup before a pending migration (`*.pre-migration-*.bak` next to the DB) | No | `1` (default) |
+ | `CATALOG_SYNC_ENABLED` | Catalog scheduler | Yes for first smoke | `0`, later deliberate `1` |
+ | `CATALOG_SYNC_INTERVAL_HOURS` | Catalog cycle interval | No | `24` (default) |
+ | `PRICE_REFRESH_ENABLED` | Price scheduler | Yes for first smoke | `0`, later deliberate `1` |
+ | `PRICE_REFRESH_INTERVAL_HOURS` | Price cycle interval | No | `12` (default) |
++| `PRICE_REFRESH_STARTUP_DELAY_MINUTES` | Settle delay before a catch-up cycle after restart | No | `10` (default) |
++| `LISTING_PRODUCT_SWITCH_HOURS` | Hours before a listing may switch to another product of the same store | No | `48` (default) |
+ | `IMPORT_MAX_CONCURRENT_JOBS` | Import worker count | No | `2` (default) |
+ | `IMPORT_QUEUE_CAPACITY` | Pending import limit | No | `16` (default) |
+ | `IMPORT_LOCK_TIMEOUT_SECONDS` | Query lock wait | No | `120` (default) |
+@@ -72,7 +76,7 @@ Do not supply credentials in documentation or commit them to the repository.
+ ## First deployment smoke procedure
+ 
+ 1. Create an isolated Railway **staging** service from a reviewed source
+-   artifact. This workspace has no `.git` directory. Do not upload the local
++   artifact. Deploy from a reviewed Git commit rather than a folder upload. Do not upload the local
+    `backend/yomiba.db`, backup files, or kit ZIPs; `.gitignore` alone does not
+    protect a direct folder upload. Set Root Directory `/backend`.
+ 2. Configure the start command above, one replica, `/data` volume, `/ready`
+diff --git a/backend/app/config.py b/backend/app/config.py
+index 14a2264..c876549 100644
+--- a/backend/app/config.py
++++ b/backend/app/config.py
+@@ -124,6 +124,15 @@ class Settings:
+         os.getenv("CATALOG_GATE_TIMEOUT_SECONDS", "900")
+     )
+ 
++    # A (volume, store) listing keeps its product: another product of the
++    # same store resolving to the same volume (a different printing or
++    # edition) only replaces it when cheaper, when the current product is
++    # out of stock, or when the current product has not been seen for this
++    # many hours. Prevents A/B price flips between import runs.
++    listing_product_switch_hours: float = float(
++        os.getenv("LISTING_PRODUCT_SWITCH_HOURS", "48")
++    )
++
+     # Periodic catalog sync (scheduler). Only active when the app runs with
+     # auto_init (production shape — tests run auto_init=False and never
+     # start it). The first run happens one full interval AFTER process
+@@ -144,6 +153,11 @@ class Settings:
+     price_refresh_interval_hours: float = float(
+         os.getenv("PRICE_REFRESH_INTERVAL_HOURS", "12")
+     )
++    # After a (re)start the first cycle is derived from persisted freshness
++    # (catch-up when stale) but never sooner than this settle delay.
++    price_refresh_startup_delay_minutes: float = float(
++        os.getenv("PRICE_REFRESH_STARTUP_DELAY_MINUTES", "10")
++    )
+ 
+     # Scraper reliability: retries, backoff and politeness.
+     # Transient failures (network errors, 429/5xx) are retried with
+diff --git a/backend/app/database.py b/backend/app/database.py
+index 08569ae..29be065 100644
+--- a/backend/app/database.py
++++ b/backend/app/database.py
+@@ -91,14 +91,65 @@ SessionLocal: sessionmaker[Session] = sessionmaker(
+ )
+ 
+ 
++def backup_before_migration(url: str, head: str) -> Path | None:
++    """Online-backup a file SQLite DB before Alembic changes its schema.
++
++    Migrations are forward-only (0005 refuses to downgrade), so starting the
++    app against an older database — e.g. a developer running uvicorn next to
++    the real ``backend/yomiba.db`` — must never be the only copy. Returns the
++    backup path, or None when nothing needs migrating (already at head, new
++    or empty file, non-SQLite). Raises if the backup cannot be verified, so
++    the migration does not run unprotected.
++    """
++    import sqlite3
++    from datetime import datetime, timezone
++
++    from sqlalchemy.engine import make_url
++
++    parsed = make_url(url)
++    if parsed.get_backend_name() != "sqlite" or not parsed.database or parsed.database == ":memory:":
++        return None
++    source = Path(parsed.database).resolve()
++    if not source.is_file() or source.stat().st_size == 0:
++        return None
++    with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as connection:
++        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
++        if not tables:
++            return None
++        current = None
++        if "alembic_version" in tables:
++            row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
++            current = row[0] if row else None
++    if current == head:
++        return None
++    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
++    target = source.with_name(f"{source.name}.pre-migration-{current or 'unversioned'}-{stamp}.bak")
++    with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as src, sqlite3.connect(target) as dst:
++        src.backup(dst)
++    with sqlite3.connect(target.as_uri() + "?mode=ro", uri=True) as check:
++        if check.execute("PRAGMA quick_check").fetchone() != ("ok",):
++            raise RuntimeError(f"pre-migration backup failed quick_check: {target}")
++    logger.warning("pre-migration backup written: %s (from revision %s to %s)", target, current, head)
++    return target
++
++
+ def init_db() -> None:
+     """Apply all pending schema migrations (Alembic) to head.
+ 
+     The baseline migration is idempotent (``CREATE TABLE IF NOT EXISTS``),
+     so an un-stamped legacy database created by an older ``create_all``-based
+     release migrates cleanly on its first startup instead of crashing.
++    A file SQLite database that is not yet at head is first copied with the
++    online backup API (disable only deliberately via
++    ``AUTO_MIGRATION_BACKUP=0``).
+     """
++    import os
++
+     from . import models  # noqa: F401  (ensure models are registered)
++    from .readiness import expected_revision
++
++    if os.getenv("AUTO_MIGRATION_BACKUP", "1").strip().lower() not in {"0", "false", "no", "off"}:
++        backup_before_migration(get_settings().database_url, expected_revision())
+ 
+     from alembic import command
+     from alembic.config import Config
+diff --git a/backend/app/login_rate_limit.py b/backend/app/login_rate_limit.py
+index 2b1c032..10a539b 100644
+--- a/backend/app/login_rate_limit.py
++++ b/backend/app/login_rate_limit.py
+@@ -1,14 +1,35 @@
+ """Small process-local login attempt limiter keyed by normalized email.
+ 
+-The direct peer IP may be the Next.js proxy, so X-Forwarded-For is ignored.
+-This protects one account from repeated guessing without treating every
+-proxied user as the same client. Exactly one backend process is required.
++The direct peer IP may be the Next.js proxy, so X-Forwarded-For is ignored
++(it is spoofable and must not decide authentication). This protects one
++account from repeated guessing without treating every proxied user as the
++same client. Exactly one backend process is required.
++
++Targeted lockout (M6): anyone can lock an account by failing its login.
++A browser that has logged in to that account before carries a signed
++"trusted device" cookie; while the account is locked, such a browser is
++limited per device instead of per account, so the real owner can still log
++in. An attacker cannot forge the cookie (HMAC with a server secret) and gets
++no bypass. Only FAILED attempts are counted.
+ """
+ 
++from __future__ import annotations
++
++import hashlib
++import hmac
++import logging
++import os
++import secrets
++import time
+ from collections import deque
+ from threading import Lock
+ from time import monotonic
+ 
++logger = logging.getLogger("yomiba.auth")
++
++DEVICE_COOKIE_NAME = "yomiba_device"
++DEVICE_COOKIE_DAYS = 180
++
+ 
+ class LoginRateLimiter:
+     def __init__(self, limit: int = 10, window_seconds: int = 300) -> None:
+@@ -17,20 +38,79 @@ class LoginRateLimiter:
+         self._attempts: dict[str, deque[float]] = {}
+         self._lock = Lock()
+ 
+-    def check(self, key: str) -> int:
+-        """Count an attempt; return Retry-After seconds, or zero if allowed."""
++    def _prune(self, key: str, now: float) -> deque[float]:
++        if key not in self._attempts and len(self._attempts) >= 5000:
++            self._attempts.pop(next(iter(self._attempts)))
++        attempts = self._attempts.setdefault(key, deque())
++        while attempts and attempts[0] <= now - self.window_seconds:
++            attempts.popleft()
++        return attempts
++
++    def retry_after(self, key: str) -> int:
++        """Seconds until ``key`` may try again; zero when allowed. Does not
++        count an attempt."""
+         now = monotonic()
+         with self._lock:
+-            if key not in self._attempts and len(self._attempts) >= 5000:
+-                self._attempts.pop(next(iter(self._attempts)))
+-            attempts = self._attempts.setdefault(key, deque())
+-            while attempts and attempts[0] <= now - self.window_seconds:
+-                attempts.popleft()
++            attempts = self._prune(key, now)
+             if len(attempts) >= self.limit:
+                 return max(1, int(attempts[0] + self.window_seconds - now) + 1)
+-            attempts.append(now)
+             return 0
+ 
++    def record_failure(self, key: str) -> None:
++        with self._lock:
++            self._prune(key, monotonic()).append(monotonic())
++
++    def check(self, key: str) -> int:
++        """Backward-compatible: count an attempt; return Retry-After seconds,
++        or zero if allowed."""
++        retry = self.retry_after(key)
++        if not retry:
++            self.record_failure(key)
++        return retry
++
+     def clear(self, key: str) -> None:
+         with self._lock:
+             self._attempts.pop(key, None)
++
++
++def _device_secret() -> bytes:
++    configured = os.getenv("AUTH_DEVICE_SECRET", "").strip()
++    if configured:
++        return configured.encode("utf-8")
++    logger.warning(
++        "AUTH_DEVICE_SECRET is not set; trusted-device cookies are only valid "
++        "until the backend process restarts"
++    )
++    return secrets.token_bytes(32)
++
++
++_SECRET = _device_secret()
++
++
++def _sign(payload: str) -> str:
++    return hmac.new(_SECRET, payload.encode("utf-8"), hashlib.sha256).hexdigest()
++
++
++def issue_device_token(user_id: int) -> str:
++    expires = int(time.time()) + DEVICE_COOKIE_DAYS * 86400
++    payload = f"{user_id}.{expires}"
++    return f"{payload}.{_sign(payload)}"
++
++
++def device_user_id(token: str | None) -> int | None:
++    """User id of a valid, unexpired trusted-device token, else None."""
++    if not token:
++        return None
++    parts = token.split(".")
++    if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit():
++        return None
++    payload = f"{parts[0]}.{parts[1]}"
++    if not hmac.compare_digest(_sign(payload), parts[2]):
++        return None
++    if int(parts[1]) < time.time():
++        return None
++    return int(parts[0])
++
++
++def device_key(token: str) -> str:
++    return "device:" + hashlib.sha256(token.encode("utf-8")).hexdigest()
+diff --git a/backend/app/main.py b/backend/app/main.py
+index d2d07f6..0f2190a 100644
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -91,10 +91,14 @@ def create_app(auto_init: bool = True) -> FastAPI:
+                 logger.info("startup: price scheduler started")
+             app.state.price_refresh_scheduler = price_refresh
+             if auto_init and settings.catalog_sync_enabled:
++                from .services.background_import import SYNC_GATE_KEY
++
+                 scheduler = CatalogSyncScheduler(
+                     lambda: try_start_sync(runner),
+                     settings.catalog_sync_interval_hours * 3600.0,
+                     gate_wait_seconds=settings.catalog_gate_timeout_seconds,
++                    poll_seconds=min(60.0, max(1.0, settings.catalog_gate_timeout_seconds / 10)),
++                    announce_intent=lambda active: runner.lock.set_exclusive_intent(SYNC_GATE_KEY, active),
+                 )
+                 scheduler.start()
+                 logger.info("startup: catalog scheduler started")
+@@ -141,7 +145,7 @@ def create_app(auto_init: bool = True) -> FastAPI:
+         # Public search/prices can use ordinary cache policy. Any response
+         # tied to a session, and all auth/personal endpoints, must not be
+         # stored by a shared intermediary.
+-        personal_path = request.url.path.startswith("/auth/") or any(
++        personal_path = request.url.path.startswith(("/auth/", "/me/")) or any(
+             marker in request.url.path for marker in ("/wishlist", "/price-alert", "/collection-status")
+         )
+         if personal_path or request.cookies.get("yomiba_session"):
+diff --git a/backend/app/normalization/volume.py b/backend/app/normalization/volume.py
+index 1c120e5..9696334 100644
+--- a/backend/app/normalization/volume.py
++++ b/backend/app/normalization/volume.py
+@@ -28,7 +28,11 @@ _MAX_VOLUME = 300
+ 
+ # Markers that explicitly introduce a volume number.
+ _VOLUME_MARKER_RE = re.compile(
+-    r"(?:(?:cilt|c|vol(?:ume)?|bant|say[ıi]|no|s)\b\.?\s*[:#]?\s*|\(\s*|(?<!\d)[:\-–#]\s*)(\d{1,4})\b",
++    # The marker must be a whole word: without the leading \b the "s" of
++    # "Happiness 8" / "Made in Abyss 11" was read as an "S 8" marker and the
++    # series title lost its last letter ("happines"), so the most common
++    # store format "<Title> <N>" never matched titles ending in s/c/no.
++    r"(?:\b(?:cilt|c|vol(?:ume)?|bant|say[ıi]|no|s)\b\.?\s*[:#]?\s*|\(\s*|(?<!\d)[:\-–#]\s*)(\d{1,4})\b",
+     re.IGNORECASE,
+ )
+ # Number placed before the marker: "2 Cilt", "4. Cilt".
+diff --git a/backend/app/routes/__init__.py b/backend/app/routes/__init__.py
+index c0e2cc5..317318e 100644
+--- a/backend/app/routes/__init__.py
++++ b/backend/app/routes/__init__.py
+@@ -6,6 +6,7 @@ from . import catalog as catalog_routes
+ from . import auth as auth_routes
+ from . import drops as drops_routes
+ from . import import_ as import_routes
++from . import me as me_routes
+ from . import search as search_routes
+ from . import series as series_routes
+ from . import volume as volume_routes
+@@ -17,6 +18,7 @@ api_router.include_router(drops_routes.router)
+ api_router.include_router(series_routes.router)
+ api_router.include_router(volume_routes.router)
+ api_router.include_router(import_routes.router)
++api_router.include_router(me_routes.router)
+ api_router.include_router(catalog_routes.router)
+ 
+ __all__ = ["api_router"]
+diff --git a/backend/app/routes/auth.py b/backend/app/routes/auth.py
+index f665a8c..0ea1a5f 100644
+--- a/backend/app/routes/auth.py
++++ b/backend/app/routes/auth.py
+@@ -4,14 +4,21 @@ from __future__ import annotations
+ 
+ from fastapi import APIRouter, Depends, HTTPException, Request, Response
+ from pydantic import BaseModel, EmailStr, Field
+-from sqlalchemy import select
++from sqlalchemy import delete, select
+ from sqlalchemy.exc import IntegrityError
+ from sqlalchemy.orm import Session
+ 
+ from ..auth import COOKIE_NAME, PASSWORD_HASHER, _lookup_session, new_session, require_user, verify_password
+ from ..config import get_settings
+ from ..database import get_db
+-from ..models import User
++from ..login_rate_limit import (
++    DEVICE_COOKIE_DAYS,
++    DEVICE_COOKIE_NAME,
++    device_key,
++    device_user_id,
++    issue_device_token,
++)
++from ..models import User, UserSession
+ from ..utils import utcnow
+ 
+ router = APIRouter(prefix="/auth", tags=["auth"])
+@@ -47,6 +54,23 @@ def _set_cookie(response: Response, token: str) -> None:
+     )
+ 
+ 
++def _set_device_cookie(response: Response, user: User) -> None:
++    response.set_cookie(
++        DEVICE_COOKIE_NAME, issue_device_token(user.id), httponly=True,
++        secure=get_settings().auth_cookie_secure, samesite="lax", path="/",
++        max_age=DEVICE_COOKIE_DAYS * 86400,
++    )
++
++
++def _purge_expired_sessions(session: Session, user: User) -> None:
++    session.execute(
++        delete(UserSession).where(
++            UserSession.user_id == user.id,
++            (UserSession.expires_at <= utcnow()) | UserSession.revoked_at.isnot(None),
++        )
++    )
++
++
+ @router.post("/register", response_model=UserOut, status_code=201)
+ def register(payload: RegisterIn, response: Response, session: Session = Depends(get_db)) -> UserOut:
+     email = str(payload.email).strip().lower()
+@@ -62,21 +86,37 @@ def register(payload: RegisterIn, response: Response, session: Session = Depends
+         raise HTTPException(status_code=409, detail="Bu e-posta kullanılamıyor.") from exc
+     token = new_session(session, user)
+     _set_cookie(response, token)
++    _set_device_cookie(response, user)
+     return _public(user)
+ 
+ 
+ @router.post("/login", response_model=UserOut)
+ def login(payload: LoginIn, response: Response, request: Request, session: Session = Depends(get_db)) -> UserOut:
+     email = str(payload.email).strip().lower()
+-    retry_after = request.app.state.login_limiter.check(email)
++    limiter = request.app.state.login_limiter
++    user = session.scalar(select(User).where(User.email == email))
++    # Account-wide limit (X-Forwarded-For is never trusted). While the
++    # account is locked, a browser holding a valid trusted-device cookie for
++    # THIS account is limited per device instead, so a third party cannot
++    # lock the real owner out.
++    limit_key = email
++    retry_after = limiter.retry_after(email)
++    device_token = request.cookies.get(DEVICE_COOKIE_NAME)
++    if retry_after and user is not None and device_user_id(device_token) == user.id:
++        limit_key = device_key(device_token)
++        retry_after = limiter.retry_after(limit_key)
+     if retry_after:
+         raise HTTPException(status_code=429, detail="Çok fazla giriş denemesi.", headers={"Retry-After": str(retry_after)})
+-    user = session.scalar(select(User).where(User.email == email))
+     if not verify_password(payload.password, user.password_hash if user and user.is_active else None):
++        limiter.record_failure(limit_key)
+         raise HTTPException(status_code=401, detail="E-posta veya parola hatalı.")
+     assert user is not None
+-    request.app.state.login_limiter.clear(email)
++    limiter.clear(email)
++    if limit_key != email:
++        limiter.clear(limit_key)
++    _purge_expired_sessions(session, user)
+     _set_cookie(response, new_session(session, user))
++    _set_device_cookie(response, user)
+     return _public(user)
+ 
+ 
+@@ -86,7 +126,10 @@ def logout(request: Request, response: Response, session: Session = Depends(get_
+     if login_session is not None:
+         login_session.revoked_at = utcnow()
+         session.commit()
+-    response.delete_cookie(COOKIE_NAME, path="/")
++    response.delete_cookie(
++        COOKIE_NAME, path="/", httponly=True,
++        secure=get_settings().auth_cookie_secure, samesite="lax",
++    )
+ 
+ 
+ @router.get("/me", response_model=UserOut)
+diff --git a/backend/app/routes/drops.py b/backend/app/routes/drops.py
+index c23cd05..a048d3a 100644
+--- a/backend/app/routes/drops.py
++++ b/backend/app/routes/drops.py
+@@ -66,6 +66,7 @@ _DROP_SQL = text(
+     JOIN stores st ON st.id = sl.store_id
+     WHERE d.prev_price IS NOT NULL
+       AND d.price < d.prev_price
++      AND v.volume_number >= 0
+       AND d.checked_at >= :cutoff
+     ORDER BY d.checked_at DESC, d.listing_id DESC
+     """
+diff --git a/backend/app/routes/me.py b/backend/app/routes/me.py
+new file mode 100644
+index 0000000..6551ea2
+--- /dev/null
++++ b/backend/app/routes/me.py
+@@ -0,0 +1,112 @@
++"""GET /me/* — the signed-in user's own collection, wishlist and alerts.
++
++Read-only lists across all volumes (per-volume endpoints stay the write
++path). Every query is filtered by the authenticated user's id; nothing here
++accepts a user id from the request.
++"""
++
++from __future__ import annotations
++
++from datetime import datetime
++
++from fastapi import APIRouter, Depends
++from pydantic import BaseModel
++from sqlalchemy import func, select
++from sqlalchemy.orm import Session
++
++from ..auth import require_user
++from ..database import get_db
++from ..models import PriceAlert, Publisher, Series, StoreListing, User, UserVolumeCollection, Volume, WishlistItem
++from ..normalization.volume import UNNUMBERED_VOLUME
++from ..utils import from_cents
++
++router = APIRouter(prefix="/me", tags=["me"])
++
++
++class MyVolumeOut(BaseModel):
++    volume_id: int
++    volume_number: int | None
++    series_id: int
++    series_title: str
++    publisher: str
++    cover_url: str | None = None
++    best_price: float | None = None
++
++
++class MyCollectionItemOut(MyVolumeOut):
++    status: str
++    updated_at: datetime
++
++
++class MyWishlistItemOut(MyVolumeOut):
++    added_at: datetime
++
++
++class MyPriceAlertOut(MyVolumeOut):
++    threshold_price: int
++    is_active: bool
++    updated_at: datetime
++
++
++def _volume_fields(session: Session, volume_ids: list[int]) -> dict[int, dict]:
++    if not volume_ids:
++        return {}
++    rows = session.execute(
++        select(Volume, Series.title, Publisher.name)
++        .join(Series, Series.id == Volume.series_id)
++        .join(Publisher, Publisher.id == Series.publisher_id)
++        .where(Volume.id.in_(volume_ids))
++    ).all()
++    best = dict(session.execute(
++        select(StoreListing.volume_id, func.min(StoreListing.price))
++        .where(StoreListing.volume_id.in_(volume_ids), StoreListing.in_stock.is_(True),
++               StoreListing.price.isnot(None))
++        .group_by(StoreListing.volume_id)
++    ).all())
++    out = {}
++    for volume, series_title, publisher in rows:
++        phantom = volume.volume_number == UNNUMBERED_VOLUME
++        out[volume.id] = {
++            "volume_id": volume.id,
++            "volume_number": None if phantom else volume.volume_number,
++            "series_id": volume.series_id,
++            "series_title": series_title,
++            "publisher": publisher,
++            "cover_url": volume.cover_url,
++            # Legacy phantom prices are frozen; never present them as current.
++            "best_price": None if phantom else from_cents(best.get(volume.id)),
++        }
++    return out
++
++
++def _sort_key(item: BaseModel):
++    number = item.volume_number if item.volume_number is not None else 10**6
++    return (item.series_title.casefold(), item.series_id, number, item.volume_id)
++
++
++@router.get("/collection", response_model=list[MyCollectionItemOut])
++def my_collection(session: Session = Depends(get_db), user: User = Depends(require_user)):
++    rows = session.scalars(select(UserVolumeCollection).where(UserVolumeCollection.user_id == user.id)).all()
++    fields = _volume_fields(session, [r.volume_id for r in rows])
++    items = [MyCollectionItemOut(**fields[r.volume_id], status=r.status, updated_at=r.updated_at)
++             for r in rows if r.volume_id in fields]
++    return sorted(items, key=_sort_key)
++
++
++@router.get("/wishlist", response_model=list[MyWishlistItemOut])
++def my_wishlist(session: Session = Depends(get_db), user: User = Depends(require_user)):
++    rows = session.scalars(select(WishlistItem).where(WishlistItem.user_id == user.id)).all()
++    fields = _volume_fields(session, [r.volume_id for r in rows])
++    items = [MyWishlistItemOut(**fields[r.volume_id], added_at=r.created_at)
++             for r in rows if r.volume_id in fields]
++    return sorted(items, key=_sort_key)
++
++
++@router.get("/price-alerts", response_model=list[MyPriceAlertOut])
++def my_price_alerts(session: Session = Depends(get_db), user: User = Depends(require_user)):
++    rows = session.scalars(select(PriceAlert).where(PriceAlert.user_id == user.id)).all()
++    fields = _volume_fields(session, [r.volume_id for r in rows])
++    items = [MyPriceAlertOut(**fields[r.volume_id], threshold_price=r.threshold_price,
++                             is_active=r.is_active, updated_at=r.updated_at)
++             for r in rows if r.volume_id in fields]
++    return sorted(items, key=_sort_key)
+diff --git a/backend/app/routes/volume.py b/backend/app/routes/volume.py
+index ed3caa8..d78b65c 100644
+--- a/backend/app/routes/volume.py
++++ b/backend/app/routes/volume.py
+@@ -67,6 +67,7 @@ def _build_volume_out(session: Session, volume_id: int, user_id: int | None = No
+         ),
+         stores=stores,
+         collection_status=collections_service.get_volume_status(session, user_id, volume_id),  # type: ignore[arg-type]
++        unverified=detail.unverified,
+     )
+ 
+ 
+diff --git a/backend/app/schemas/price_alert.py b/backend/app/schemas/price_alert.py
+index cd6c6f7..3091413 100644
+--- a/backend/app/schemas/price_alert.py
++++ b/backend/app/schemas/price_alert.py
+@@ -32,5 +32,7 @@ class PriceAlertIn(BaseModel):
+       without changing the threshold.
+     """
+ 
+-    threshold_price: int | None = Field(default=None, ge=1)
++    #: Upper bound = 10 million TRY; anything larger is a typo and would
++    #: overflow SQLite INTEGER at extreme values (L1).
++    threshold_price: int | None = Field(default=None, ge=1, le=1_000_000_000)
+     is_active: bool | None = None
+diff --git a/backend/app/schemas/volume.py b/backend/app/schemas/volume.py
+index 278d418..02bc932 100644
+--- a/backend/app/schemas/volume.py
++++ b/backend/app/schemas/volume.py
+@@ -37,6 +37,9 @@ class VolumeOut(BaseModel):
+     stores: list[VolumeStoreOut] = []
+     #: Collection status; ``None`` when the volume is not tracked.
+     collection_status: CollectionStatus | None = None
++    #: True for a legacy store-created phantom (unresolved ``-1`` row). Its
++    #: frozen store listings are withheld until an approved cleanup.
++    unverified: bool = False
+ 
+ 
+ class VolumeCollectionStatusIn(BaseModel):
+diff --git a/backend/app/services/background_import.py b/backend/app/services/background_import.py
+index 2a4282c..bff9fc3 100644
+--- a/backend/app/services/background_import.py
++++ b/backend/app/services/background_import.py
+@@ -91,6 +91,11 @@ class ImportLock:
+         self._lock = threading.Lock()
+         self._holders: dict[str, str] = {}
+         self._shared_holders: dict[str, set[str]] = {}
++        #: Announced exclusive intent per key (writer preference): while a
++        #: catalog sync waits for the gate, NEW shared holders must queue
++        #: behind it; otherwise a continuously fed price-refresh queue keeps
++        #: the shared gate held forever and the sync starves.
++        self._exclusive_intent: dict[str, int] = {}
+ 
+     def acquire(
+         self, key: str, holder: str, timeout: float | None = None, *, shared: bool = False
+@@ -105,10 +110,10 @@ class ImportLock:
+             with self._lock:
+                 current = self._holders.get(key)
+                 shared_holders = self._shared_holders.get(key, set())
+-                if shared and current is None:
++                if shared and current is None and not self._exclusive_intent.get(key):
+                     self._shared_holders.setdefault(key, set()).add(holder)
+                     return True
+-                if current is None and not shared_holders:
++                if not shared and current is None and not shared_holders:
+                     self._holders[key] = holder
+                     return True
+                 if not shared and current == holder:  # re-entrancy safety
+@@ -128,6 +133,17 @@ class ImportLock:
+                 if not shared_holders:
+                     del self._shared_holders[key]
+ 
++    def set_exclusive_intent(self, key: str, active: bool) -> None:
++        """Announce (or withdraw) that an exclusive holder is waiting for
++        ``key``. Existing shared holders finish normally; new shared
++        acquisitions wait until the exclusive holder has come and gone."""
++        with self._lock:
++            count = self._exclusive_intent.get(key, 0) + (1 if active else -1)
++            if count > 0:
++                self._exclusive_intent[key] = count
++            else:
++                self._exclusive_intent.pop(key, None)
++
+     def holder(self, key: str) -> str | None:
+         with self._lock:
+             return self._holders.get(key) or next(iter(self._shared_holders.get(key, ())), None)
+diff --git a/backend/app/services/catalog_scheduler.py b/backend/app/services/catalog_scheduler.py
+index 7556ec8..9fa348f 100644
+--- a/backend/app/services/catalog_scheduler.py
++++ b/backend/app/services/catalog_scheduler.py
+@@ -49,6 +49,7 @@ class CatalogSyncScheduler:
+         *,
+         gate_wait_seconds: float = 900.0,
+         poll_seconds: float = 60.0,
++        announce_intent: Callable[[bool], None] | None = None,
+     ) -> None:
+         if interval_seconds <= 0:
+             raise ValueError("interval_seconds must be positive")
+@@ -56,6 +57,10 @@ class CatalogSyncScheduler:
+         self._interval_seconds = interval_seconds
+         self._gate_wait_seconds = gate_wait_seconds
+         self._poll_seconds = poll_seconds
++        #: Called with True while the tick waits for a held catalog gate and
++        #: with False afterwards, so the gate can stop admitting new store
++        #: imports (writer preference) instead of starving the sync.
++        self._announce_intent = announce_intent
+         self._stop_event = threading.Event()
+         self._thread: threading.Thread | None = None
+ 
+@@ -129,18 +134,27 @@ class CatalogSyncScheduler:
+         while waiting.
+         """
+         deadline = time.monotonic() + max(0.0, self._gate_wait_seconds)
+-        while True:
+-            result = self._start_sync()
+-            if result != "gate_held":
+-                return result
+-            if self._stop_event.is_set():
+-                return None
+-            if time.monotonic() >= deadline:
+-                logger.warning(
+-                    "scheduled catalog sync skipped: a store import still "
+-                    "holds the catalog write gate after %.0fs",
+-                    max(0.0, self._gate_wait_seconds),
+-                )
+-                return "gate_held"
+-            if self._stop_event.wait(self._poll_seconds):
+-                return None
++        announced = False
++        try:
++            while True:
++                result = self._start_sync()
++                if result != "gate_held":
++                    return result
++                if self._stop_event.is_set():
++                    return None
++                if time.monotonic() >= deadline:
++                    logger.warning(
++                        "scheduled catalog sync skipped: a store import still "
++                        "holds the catalog write gate after %.0fs",
++                        max(0.0, self._gate_wait_seconds),
++                    )
++                    return "gate_held"
++                if not announced and self._announce_intent is not None:
++                    self._announce_intent(True)
++                    announced = True
++                    logger.info("catalog sync waiting for the gate; new store imports pause")
++                if self._stop_event.wait(self._poll_seconds):
++                    return None
++        finally:
++            if announced:
++                self._announce_intent(False)
+diff --git a/backend/app/services/catalog_service.py b/backend/app/services/catalog_service.py
+index 02a767a..a308888 100644
+--- a/backend/app/services/catalog_service.py
++++ b/backend/app/services/catalog_service.py
+@@ -8,7 +8,7 @@ from __future__ import annotations
+ 
+ from dataclasses import dataclass, field
+ 
+-from sqlalchemy import case, or_, select
++from sqlalchemy import and_, case, exists, not_, or_, select
+ from sqlalchemy.orm import Session
+ 
+ from ..models import CatalogSeries, PriceHistory, Series, StoreListing, Volume
+@@ -16,6 +16,35 @@ from ..normalization import normalize_text
+ from ..normalization.volume import UNNUMBERED_VOLUME
+ 
+ 
++def legacy_phantom_condition():
++    """SQL condition for a legacy store-created phantom volume.
++
++    ``volume_number == -1`` alone is not enough: the Mangakol catalog sync may
++    legitimately register an unnumbered item. Store imports can no longer
++    attach ISBNs or listings to ``-1`` rows, so a ``-1`` row that carries an
++    ISBN or listings is a legacy phantom left over from the old import bug.
++    Such rows stay in the DB (cleanup needs an approved, evidence-based merge)
++    but are not exposed as catalog volumes and their frozen prices are hidden.
++    """
++    return and_(
++        Volume.volume_number == UNNUMBERED_VOLUME,
++        or_(
++            Volume.isbn.isnot(None),
++            exists().where(StoreListing.volume_id == Volume.id),
++        ),
++    )
++
++
++def is_legacy_phantom(session: Session, volume: Volume) -> bool:
++    if volume.volume_number != UNNUMBERED_VOLUME:
++        return False
++    if volume.isbn is not None:
++        return True
++    return session.scalar(
++        select(StoreListing.id).where(StoreListing.volume_id == volume.id).limit(1)
++    ) is not None
++
++
+ def _volume_order():
+     """Order volumes numerically; unnumbered (boxes/sets) go last."""
+     return (
+@@ -50,6 +79,9 @@ class SeriesDetail:
+ class VolumeDetail:
+     volume: Volume
+     listings: list[StoreListing]
++    #: Legacy store phantom: kept reachable (user rows may point at it) but
++    #: its frozen listings are not shown as current prices.
++    unverified: bool = False
+ 
+ 
+ @dataclass
+@@ -100,7 +132,7 @@ def search_series(session: Session, query: str) -> list[SeriesMatch]:
+     series_ids = [s.id for s in series_rows]
+     volumes = session.scalars(
+         select(Volume)
+-        .where(Volume.series_id.in_(series_ids))
++        .where(Volume.series_id.in_(series_ids), not_(legacy_phantom_condition()))
+         .order_by(*_volume_order())
+     ).all()
+ 
+@@ -124,7 +156,9 @@ def get_series(session: Session, series_id: int) -> SeriesDetail | None:
+         return None
+ 
+     volumes = session.scalars(
+-        select(Volume).where(Volume.series_id == series_id).order_by(*_volume_order())
++        select(Volume)
++        .where(Volume.series_id == series_id, not_(legacy_phantom_condition()))
++        .order_by(*_volume_order())
+     ).all()
+ 
+     stats: dict[int, VolumeStats] = {}
+@@ -163,6 +197,8 @@ def get_volume(session: Session, volume_id: int) -> VolumeDetail | None:
+     volume = session.get(Volume, volume_id)
+     if volume is None or not _is_catalog_series(session, volume.series_id):
+         return None
++    if is_legacy_phantom(session, volume):
++        return VolumeDetail(volume=volume, listings=[], unverified=True)
+ 
+     # Cheapest first; listings without a price go last.
+     nulls_last = case((StoreListing.price.is_(None), 1), else_=0)
+@@ -178,6 +214,8 @@ def get_price_history(session: Session, volume_id: int) -> PriceHistoryDetail |
+     volume = session.get(Volume, volume_id)
+     if volume is None or not _is_catalog_series(session, volume.series_id):
+         return None
++    if is_legacy_phantom(session, volume):
++        return PriceHistoryDetail(volume=volume, entries=[])
+ 
+     listings = session.scalars(
+         select(StoreListing).where(StoreListing.volume_id == volume_id)
+diff --git a/backend/app/services/import_service.py b/backend/app/services/import_service.py
+index f26f209..de070e3 100644
+--- a/backend/app/services/import_service.py
++++ b/backend/app/services/import_service.py
+@@ -32,12 +32,13 @@ from __future__ import annotations
+ import logging
+ import re
+ from dataclasses import dataclass, field
+-from datetime import datetime
++from datetime import datetime, timedelta, timezone
+ from enum import Enum
+ 
+ from sqlalchemy import select
+ from sqlalchemy.orm import Session
+ 
++from ..config import get_settings
+ from ..models import (
+     CatalogSeries,
+     PriceHistory,
+@@ -67,6 +68,16 @@ logger = logging.getLogger("yomiba.import")
+ #: isolated from real editions instead of corrupting them.
+ UNKNOWN_PUBLISHER = "Bilinmiyor"
+ 
++#: Separate editions that must never attach to a normal catalog volume.
++_EDITION_CONFLICT_RE = r"\b(?:omnibus|hardcover|collector|special edition|ozel baski)\b"
++#: Remainder (after a catalog title prefix) that is a plain volume token.
++_REMAINDER_VOLUME_RE = re.compile(
++    r"(?:(?:cilt|c|vol|volume|bant|sayi|no)\s*)?0*(\d{1,3})(?:\s*(?:cilt|c))?"
++)
++_REMAINDER_COLLECTION_RE = re.compile(
++    r"\b(?:box|set|seti|kutu|bundle|toplu|koleksiyon|collection|complete|deluxe)\b|\b\d{1,3}\s+\d{1,3}\b"
++)
++
+ 
+ class ImportAction(str, Enum):
+     CREATED = "created"
+@@ -238,6 +249,8 @@ class ImportService:
+                     store_report.updated += 1
+                 else:
+                     store_report.skipped += 1
++                    reason = self.last_reason or "skipped"
++                    store_report.reasons[reason] = store_report.reasons.get(reason, 0) + 1
+ 
+             logger.info("import matching summary: store=%s results=%d matched=%d rejected=%s errors=%d",
+                         store_report.store_code, store_report.results_found,
+@@ -279,10 +292,12 @@ class ImportService:
+             return self._reject("non_book_product")
+ 
+         parsed = parse_volume_title(title)
+-        if parsed.is_collection:
+-            return self._reject("box_set")
+-        if re.search(r"\b(?:omnibus|hardcover|collector|special edition|ozel baski)\b", normalize_text(title)):
++        if re.search(_EDITION_CONFLICT_RE, normalize_text(title)):
+             return self._reject("edition_conflict")
++        if parsed.is_collection:
++            # "Kaiju No: 8 - 8 No'lu Canavar 3" looks like a "8 - 8" range
++            # only because the catalog title itself contains numbers.
++            return self._catalog_title_fallback(result, "box_set")
+ 
+         series_raw = result.series_title or parsed.base_title
+         series_key = normalize_text(series_raw)
+@@ -308,15 +323,28 @@ class ImportService:
+         if isbn:
+             volume = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
+             if volume is not None:
+-                if not self._series_is_catalog(volume.series_id) or volume.volume_number < 0:
++                if not self._series_is_catalog(volume.series_id):
+                     logger.info(
+                         "import: skipping %r — ISBN %s resolves outside the catalog",
+                         title,
+                         isbn,
+                     )
+                     return self._reject("volume_not_found")
+-                self._backfill_cover(volume, result)
+-                return (volume, store)
++                if volume.volume_number < 0:
++                    # Legacy phantom (old import bug) still holds this ISBN.
++                    # It is not a catalog identity: never attach to it, and
++                    # never move/copy the ISBN (unique). Resolve the product
++                    # by title/number like an ISBN-less result instead, so
++                    # the real catalog volume is no longer starved.
++                    logger.info(
++                        "import: ISBN %s is held by legacy phantom volume %s; "
++                        "resolving %r without ISBN",
++                        isbn, volume.id, title,
++                    )
++                    isbn = None
++                else:
++                    self._backfill_cover(volume, result)
++                    return (volume, store)
+ 
+         # Read-only publisher resolution: a store import never creates
+         # Publisher rows (catalog-only).
+@@ -340,7 +368,11 @@ class ImportService:
+             else:
+                 series = self._resolve_series_no_publisher(shorter)
+         if series is None:
+-            return self._reject("publisher_conflict" if publisher_name else "no_series_match")
++            if parsed.evidence in {"numeric_metadata", "ambiguous_numbers"}:
++                reason = "ambiguous_volume"
++            else:
++                reason = "publisher_conflict" if publisher_name else "no_series_match"
++            return self._catalog_title_fallback(result, reason)
+         if result.volume_number is not None and parsed.volume_number is not None and result.volume_number != parsed.volume_number:
+             return self._reject("ambiguous_volume")
+         if parsed.evidence in {"numeric_metadata", "ambiguous_numbers"}:
+@@ -350,6 +382,78 @@ class ImportService:
+             return None
+         return (volume, store)
+ 
++    def _catalog_title_fallback(self, result: SearchResult, reason: str):
++        """Second chance for catalog titles the generic parser misreads.
++
++        The generic parser cannot tell "Mob Psycho 100 Cilt 2", "Dövüş Sınıfı
++        3 Cilt 2", "Disney Manga - 6 Süper Kahraman", "Kaiju No: 8 - 8 No'lu
++        Canavar 3" or "Mavi Kutu 4" (collection word in the title) apart from
++        volume numbers, ranges or box sets. Runs only after the normal path
++        rejected the product. The product title must START with the exact
++        normalized title of a catalog series; only the remainder is parsed,
++        and it must be empty or a plain volume token ("3", "cilt 3", "3 cilt")
++        with no collection words or ranges.
++        Anything else keeps the original rejection ``reason``. Never creates
++        rows and never guesses between editions.
++        """
++        title_key = normalize_text(result.title)
++        remainder_number = None
++        match = self._catalog_series_prefix(title_key, (result.publisher or "").strip())
++        if match is None:
++            return self._reject(reason)
++        series, remainder = match
++        if remainder:
++            if _REMAINDER_COLLECTION_RE.search(remainder):
++                return self._reject("box_set")
++            token = _REMAINDER_VOLUME_RE.fullmatch(remainder)
++            if token is None:
++                return self._reject(reason)
++            remainder_number = int(token.group(1))
++        store = self._resolve_store(result.store_id, result.store_name)
++        isbn = normalize_isbn(result.isbn)
++        if isbn:
++            holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
++            if holder is not None and holder.volume_number < 0:
++                isbn = None  # legacy phantom keeps it; see _resolve_target
++        volume = self._resolve_volume(series, isbn, remainder_number, result, title_verified=True)
++        if volume is None:
++            return None
++        logger.info("import: %r matched catalog title %r by prefix", result.title, series.title)
++        return (volume, store)
++
++    def _catalog_series_prefix(self, title_key: str, publisher_name: str):
++        """Longest catalog series title that prefixes ``title_key`` at a word
++        boundary; returns ``(series, remainder)`` or None."""
++        if not title_key:
++            return None
++        publisher_id = None
++        if publisher_name:
++            publisher = self._find_publisher(publisher_name)
++            if publisher is None:
++                return None
++            publisher_id = publisher.id
++        query = select(Series).where(
++            Series.id.in_(select(CatalogSeries.series_id).distinct()),
++            Series.normalized_title.isnot(None),
++        )
++        if publisher_id is not None:
++            query = query.where(Series.publisher_id == publisher_id)
++        best: list[Series] = []
++        best_len = 0
++        for series in self.session.scalars(query):
++            key = series.normalized_title or ""
++            if not key:
++                continue
++            if title_key != key and not title_key.startswith(key + " "):
++                continue
++            if len(key) > best_len:
++                best, best_len = [series], len(key)
++            elif len(key) == best_len:
++                best.append(series)
++        if len(best) != 1:
++            return None
++        return best[0], title_key[best_len:].strip()
++
+     def _reject(self, reason: str):
+         self.last_reason = reason
+         return None
+@@ -496,6 +600,8 @@ class ImportService:
+         isbn: str | None,
+         volume_number: int | None,
+         result: SearchResult,
++        *,
++        title_verified: bool = False,
+     ) -> Volume | None:
+         # 1) ISBN is the strongest cross-store identifier: globally unique.
+         if isbn:
+@@ -506,7 +612,7 @@ class ImportService:
+ 
+         # Unknown products cannot create a catalog identity. Only a series
+         # with exactly one positive volume, numbered 1, can use this fallback.
+-        if volume_number is None:
++        if volume_number is None and not title_verified:
+             title_key = normalize_text(parse_volume_title(result.title).base_title)
+             allowed_titles = {series.normalized_title}
+             if series.original_title:
+@@ -515,6 +621,7 @@ class ImportService:
+                     f"{series.normalized_title} {series.original_title}"})
+             if title_key not in allowed_titles:
+                 return self._reject("ambiguous_volume")
++        if volume_number is None:
+             real = self.session.scalars(select(Volume).where(
+                 Volume.series_id == series.id, Volume.volume_number >= 0,
+             )).all()
+@@ -541,6 +648,22 @@ class ImportService:
+ 
+         return self._reject("volume_not_found")
+ 
++    @staticmethod
++    def _may_switch_product(
++        listing: StoreListing, result: SearchResult, price_cents: int | None, now: datetime
++    ) -> bool:
++        last = listing.last_checked
++        if last is None:
++            return True
++        if last.tzinfo is None:
++            last = last.replace(tzinfo=timezone.utc)
++        window = timedelta(hours=get_settings().listing_product_switch_hours)
++        if now - last >= window:
++            return True
++        if not listing.in_stock and result.in_stock:
++            return True
++        return price_cents is not None and (listing.price is None or price_cents < listing.price)
++
+     @staticmethod
+     def _backfill_cover(volume: Volume, result: SearchResult) -> None:
+         if volume.cover_url is None and result.image_url:
+@@ -580,6 +703,22 @@ class ImportService:
+                 )
+             return ImportAction.CREATED
+ 
++        if listing.product_url != result.product_url and not self._may_switch_product(
++            listing, result, price_cents, now
++        ):
++            # A different product of the same store resolved to this volume
++            # (another printing / edition). Switching back and forth between
++            # products across import runs fabricates price history and fake
++            # drops, so the listing keeps its product unless the new one is
++            # cheaper, the current one is out of stock, or the current one
++            # has not been seen for LISTING_PRODUCT_SWITCH_HOURS.
++            self.last_reason = "other_product"
++            logger.info(
++                "import: keeping listing %s on %s; ignoring other product %s",
++                listing.id, listing.product_url, result.product_url,
++            )
++            return ImportAction.SKIPPED
++
+         price_changed = price_cents is not None and listing.price != price_cents
+         if price_cents is not None:
+             listing.price = price_cents
+diff --git a/backend/app/services/price_refresh_scheduler.py b/backend/app/services/price_refresh_scheduler.py
+index b9ffd7f..dccfe37 100644
+--- a/backend/app/services/price_refresh_scheduler.py
++++ b/backend/app/services/price_refresh_scheduler.py
+@@ -31,11 +31,16 @@ class PriceRefreshScheduler:
+         interval_seconds: float,
+         *,
+         poll_seconds: float = 30.0,
++        startup_delay_seconds: float | None = None,
+     ) -> None:
+         self._runner = runner
+         self._session_factory = session_factory
+         self._interval = max(interval_seconds, 1.0)
+         self._poll = max(poll_seconds, 0.05)
++        if startup_delay_seconds is None:
++            startup_delay_seconds = get_settings().price_refresh_startup_delay_minutes * 60.0
++        #: Short settle time after a (re)start before a catch-up cycle.
++        self._startup_delay = min(max(startup_delay_seconds, 0.0), self._interval)
+         self._thread: threading.Thread | None = None
+         self._stop = threading.Event()
+         self._lock = threading.RLock()
+@@ -58,13 +63,55 @@ class PriceRefreshScheduler:
+             return
+         self._stop.clear()
+         with self._lock:
+-            self._next_scheduled_at = utcnow() + timedelta(seconds=self._interval)
++            self._next_scheduled_at = self._first_due_at()
+         self._thread = threading.Thread(
+             target=self._loop, name="yomiba-price-refresh", daemon=True
+         )
+         self._thread.start()
+         logger.info("price refresh scheduler started (interval %.1fh)", self._interval / 3600)
+ 
++    def _first_due_at(self) -> datetime:
++        """When the first cycle after a (re)start should run.
++
++        Restarts (e.g. every Railway redeploy) must not postpone refreshes by
++        a full interval each time: the schedule is derived from persisted
++        ImportRecord freshness. If the stalest catalog query last succeeded
++        more than one interval ago (or never), a catch-up cycle starts after
++        a short settle delay; otherwise the cycle is due when that query
++        reaches one interval of age.
++        """
++        now = utcnow()
++        try:
++            with self._session_factory() as session:
++                keys = {
++                    normalized_query_key(title)
++                    for (title,) in session.execute(
++                        select(Series.title)
++                        .join(CatalogSeries, CatalogSeries.series_id == Series.id)
++                        .distinct()
++                    )
++                }
++                keys.discard("")
++                successes = {
++                    r.normalized_query: aware_datetime(r.last_success_at)
++                    for r in session.scalars(
++                        select(ImportRecord).where(ImportRecord.normalized_query.in_(keys))
++                    )
++                } if keys else {}
++        except Exception:  # noqa: BLE001 - fall back to the plain interval
++            logger.exception("price refresh: could not derive first due time")
++            return now + timedelta(seconds=self._interval)
++        if not keys:
++            return now + timedelta(seconds=self._interval)
++        stalest = [successes.get(key) for key in keys]
++        if any(value is None for value in stalest):
++            wait = 0.0
++        else:
++            oldest = min(v for v in stalest if v is not None)
++            wait = (oldest + timedelta(seconds=self._interval) - now).total_seconds()
++        wait = min(max(wait, self._startup_delay), self._interval)
++        return now + timedelta(seconds=wait)
++
+     def stop(self, timeout: float = 10.0) -> None:
+         self._stop.set()
+         thread = self._thread
+diff --git a/backend/tests/test_anilist_audit.py b/backend/tests/test_anilist_audit.py
+index 696f04e..7523270 100644
+--- a/backend/tests/test_anilist_audit.py
++++ b/backend/tests/test_anilist_audit.py
+@@ -232,12 +232,22 @@ def test_jjk_zero_preserved_in_plan_and_import(db_session, import_service):
+     assert import_service.import_result(unnumbered) == ImportAction.SKIPPED
+ 
+ 
+-def test_existing_legacy_isbn_still_fails_closed(db_session, import_service):
++def test_legacy_phantom_isbn_resolves_to_real_volume_without_moving_isbn(db_session, import_service):
++    """H1: an ISBN still held by a legacy phantom no longer starves the real
++    catalog volume. The product resolves by title (single-volume fallback);
++    the phantom is never a target and keeps its ISBN (no merge, no move)."""
+     source, target, _ = setup_pair(db_session)
++    phantom_listings = select(func.count()).select_from(StoreListing).where(StoreListing.volume_id == source)
++    before = db_session.scalar(phantom_listings)
+     product = make_result("bkm", "Elveda Eri", "100", isbn="9786258237559", publisher="Gerekli Şeyler")
+-    assert import_service.import_result(product) == ImportAction.SKIPPED
++    assert import_service.import_result(product) == ImportAction.CREATED
++    db_session.commit()
++    listing = db_session.scalar(select(StoreListing).where(StoreListing.volume_id == target))
++    assert listing is not None
+     assert db_session.get(Volume, source).volume_number == -1
++    assert db_session.get(Volume, source).isbn == "9786258237559"
+     assert db_session.get(Volume, target).isbn is None
++    assert db_session.scalar(phantom_listings) == before
+ 
+ 
+ def test_cli_offline_excludes_zero_and_is_readonly(db_session, engine, monkeypatch, capsys, tmp_path):
+diff --git a/backend/tests/test_price_refresh_scheduler.py b/backend/tests/test_price_refresh_scheduler.py
+index 9b7845b..0e4b091 100644
+--- a/backend/tests/test_price_refresh_scheduler.py
++++ b/backend/tests/test_price_refresh_scheduler.py
+@@ -9,8 +9,8 @@ Covered behaviour:
+   is skipped — the same anti-hammering rule search_with_auto_import uses;
+ * a key already running in the runner is not double-submitted;
+ * an empty record table is a no-op;
+-* no pass before the first interval (no catch-up at startup — same
+-  restart contract as the catalog sync scheduler);
++* no pass before the settle delay (capped by the interval); stale catalogs
++  catch up after it instead of waiting a full interval (M8);
+ * a tick that raises does not kill the scheduler loop;
+ * clean start()/stop() lifecycle (idempotent start).
+ 
+@@ -335,3 +335,36 @@ def test_auto_init_disabled_flag_blocks_price_refresh(monkeypatch, engine):
+ def test_auto_init_false_never_wires_price_refresh(client):
+     # every existing API test runs this shape: no scheduler, ever
+     assert client.app.state.price_refresh_scheduler is None
++
++
++# -- restart catch-up (M8) ------------------------------------------------------------
++
++def test_first_due_catches_up_stale_catalog_after_settle_delay(sessions):
++    from app.utils import utcnow
++
++    _add_catalog(sessions, "berserk")
++    _seed(sessions, "berserk", success_minutes_ago=13 * 60, attempt_minutes_ago=13 * 60)
++    sched = PriceRefreshScheduler(_StubRunner(), sessions, interval_seconds=12 * 3600,
++                                  startup_delay_seconds=600)
++    due = sched._first_due_at()  # noqa: SLF001 - test access
++    assert timedelta(minutes=9) < due - utcnow() <= timedelta(minutes=10)
++
++
++def test_first_due_keeps_remaining_interval_for_fresh_catalog(sessions):
++    from app.utils import utcnow
++
++    _add_catalog(sessions, "berserk")
++    _seed(sessions, "berserk", success_minutes_ago=60, attempt_minutes_ago=60)
++    sched = PriceRefreshScheduler(_StubRunner(), sessions, interval_seconds=12 * 3600,
++                                  startup_delay_seconds=600)
++    due = sched._first_due_at()  # noqa: SLF001
++    assert timedelta(hours=10, minutes=59) < due - utcnow() <= timedelta(hours=11)
++
++
++def test_first_due_never_imported_series_is_due_after_delay(sessions):
++    from app.utils import utcnow
++
++    _add_catalog(sessions, "berserk")
++    sched = PriceRefreshScheduler(_StubRunner(), sessions, interval_seconds=12 * 3600,
++                                  startup_delay_seconds=600)
++    assert sched._first_due_at() - utcnow() <= timedelta(minutes=10)  # noqa: SLF001
+diff --git a/backend/tests/test_prod_readiness_fixes.py b/backend/tests/test_prod_readiness_fixes.py
+new file mode 100644
+index 0000000..d47fc3b
+--- /dev/null
++++ b/backend/tests/test_prod_readiness_fixes.py
+@@ -0,0 +1,445 @@
++"""Regression tests for the 2026-09-26 QA audit fixes (H1, M2, M3, M4, M6, M7, M8, M9, lows)."""
++
++from __future__ import annotations
++
++from datetime import timedelta
++from pathlib import Path
++
++from sqlalchemy import func, select
++
++from app.models import PriceHistory, Store, StoreListing, Volume
++from app.services.import_service import ImportAction, ImportService
++from app.utils import utcnow
++from tests.helpers import RecordingScraper
++from tests.test_import_service import make_result, seed_catalog_series
++
++
++def _phantom(db_session, series, *, isbn="9786258237559", with_listing=True):
++    phantom = Volume(series_id=series.id, volume_number=-1, isbn=isbn)
++    db_session.add(phantom)
++    db_session.flush()
++    if with_listing:
++        store = db_session.scalar(select(Store).where(Store.code == "kitapsec"))
++        if store is None:
++            store = Store(code="kitapsec", name="Kitapsec")
++            db_session.add(store)
++            db_session.flush()
++        listing = StoreListing(volume_id=phantom.id, store_id=store.id,
++                               product_url="https://kitapsec.example/old", price=14880)
++        db_session.add(listing)
++        db_session.flush()
++        db_session.add(PriceHistory(listing_id=listing.id, price=15990, checked_at=utcnow() - timedelta(hours=3)))
++        db_session.add(PriceHistory(listing_id=listing.id, price=14880, checked_at=utcnow() - timedelta(hours=1)))
++    db_session.commit()
++    return phantom
++
++
++# ---------------------------------------------------------------- H1 -------
++def test_h1_legacy_phantom_hidden_from_public_reads(client, db_session):
++    series = seed_catalog_series(db_session, "Elveda Eri", "Gerekli Şeyler")
++    real = series.volumes[0]
++    phantom = _phantom(db_session, series)
++
++    detail = client.get(f"/series/{series.id}").json()
++    assert [v["id"] for v in detail["volumes"]] == [real.id]
++    search = client.get("/search", params={"q": "Elveda"}).json()["results"]
++    assert search[0]["volume_count"] == 1
++
++    vol = client.get(f"/volume/{phantom.id}")
++    assert vol.status_code == 200  # user rows may still point at it
++    assert vol.json()["unverified"] is True
++    assert vol.json()["stores"] == []
++    assert client.get(f"/volume/{phantom.id}/price-history").json()["listings"] == []
++    assert client.get("/price-drops", params={"hours": 24}).json()["drops"] == []
++    assert client.get(f"/volume/{real.id}").json()["unverified"] is False
++    # Data is untouched: no cleanup without an approved merge.
++    assert db_session.scalar(select(func.count()).select_from(StoreListing)) == 1
++
++
++def test_h1_catalog_owned_unnumbered_volume_stays_visible(client, db_session):
++    """A -1 row WITHOUT ISBN/listings is a catalog (Mangakol) unnumbered item."""
++    series = seed_catalog_series(db_session, "Kutu Manga", "Yayinci", volumes=(1, 2))
++    _phantom(db_session, series, isbn=None, with_listing=False)
++    numbers = [v["number"] for v in client.get(f"/series/{series.id}").json()["volumes"]]
++    assert numbers == [1, 2, None]
++
++
++def test_h1_phantom_isbn_multi_volume_uses_parsed_number(db_session, import_service):
++    series = seed_catalog_series(db_session, "Gantz", "Kurukafa", volumes=range(1, 6))
++    phantom = _phantom(db_session, series, isbn="9786050000033", with_listing=False)
++    result = make_result("bkm", "Gantz 3", "120", isbn="9786050000033", publisher="Kurukafa")
++    assert import_service.import_result(result) == ImportAction.CREATED
++    db_session.commit()
++    listing = db_session.scalar(select(StoreListing))
++    assert listing.volume.volume_number == 3
++    assert listing.volume.isbn is None  # the ISBN is not moved off the phantom
++    assert db_session.get(Volume, phantom.id).isbn == "9786050000033"
++    # Numberless product in a multi-volume series is still rejected.
++    assert import_service.import_result(make_result("dr", "Gantz", "120", isbn="9786050000033")) == ImportAction.SKIPPED
++
++
++# ---------------------------------------------------------------- M2 -------
++def _run(db_session, *results):
++    return ImportService(db_session, scrapers=[RecordingScraper("bkm", "BKM Kitap", list(results))]).run_import("q")
++
++
++def _history(db_session):
++    return [p for (p,) in db_session.execute(select(PriceHistory.price).order_by(PriceHistory.id))]
++
++
++def test_m2_other_product_cannot_flip_listing_between_runs(db_session):
++    seed_catalog_series(db_session, "Jujutsu Kaisen", "Gerekli Şeyler", volumes=(0, 1, 2))
++    a = make_result("bkm", "Jujutsu Kaisen 0", "196.80", publisher="Gerekli Şeyler")
++    b = make_result("bkm", "Jujutsu Kaisen Cilt 0", "472.24", publisher="Gerekli Şeyler")
++    for results in ([a], [b], [a], [b], [a]):
++        _run(db_session, *results)
++    assert _history(db_session) == [19680]
++    listing = db_session.scalar(select(StoreListing))
++    assert listing.product_url == a.product_url and listing.price == 19680
++    report = _run(db_session, b)
++    assert report.stores[0].reasons.get("other_product") == 1
++
++
++def test_m2_cheaper_or_stale_or_restocked_product_may_replace(db_session):
++    seed_catalog_series(db_session, "Jujutsu Kaisen", "Gerekli Şeyler", volumes=(0,))
++    expensive = make_result("bkm", "Jujutsu Kaisen Cilt 0", "472.24", publisher="Gerekli Şeyler")
++    cheap = make_result("bkm", "Jujutsu Kaisen 0", "196.80", publisher="Gerekli Şeyler")
++    _run(db_session, expensive)
++    _run(db_session, cheap)  # cheaper printing wins
++    listing = db_session.scalar(select(StoreListing))
++    assert listing.product_url == cheap.product_url
++
++    # Current product not seen for longer than the switch window -> replaceable.
++    listing.last_checked = utcnow() - timedelta(hours=49)
++    db_session.commit()
++    _run(db_session, expensive)
++    assert db_session.scalar(select(StoreListing)).product_url == expensive.product_url
++
++    # Out-of-stock current product -> an in-stock alternative may replace it.
++    listing = db_session.scalar(select(StoreListing))
++    listing.in_stock = False
++    listing.product_url = "https://example.com/bkm/sold-out"
++    db_session.commit()
++    _run(db_session, expensive)
++    assert db_session.scalar(select(StoreListing)).product_url == expensive.product_url
++
++
++def test_m2_same_product_price_changes_still_recorded(db_session):
++    seed_catalog_series(db_session, "Gantz", "Kurukafa", volumes=(1,))
++    _run(db_session, make_result("bkm", "Gantz 1", "100", publisher="Kurukafa"))
++    _run(db_session, make_result("bkm", "Gantz 1", "100", publisher="Kurukafa"))
++    _run(db_session, make_result("bkm", "Gantz 1", "90", publisher="Kurukafa"))
++    assert _history(db_session) == [10000, 9000]
++
++
++# ---------------------------------------------------------------- M3 -------
++import pytest  # noqa: E402
++
++
++@pytest.mark.parametrize("catalog_title,publisher,volumes,product,expected", [
++    ("Kaiju No: 8 - 8 No'lu Canavar", "Kurukafa", range(1, 9), "Kaiju No: 8 - 8 No'lu Canavar 3", 3),
++    ("Kaiju No: 8 - 8 No'lu Canavar", "Kurukafa", range(1, 9), "Kaiju No: 8 - 8 No'lu Canavar Cilt 3", 3),
++    ("Mob Psycho 100", "İthaki Çocuk Yayınları", (1, 2, 3), "Mob Psycho 100 Cilt 2", 2),
++    ("Mob Psycho 100", "İthaki Çocuk Yayınları", (1, 2, 3), "Mob Psycho 100 2", 2),
++    ("Dövüş Sınıfı 3", "Yayinci", (1, 2), "Dövüş Sınıfı 3 Cilt 2", 2),
++    ("Disney Manga - 6 Süper Kahraman", "Yayinci", (1,), "Disney Manga - 6 Süper Kahraman", 1),
++])
++def test_m3_catalog_titles_with_numbers_match(db_session, import_service, catalog_title, publisher, volumes, product, expected):
++    seed_catalog_series(db_session, catalog_title, publisher, volumes=volumes)
++    before = db_session.scalar(select(func.count()).select_from(Volume))
++    action = import_service.import_result(make_result("bkm", product, "100", publisher=publisher))
++    assert action == ImportAction.CREATED, import_service.last_reason
++    db_session.commit()
++    assert db_session.scalar(select(StoreListing)).volume.volume_number == expected
++    assert db_session.scalar(select(func.count()).select_from(Volume)) == before
++
++
++@pytest.mark.parametrize("product,reason", [
++    ("Kaiju No: 8 - 8 No'lu Canavar 1-3 Kutu Set", "box_set"),
++    ("Kaiju No: 8 - 8 No'lu Canavar 9", "volume_not_found"),
++    ("Kaiju No: 8 - 8 No'lu Canavar Artbook", "box_set"),
++    ("Kaiju No: 8 - 8 No'lu Canavar", "no_volume_number"),
++])
++def test_m3_prefix_fallback_stays_strict(db_session, import_service, product, reason):
++    seed_catalog_series(db_session, "Kaiju No: 8 - 8 No'lu Canavar", "Kurukafa", volumes=range(1, 9))
++    assert import_service.import_result(make_result("bkm", product, "100", publisher="Kurukafa")) == ImportAction.SKIPPED
++    assert import_service.last_reason == reason
++
++
++def test_m3_fallback_respects_publisher_and_edition(db_session, import_service):
++    seed_catalog_series(db_session, "Mob Psycho 100", "Publisher A", volumes=(1, 2))
++    seed_catalog_series(db_session, "Mob Psycho 100", "Publisher B", volumes=(1, 2))
++    # unknown publisher -> no guess
++    assert import_service.import_result(make_result("bkm", "Mob Psycho 100 Cilt 2", "100", publisher="Başka")) == ImportAction.SKIPPED
++    # no publisher + two editions -> no guess
++    assert import_service.import_result(make_result("bkm", "Mob Psycho 100 Cilt 2", "100")) == ImportAction.SKIPPED
++    assert import_service.import_result(make_result("bkm", "Mob Psycho 100 Cilt 2", "100", publisher="Publisher B")) == ImportAction.CREATED
++
++
++def test_l8_ambiguous_title_reports_ambiguous_reason(db_session, import_service):
++    seed_catalog_series(db_session, "Gantz", "Kurukafa", volumes=(1, 2))
++    assert import_service.import_result(make_result("bkm", "Bilinmeyen 100 Cilt 2", "100", publisher="Kurukafa")) == ImportAction.SKIPPED
++    assert import_service.last_reason == "ambiguous_volume"
++
++
++# ---------------------------------------------------------------- M4 -------
++def test_m4_announced_sync_intent_prevents_gate_starvation(engine, monkeypatch):
++    import threading
++    import time
++    from sqlalchemy.orm import sessionmaker
++    from app.services.background_import import BackgroundImportRunner, SYNC_GATE_KEY
++
++    runner = BackgroundImportRunner(sessionmaker(bind=engine), max_concurrent=2, queue_capacity=16)
++    monkeypatch.setattr(runner, "_execute", lambda key, query: time.sleep(0.1))
++    stop = threading.Event()
++    counter = [0]
++
++    def feeder():  # a price-refresh cycle that keeps the queue full
++        while not stop.is_set():
++            if runner.available_slots() > 0:
++                runner.submit(f"q{counter[0]}", f"q{counter[0]}")
++                counter[0] += 1
++            time.sleep(0.005)
++
++    threading.Thread(target=feeder, daemon=True).start()
++    try:
++        time.sleep(0.3)
++        assert not runner.acquire_import_lock(SYNC_GATE_KEY, "catalog", timeout=0)
++        runner.lock.set_exclusive_intent(SYNC_GATE_KEY, True)
++        acquired = False
++        deadline = time.monotonic() + 3
++        while time.monotonic() < deadline and not acquired:
++            acquired = runner.acquire_import_lock(SYNC_GATE_KEY, "catalog", timeout=0)
++            time.sleep(0.02)
++        runner.lock.set_exclusive_intent(SYNC_GATE_KEY, False)
++        assert acquired, "catalog sync must get the gate once intent is announced"
++        runner.release_import_lock(SYNC_GATE_KEY, "catalog")
++        # store imports resume afterwards
++        started = counter[0]
++        time.sleep(0.5)
++        assert counter[0] > started
++    finally:
++        stop.set()
++        runner.shutdown(timeout=2)
++
++
++def test_m4_scheduler_announces_and_withdraws_intent():
++    from app.services.catalog_scheduler import CatalogSyncScheduler
++
++    results = iter(["gate_held", "gate_held", "started"])
++    events: list[bool] = []
++    sched = CatalogSyncScheduler(lambda: next(results), interval_seconds=60,
++                                 gate_wait_seconds=5, poll_seconds=0.01,
++                                 announce_intent=events.append)
++    assert sched._try_start_with_gate_wait() == "started"
++    assert events == [True, False]
++
++
++# ---------------------------------------------------------------- M6 / L2 / L7 -
++PW = "correct horse battery staple"
++
++
++def test_m6_trusted_device_can_log_in_while_account_is_locked(client, db_session):
++    from app.login_rate_limit import DEVICE_COOKIE_NAME
++    from app.auth import COOKIE_NAME
++
++    client.cookies.clear()
++    assert client.post("/auth/register", json={"email": "victim@example.com", "password": PW, "display_name": "V"}).status_code == 201
++    owner_device = client.cookies.get(DEVICE_COOKIE_NAME)
++    assert owner_device
++    client.cookies.clear()
++    assert client.post("/auth/register", json={"email": "other@example.com", "password": PW, "display_name": "O"}).status_code == 201
++    other_device = client.cookies.get(DEVICE_COOKIE_NAME)
++
++    client.cookies.clear()
++    for _ in range(10):  # attacker locks the account
++        assert client.post("/auth/login", json={"email": "victim@example.com", "password": "nope"}).status_code == 401
++    ok = {"email": "victim@example.com", "password": PW}
++    assert client.post("/auth/login", json=ok).status_code == 429  # no device
++    client.cookies.set(DEVICE_COOKIE_NAME, owner_device[:-4] + "0000")
++    assert client.post("/auth/login", json=ok).status_code == 429  # forged
++    client.cookies.clear(); client.cookies.set(DEVICE_COOKIE_NAME, other_device)
++    assert client.post("/auth/login", json=ok).status_code == 429  # other account's device
++    client.cookies.clear(); client.cookies.set(DEVICE_COOKIE_NAME, owner_device)
++    assert client.post("/auth/login", json=ok).status_code == 200  # the real owner
++    assert client.cookies.get(COOKIE_NAME)
++
++
++def test_m6_trusted_device_is_itself_rate_limited(client, db_session):
++    from app.login_rate_limit import DEVICE_COOKIE_NAME
++
++    client.cookies.clear()
++    client.post("/auth/register", json={"email": "d@example.com", "password": PW, "display_name": "D"})
++    device = client.cookies.get(DEVICE_COOKIE_NAME)
++    client.cookies.clear()
++    for _ in range(10):
++        client.post("/auth/login", json={"email": "d@example.com", "password": "nope"})
++    client.cookies.set(DEVICE_COOKIE_NAME, device)
++    codes = [client.post("/auth/login", json={"email": "d@example.com", "password": "nope"}).status_code for _ in range(11)]
++    assert codes[:10] == [401] * 10 and codes[10] == 429
++
++
++def test_m6_successful_logins_do_not_consume_attempts(client, db_session):
++    client.cookies.clear()
++    client.post("/auth/register", json={"email": "s@example.com", "password": PW, "display_name": "S"})
++    for _ in range(12):
++        client.cookies.clear()
++        assert client.post("/auth/login", json={"email": "s@example.com", "password": PW}).status_code == 200
++
++
++def test_l2_logout_cookie_deletion_keeps_security_attributes(client, db_session):
++    client.cookies.clear()
++    client.post("/auth/register", json={"email": "lo@example.com", "password": PW, "display_name": "L"})
++    header = client.post("/auth/logout").headers["set-cookie"].lower()
++    assert "max-age=0" in header and "httponly" in header and "secure" in header and "samesite=lax" in header
++
++
++def test_l7_login_purges_expired_and_revoked_sessions(client, db_session):
++    from app.models import User, UserSession
++
++    client.cookies.clear()
++    client.post("/auth/register", json={"email": "p@example.com", "password": PW, "display_name": "P"})
++    client.post("/auth/logout")  # revoked row
++    user = db_session.scalar(select(User).where(User.email == "p@example.com"))
++    db_session.add(UserSession(user_id=user.id, token_hash="x" * 64, expires_at=utcnow() - timedelta(days=1)))
++    db_session.commit()
++    assert client.post("/auth/login", json={"email": "p@example.com", "password": PW}).status_code == 200
++    db_session.expire_all()
++    rows = db_session.scalars(select(UserSession).where(UserSession.user_id == user.id)).all()
++    assert len(rows) == 1 and rows[0].revoked_at is None
++
++
++# ---------------------------------------------------------------- M7 -------
++def test_m7_backup_written_only_when_schema_is_behind(tmp_path):
++    import sqlite3
++
++    from app.database import backup_before_migration
++
++    db = tmp_path / "old.db"
++    with sqlite3.connect(db) as c:
++        c.execute("CREATE TABLE alembic_version(version_num TEXT)")
++        c.execute("INSERT INTO alembic_version VALUES ('0004_catalog_exclusion')")
++        c.execute("CREATE TABLE series(id INTEGER PRIMARY KEY, title TEXT)")
++        c.execute("INSERT INTO series VALUES (1, 'Kept')")
++    before = db.read_bytes()
++    backup = backup_before_migration(f"sqlite:///{db}", "0005_user_accounts")
++    assert backup is not None and backup.name.startswith("old.db.pre-migration-0004_catalog_exclusion-")
++    with sqlite3.connect(backup) as c:
++        assert c.execute("SELECT title FROM series").fetchone() == ("Kept",)
++    assert db.read_bytes() == before  # source untouched
++    # at head / empty file / missing file -> nothing to do
++    assert backup_before_migration(f"sqlite:///{db}", "0004_catalog_exclusion") is None
++    empty = tmp_path / "empty.db"; empty.touch()
++    assert backup_before_migration(f"sqlite:///{empty}", "0005_user_accounts") is None
++    assert backup_before_migration(f"sqlite:///{tmp_path / 'missing.db'}", "0005_user_accounts") is None
++
++
++def test_m7_real_startup_backs_up_before_migrating(monkeypatch, tmp_path):
++    from dataclasses import replace
++
++    from alembic import command
++    from alembic.config import Config
++    from fastapi.testclient import TestClient
++    from sqlalchemy.orm import sessionmaker
++
++    from app import config as config_mod, database
++    import app.main as main_mod
++
++    db = tmp_path / "startup.db"
++    url = f"sqlite:///{db}"
++    settings = replace(config_mod.get_settings(), database_url=url, app_env="production",
++                       price_refresh_enabled=False, catalog_sync_enabled=False)
++    monkeypatch.setattr(config_mod, "get_settings", lambda: settings)
++    monkeypatch.setattr(database, "get_settings", lambda: settings)
++    monkeypatch.setattr(main_mod, "get_settings", lambda: settings)
++    backend = Path(__file__).resolve().parent.parent
++    cfg = Config(str(backend / "alembic.ini"))
++    cfg.set_main_option("script_location", str(backend / "alembic"))
++    db.touch()
++    command.upgrade(cfg, "0004_catalog_exclusion")  # an older real schema
++    engine = database.build_engine(url)
++    monkeypatch.setattr(database, "engine", engine)
++    monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=engine))
++    try:
++        with TestClient(main_mod.create_app(auto_init=True)) as c:
++            assert c.get("/ready").status_code == 200
++        backups = list(tmp_path.glob("startup.db.pre-migration-0004_catalog_exclusion-*.bak"))
++        assert len(backups) == 1
++        with TestClient(main_mod.create_app(auto_init=True)) as c:  # already at head
++            assert c.get("/ready").status_code == 200
++        assert len(list(tmp_path.glob("startup.db.pre-migration-*.bak"))) == 1
++    finally:
++        engine.dispose()
++
++
++# ---------------------------------------------------------------- M9 / L1 --
++def test_m9_me_lists_are_per_user_and_ordered(client, db_session):
++    from app.auth import COOKIE_NAME
++
++    series = seed_catalog_series(db_session, "Liste Manga", "Liste Yayin", volumes=(0, 1, 2))
++    v0, v1, v2 = sorted(series.volumes, key=lambda v: v.volume_number)
++    store = Store(code="bkm", name="BKM Kitap")
++    db_session.add(store); db_session.flush()
++    db_session.add(StoreListing(volume_id=v1.id, store_id=store.id, product_url="https://x/1", price=12345))
++    db_session.commit()
++
++    def register(email):
++        client.cookies.clear()
++        client.post("/auth/register", json={"email": email, "password": PW, "display_name": "x"})
++        return client.cookies.get(COOKIE_NAME)
++
++    a, b = register("la@example.com"), register("lb@example.com")
++    client.cookies.clear(); client.cookies.set(COOKIE_NAME, a)
++    client.patch(f"/volume/{v2.id}/collection-status", json={"status": "wanted"})
++    client.patch(f"/volume/{v0.id}/collection-status", json={"status": "owned"})
++    client.post(f"/volume/{v1.id}/wishlist")
++    client.put(f"/volume/{v1.id}/price-alert", json={"threshold_price": 10000})
++
++    col = client.get("/me/collection")
++    assert "no-store" in col.headers["cache-control"]
++    assert [(i["volume_number"], i["status"]) for i in col.json()] == [(0, "owned"), (2, "wanted")]
++    wl = client.get("/me/wishlist").json()
++    assert [(i["volume_id"], i["best_price"]) for i in wl] == [(v1.id, 123.45)]
++    assert client.get("/me/price-alerts").json()[0]["threshold_price"] == 10000
++
++    client.cookies.clear(); client.cookies.set(COOKIE_NAME, b)
++    assert client.get("/me/collection").json() == []
++    assert client.get("/me/wishlist").json() == []
++    assert client.get("/me/price-alerts").json() == []
++    client.cookies.clear()
++    assert client.get("/me/collection").status_code == 401
++
++
++def test_l1_huge_threshold_is_422_not_500(client, db_session):
++    series = seed_catalog_series(db_session, "Big Manga", "Big Pub", volumes=(1,))
++    r = client.put(f"/volume/{series.volumes[0].id}/price-alert", json={"threshold_price": 2 ** 70})
++    assert r.status_code == 422
++
++
++# ------------------------------------------ NEW-1: titles ending in s/c/no ---
++@pytest.mark.parametrize("title,base,number", [
++    ("Happiness 8", "Happiness", 8),
++    ("Made in Abyss 11", "Made in Abyss", 11),
++    ("Beastars 20. Cilt", "Beastars", 20),
++    ("Tokyo Revengers 12", "Tokyo Revengers", 12),
++    ("One Piece S. 3", "One Piece", 3),
++    ("One Piece No: 5", "One Piece", 5),
++    ("Berserk C. 4", "Berserk", 4),
++])
++def test_new1_marker_words_must_be_whole_words(title, base, number):
++    from app.normalization import parse_volume_title
++
++    parsed = parse_volume_title(title)
++    assert (parsed.base_title, parsed.volume_number) == (base, number)
++
++
++def test_new1_title_ending_in_s_matches_catalog(db_session, import_service):
++    seed_catalog_series(db_session, "Made in Abyss", "Yayinci", volumes=range(1, 12))
++    assert import_service.import_result(make_result("bkm", "Made in Abyss 11", "100", publisher="Yayinci")) == ImportAction.CREATED
++
++
++def test_m3_collection_word_inside_catalog_title(db_session, import_service):
++    seed_catalog_series(db_session, "Mavi Kutu", "Yayinci", volumes=range(1, 6))
++    assert import_service.import_result(make_result("bkm", "Mavi Kutu 4", "100", publisher="Yayinci")) == ImportAction.CREATED
++    assert import_service.import_result(make_result("bkm", "Mavi Kutu 1-3 Set", "100", publisher="Yayinci")) == ImportAction.SKIPPED
++    assert import_service.last_reason == "box_set"
+diff --git a/frontend/app/collection/page.tsx b/frontend/app/collection/page.tsx
+new file mode 100644
+index 0000000..83bc737
+--- /dev/null
++++ b/frontend/app/collection/page.tsx
+@@ -0,0 +1,130 @@
++import type { Metadata } from "next";
++import Link from "next/link";
++import { redirect } from "next/navigation";
++import { formatPrice } from "@/components/PriceBadge";
++import { volumeLabel } from "@/lib/volumeLabel";
++import { currentUser } from "@/services/auth";
++import { getMyCollection, getMyPriceAlerts, getMyWishlist } from "@/services/me";
++import type { CollectionStatus, MyVolume } from "@/types";
++
++export const dynamic = "force-dynamic";
++
++export const metadata: Metadata = { title: "Koleksiyonum" };
++
++const STATUS_LABEL: Record<CollectionStatus, string> = {
++  owned: "Sahibim",
++  missing: "Eksik",
++  wanted: "İstediğim",
++};
++
++const STATUS_CHIP: Record<CollectionStatus, string> = {
++  owned: "bg-emerald-500/10 text-emerald-400",
++  missing: "bg-rose-500/10 text-rose-400",
++  wanted: "bg-orange-500/10 text-orange-400",
++};
++
++function Row({ item, children }: { item: MyVolume; children?: React.ReactNode }) {
++  return (
++    <Link
++      href={`/volume/${item.volume_id}`}
++      className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 transition-colors hover:border-orange-500/60"
++    >
++      <div className="min-w-0">
++        <p className="truncate text-sm font-medium text-neutral-100">
++          {item.series_title}
++          <span className="text-neutral-400"> · {volumeLabel(item.volume_number)}</span>
++        </p>
++        <p className="truncate text-xs text-neutral-500">{item.publisher}</p>
++      </div>
++      <div className="flex shrink-0 items-center gap-2 text-sm">{children}</div>
++    </Link>
++  );
++}
++
++function Empty({ text }: { text: string }) {
++  return (
++    <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-6 text-center text-sm text-neutral-500">
++      {text}
++    </div>
++  );
++}
++
++export default async function CollectionPage() {
++  const user = await currentUser();
++  if (!user) redirect("/login");
++
++  const [collection, wishlist, alerts] = await Promise.all([
++    getMyCollection(),
++    getMyWishlist(),
++    getMyPriceAlerts(),
++  ]);
++
++  return (
++    <div className="space-y-10">
++      <header className="space-y-1">
++        <h1 className="text-2xl font-bold tracking-tight text-neutral-50">Koleksiyonum</h1>
++        <p className="text-sm text-neutral-500">
++          İşaretlediğin ciltler, istek listen ve fiyat alarmların.
++        </p>
++      </header>
++
++      <section className="space-y-3">
++        <h2 className="text-lg font-semibold text-neutral-100">
++          Koleksiyon <span className="text-sm font-normal text-neutral-500">({collection.length})</span>
++        </h2>
++        {collection.length === 0 ? (
++          <Empty text="Henüz işaretlediğin cilt yok — bir cildi açıp Sahibim / Eksik / İstediğim seç." />
++        ) : (
++          <div className="grid gap-3 sm:grid-cols-2">
++            {collection.map((item) => (
++              <Row key={item.volume_id} item={item}>
++                <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${STATUS_CHIP[item.status]}`}>
++                  {STATUS_LABEL[item.status]}
++                </span>
++              </Row>
++            ))}
++          </div>
++        )}
++      </section>
++
++      <section className="space-y-3">
++        <h2 className="text-lg font-semibold text-neutral-100">
++          İstek listesi <span className="text-sm font-normal text-neutral-500">({wishlist.length})</span>
++        </h2>
++        {wishlist.length === 0 ? (
++          <Empty text="İstek listen boş." />
++        ) : (
++          <div className="grid gap-3 sm:grid-cols-2">
++            {wishlist.map((item) => (
++              <Row key={item.volume_id} item={item}>
++                <span className="tabular-nums text-neutral-200">{formatPrice(item.best_price)}</span>
++              </Row>
++            ))}
++          </div>
++        )}
++      </section>
++
++      <section className="space-y-3">
++        <h2 className="text-lg font-semibold text-neutral-100">
++          Fiyat alarmları <span className="text-sm font-normal text-neutral-500">({alerts.length})</span>
++        </h2>
++        {alerts.length === 0 ? (
++          <Empty text="Kurulu fiyat alarmın yok." />
++        ) : (
++          <div className="grid gap-3 sm:grid-cols-2">
++            {alerts.map((item) => (
++              <Row key={item.volume_id} item={item}>
++                <span className="text-xs text-neutral-500">
++                  en ucuz {formatPrice(item.best_price)}
++                </span>
++                <span className={item.is_active ? "tabular-nums text-emerald-400" : "tabular-nums text-neutral-500"}>
++                  ≤ {formatPrice(item.threshold_price / 100)}
++                </span>
++              </Row>
++            ))}
++          </div>
++        )}
++      </section>
++    </div>
++  );
++}
+diff --git a/frontend/app/error.tsx b/frontend/app/error.tsx
+index 38e5eca..86597b5 100644
+--- a/frontend/app/error.tsx
++++ b/frontend/app/error.tsx
+@@ -18,7 +18,10 @@ export default function ErrorPage({
+       </p>
+       <h1 className="text-2xl font-bold text-neutral-50">Bir şeyler ters gitti</h1>
+       <p className="text-sm text-neutral-500">
+-        {error.message || "Beklenmedik bir hata oluştu."}
++        Sunucuya şu anda ulaşılamıyor olabilir. Birazdan tekrar deneyin.
++        {error.digest && (
++          <span className="mt-1 block text-xs text-neutral-600">Hata kodu: {error.digest}</span>
++        )}
+       </p>
+       <button
+         onClick={reset}
+diff --git a/frontend/app/global-error.tsx b/frontend/app/global-error.tsx
+new file mode 100644
+index 0000000..38d9340
+--- /dev/null
++++ b/frontend/app/global-error.tsx
+@@ -0,0 +1,56 @@
++"use client";
++
++/**
++ * Last-resort boundary for errors thrown by the root layout itself
++ * (app/error.tsx cannot catch those). Must render its own <html>/<body>.
++ */
++
++export default function GlobalError({
++  reset,
++}: {
++  error: Error & { digest?: string };
++  reset: () => void;
++}) {
++  return (
++    <html lang="tr">
++      <body
++        style={{
++          margin: 0,
++          minHeight: "100vh",
++          display: "flex",
++          alignItems: "center",
++          justifyContent: "center",
++          background: "#0a0a0a",
++          color: "#e5e5e5",
++          fontFamily: "system-ui, sans-serif",
++          textAlign: "center",
++          padding: "16px",
++        }}
++      >
++        <div>
++          <h1 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>
++            Yomiba şu anda yanıt vermiyor
++          </h1>
++          <p style={{ color: "#a3a3a3", fontSize: "0.875rem" }}>
++            Kısa süreli bir sorun olabilir. Birazdan tekrar deneyin.
++          </p>
++          <button
++            onClick={reset}
++            style={{
++              marginTop: "1rem",
++              background: "#f97316",
++              color: "#0a0a0a",
++              border: 0,
++              borderRadius: "8px",
++              padding: "8px 16px",
++              fontWeight: 600,
++              cursor: "pointer",
++            }}
++          >
++            Tekrar dene
++          </button>
++        </div>
++      </body>
++    </html>
++  );
++}
+diff --git a/frontend/app/layout.tsx b/frontend/app/layout.tsx
+index ef734cb..88a710f 100644
+--- a/frontend/app/layout.tsx
++++ b/frontend/app/layout.tsx
+@@ -2,7 +2,7 @@ import type { Metadata } from "next";
+ import Link from "next/link";
+ import { Geist } from "next/font/google";
+ import "./globals.css";
+-import { currentUser } from "@/services/auth";
++import { currentUserOrNull } from "@/services/auth";
+ import { LogoutButton } from "@/components/LogoutButton";
+ 
+ const geistSans = Geist({
+@@ -24,7 +24,7 @@ export default async function RootLayout({
+ }: Readonly<{
+   children: React.ReactNode;
+ }>) {
+-  const user = await currentUser();
++  const user = await currentUserOrNull();
+   return (
+     <html lang="tr">
+       <body className={`${geistSans.variable} font-sans antialiased`}>
+@@ -38,7 +38,7 @@ export default async function RootLayout({
+             </Link>
+             <span className="text-xs text-neutral-500">
+               {user?.role === "ADMIN" && <Link href="/admin" className="mr-3 hover:text-orange-400">Admin</Link>}
+-              {user ? <span className="space-x-3"><span>{user.display_name}</span><LogoutButton /></span> : <span className="space-x-3"><Link href="/login">Giriş Yap</Link><Link href="/register">Kayıt Ol</Link></span>}
++              {user ? <span className="space-x-3"><Link href="/collection" className="hover:text-orange-400">Koleksiyonum</Link><span>{user.display_name}</span><LogoutButton /></span> : <span className="space-x-3"><Link href="/login">Giriş Yap</Link><Link href="/register">Kayıt Ol</Link></span>}
+             </span>
+           </div>
+         </header>
+diff --git a/frontend/app/volume/[id]/page.tsx b/frontend/app/volume/[id]/page.tsx
+index 543c436..d8161a7 100644
+--- a/frontend/app/volume/[id]/page.tsx
++++ b/frontend/app/volume/[id]/page.tsx
+@@ -8,7 +8,8 @@ import { CollectionStatusPicker } from "@/components/CollectionStatusPicker";
+ import { WishlistToggle } from "@/components/WishlistToggle";
+ import { PriceAlertForm } from "@/components/PriceAlertForm";
+ import { ApiError } from "@/lib/api";
+-import { currentUser } from "@/services/auth";
++import { volumeLabel as labelFor } from "@/lib/volumeLabel";
++import { currentUserOrNull } from "@/services/auth";
+ import { getPriceAlert, getPriceHistory, getVolume, getWishlist } from "@/services/catalog";
+ import type { PriceAlert, PriceHistory, WishlistState } from "@/types";
+ 
+@@ -26,9 +27,7 @@ export async function generateMetadata({
+   if (!Number.isInteger(numId) || numId <= 0) return { title: "Cilt bulunamadı" };
+   try {
+     const detail = await getVolume(numId);
+-    const vol =
+-      detail.number === null ? "Kutu" : `Cilt ${detail.number}`;
+-    return { title: `${detail.series.title} ${vol}` };
++    return { title: `${detail.series.title} ${labelFor(detail.number)}` };
+   } catch {
+     return { title: "Cilt bulunamadı" };
+   }
+@@ -47,8 +46,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
+     throw e;
+   }
+ 
+-  const volumeLabel =
+-    detail.number === null || detail.number < 1 ? "Cilt numarası belirsiz" : `Cilt ${detail.number}`;
++  const volumeLabel = labelFor(detail.number);
+ 
+   // The API already returns listings sorted by price ascending (cheapest
+   // first, no-price last); the first priced listing is the cheapest.
+@@ -65,7 +63,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
+   const historyListings = (history?.listings ?? []).filter(
+     (l) => l.points.length > 0,
+   );
+-  const user = await currentUser();
++  const user = await currentUserOrNull();
+ 
+   // Wishlist / price-alert initial states (same graceful degradation).
+   let wishlist: WishlistState | null = null;
+@@ -150,9 +148,14 @@ export default async function VolumePage({ params }: VolumePageProps) {
+           </span>
+         </h2>
+ 
+-        {detail.stores.length === 0 ? (
++        {detail.unverified ? (
++          <div className="rounded-xl border border-amber-900/60 bg-amber-950/30 p-8 text-center text-sm text-amber-300/80">
++            Bu kaydın cilt numarası doğrulanamadı; eski mağaza fiyatları
++            güncel olmadığı için gösterilmiyor.
++          </div>
++        ) : detail.stores.length === 0 ? (
+           <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">
+-            Bu cilt için henüz mağaza listelmesi yok.
++            Bu cilt için henüz mağaza listelemesi yok.
+           </div>
+         ) : (
+           <div className="space-y-3">
+diff --git a/frontend/components/DropsSection.tsx b/frontend/components/DropsSection.tsx
+index 71045d7..62f9b3d 100644
+--- a/frontend/components/DropsSection.tsx
++++ b/frontend/components/DropsSection.tsx
+@@ -1,5 +1,6 @@
+ import Link from "next/link";
+ import { getJson } from "@/lib/api";
++import { volumeLabel } from "@/lib/volumeLabel";
+ 
+ /**
+  * DropsSection (server component): "Son indirimler" strip on the home page.
+@@ -14,7 +15,7 @@ interface Drop {
+   volume_id: number;
+   series_id: number;
+   series_title: string;
+-  volume_number: number | null; // Non-positive = unresolved volume number.
++  volume_number: number | null; // 0 is a real volume; negative = unresolved.
+   store_name: string;
+   old_price: number | null;
+   new_price: number | null;
+@@ -39,11 +40,6 @@ function timeAgo(iso: string): string {
+   return `${Math.round(h / 24)} gün önce`;
+ }
+ 
+-function volumeLabel(n: number | null): string {
+-  if (n === null || n < 1) return "Cilt numarası belirsiz";
+-  return `Cilt ${n}`;
+-}
+-
+ export async function DropsSection() {
+   let drops: Drop[] = [];
+   try {
+@@ -60,8 +56,9 @@ export async function DropsSection() {
+           🔥 Son indirimler
+         </h2>
+         <p className="mt-1.5 text-sm text-neutral-500">
+-          Son 24 saatte gözlenen fiyat düşüşü yok. Fiyatlar her aramanda ve
+-          24 saatte bir otomatik kontrol edilir; düşüş olursa burada görünecek.
++          Son 24 saatte gözlenen fiyat düşüşü yok. Fiyatlar düzenli olarak
++          (varsayılan 12 saatte bir) otomatik kontrol edilir; düşüş olursa
++          burada görünecek.
+         </p>
+       </section>
+     );
+diff --git a/frontend/components/PriceAlertForm.tsx b/frontend/components/PriceAlertForm.tsx
+index 53edf68..b86599f 100644
+--- a/frontend/components/PriceAlertForm.tsx
++++ b/frontend/components/PriceAlertForm.tsx
+@@ -33,12 +33,22 @@ export function PriceAlertForm({
+   const [pending, setPending] = useState(false);
+   const [error, setError] = useState<string | null>(null);
+ 
+-  /** Parse a user-entered TRY amount into integer cents (or null if invalid). */
++  /**
++   * Parse a user-entered TRY amount into integer cents (or null if invalid).
++   * Accepts Turkish formatting: "1.500,50" / "1.500" (dot = thousands) as
++   * well as "150,50" and "150.50".
++   */
+   function toCents(raw: string): number | null {
+-    const normalized = raw.trim().replace(",", ".");
+-    if (!normalized) return null;
+-    const value = Number.parseFloat(normalized);
+-    if (!Number.isFinite(value) || value <= 0) return null;
++    let text = raw.trim().replace(/\s|₺|TL/gi, "");
++    if (!text) return null;
++    if (text.includes(",")) {
++      text = text.replace(/\./g, "").replace(",", ".");
++    } else if (/^\d{1,3}(\.\d{3})+$/.test(text)) {
++      text = text.replace(/\./g, "");
++    }
++    if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
++    const value = Number(text);
++    if (!Number.isFinite(value) || value <= 0 || value > 10_000_000) return null;
+     return Math.round(value * 100);
+   }
+ 
+diff --git a/frontend/components/VolumeCard.tsx b/frontend/components/VolumeCard.tsx
+index b6e1a7d..c1c8baa 100644
+--- a/frontend/components/VolumeCard.tsx
++++ b/frontend/components/VolumeCard.tsx
+@@ -10,6 +10,7 @@
+ import Link from "next/link";
+ import type { CollectionStatus, SeriesVolume } from "@/types";
+ import { PriceBadge } from "@/components/PriceBadge";
++import { volumeLabel } from "@/lib/volumeLabel";
+ 
+ const STATUS_CHIP: Record<CollectionStatus, string> = {
+   owned: "bg-emerald-500/10 text-emerald-400",
+@@ -24,7 +25,7 @@ const STATUS_LABEL: Record<CollectionStatus, string> = {
+ };
+ 
+ export function VolumeCard({ volume }: { volume: SeriesVolume }) {
+-  const label = volume.number === null || volume.number < 1 ? "Cilt numarası belirsiz" : `Cilt ${volume.number}`;
++  const label = volumeLabel(volume.number);
+   const storeLabel =
+     volume.store_count === 0
+       ? "Henüz mağaza yok"
+diff --git a/frontend/lib/api.ts b/frontend/lib/api.ts
+index 28528b7..77d94a6 100644
+--- a/frontend/lib/api.ts
++++ b/frontend/lib/api.ts
+@@ -6,6 +6,8 @@
+  * - In server components, the backend is reached directly via BACKEND_URL.
+  */
+ 
++import { backendBaseUrl } from "@/lib/backendUrl";
++
+ export class ApiError extends Error {
+   constructor(
+     public readonly status: number,
+@@ -19,10 +21,27 @@ export class ApiError extends Error {
+ function apiBase(): string {
+   if (typeof window === "undefined") {
+     // Server component: talk to the backend directly.
+-    return process.env.BACKEND_URL || "http://127.0.0.1:8000";
++    return backendBaseUrl();
+   }
+   // Browser: same-origin, proxied by Next.js rewrites.
+-  return "/api";
++  return (process.env.NEXT_PUBLIC_API_BASE || "/api").replace(/\/+$/, "");
++}
++
++/** Turn a FastAPI error body into one readable message. 422 validation
++ * errors carry a list of `{loc, msg}` objects, not a string. */
++function errorDetail(detail: unknown, fallback: string): string {
++  if (typeof detail === "string") return detail;
++  if (Array.isArray(detail)) {
++    const messages = detail
++      .map((item) =>
++        item && typeof item === "object" && "msg" in item
++          ? String((item as { msg: unknown }).msg)
++          : "",
++      )
++      .filter(Boolean);
++    if (messages.length > 0) return messages.join(" ");
++  }
++  return fallback;
+ }
+ 
+ async function request<T>(
+@@ -47,8 +66,7 @@ async function request<T>(
+     try {
+       const body: unknown = await res.json();
+       if (body && typeof body === "object" && "detail" in body) {
+-        const d = (body as { detail: unknown }).detail;
+-        detail = typeof d === "string" ? d : JSON.stringify(d);
++        detail = errorDetail((body as { detail: unknown }).detail, detail);
+       }
+     } catch {
+       // Non-JSON error body; keep the default detail.
+diff --git a/frontend/lib/backendUrl.ts b/frontend/lib/backendUrl.ts
+new file mode 100644
+index 0000000..65285b7
+--- /dev/null
++++ b/frontend/lib/backendUrl.ts
+@@ -0,0 +1,10 @@
++/**
++ * Backend base URL for server-side requests and the `/api` rewrite.
++ *
++ * Trailing slashes are removed so `${base}${path}` never produces `//path`
++ * (FastAPI answers `//auth/me` with 404, which used to break every page).
++ */
++export function backendBaseUrl(): string {
++  const raw = process.env.BACKEND_URL || "http://127.0.0.1:8000";
++  return raw.trim().replace(/\/+$/, "");
++}
+diff --git a/frontend/lib/volumeLabel.ts b/frontend/lib/volumeLabel.ts
+new file mode 100644
+index 0000000..0291806
+--- /dev/null
++++ b/frontend/lib/volumeLabel.ts
+@@ -0,0 +1,13 @@
++/**
++ * Human label for a volume number.
++ *
++ * `0` is a real volume (e.g. "Jujutsu Kaisen 0"). Only `null` — or a
++ * negative legacy sentinel, should one ever reach the client — means the
++ * number is unknown.
++ */
++export function volumeLabel(number: number | null | undefined): string {
++  if (number === null || number === undefined || number < 0) {
++    return "Cilt numarası belirsiz";
++  }
++  return `Cilt ${number}`;
++}
+diff --git a/frontend/next.config.ts b/frontend/next.config.ts
+index d0eab35..3e066e2 100644
+--- a/frontend/next.config.ts
++++ b/frontend/next.config.ts
+@@ -31,7 +31,10 @@ const nextConfig: NextConfig = {
+   // preview origin so client components (search, etc.) stay functional.
+   allowedDevOrigins,
+   async rewrites() {
+-    const backend = process.env.BACKEND_URL || "http://127.0.0.1:8000";
++    // Trailing slash stripped: "https://api.example/" must not yield "//path".
++    const backend = (process.env.BACKEND_URL || "http://127.0.0.1:8000")
++      .trim()
++      .replace(/\/+$/, "");
+     return [
+       {
+         source: "/api/:path*",
+diff --git a/frontend/pnpm-workspace.yaml b/frontend/pnpm-workspace.yaml
+index 5d7e631..30d1c6d 100644
+--- a/frontend/pnpm-workspace.yaml
++++ b/frontend/pnpm-workspace.yaml
+@@ -1,2 +1,2 @@
+ allowBuilds:
+-  unrs-resolver: set this to true or false
++  unrs-resolver: false
+diff --git a/frontend/services/auth.ts b/frontend/services/auth.ts
+index adb38b3..97d3c09 100644
+--- a/frontend/services/auth.ts
++++ b/frontend/services/auth.ts
+@@ -13,6 +13,20 @@ export const login = (email: string, password: string) =>
+ export const register = (email: string, password: string, display_name: string) =>
+   postJson<CurrentUser>("/auth/register", { email, password, display_name });
+ 
++/**
++ * Current user for chrome (header) rendering. Never throws: when the backend
++ * is unreachable or answers with an unexpected error, the page renders as
++ * logged out instead of the whole site failing with a 500.
++ */
++export async function currentUserOrNull(): Promise<CurrentUser | null> {
++  try {
++    return await currentUser();
++  } catch (error) {
++    console.error("currentUser failed; rendering as anonymous", error);
++    return null;
++  }
++}
++
+ export async function currentUser(): Promise<CurrentUser | null> {
+   try {
+     return await getMe();
+diff --git a/frontend/services/me.ts b/frontend/services/me.ts
+new file mode 100644
+index 0000000..b3aa1ef
+--- /dev/null
++++ b/frontend/services/me.ts
+@@ -0,0 +1,6 @@
++import { getJson } from "@/lib/api";
++import type { MyCollectionItem, MyPriceAlert, MyWishlistItem } from "@/types";
++
++export const getMyCollection = () => getJson<MyCollectionItem[]>("/me/collection");
++export const getMyWishlist = () => getJson<MyWishlistItem[]>("/me/wishlist");
++export const getMyPriceAlerts = () => getJson<MyPriceAlert[]>("/me/price-alerts");
+diff --git a/frontend/types/index.ts b/frontend/types/index.ts
+index 7939f1b..1e91fd4 100644
+--- a/frontend/types/index.ts
++++ b/frontend/types/index.ts
+@@ -73,6 +73,8 @@ export interface VolumeDetail {
+   stores: VolumeStore[];
+   /** Collection status; null when the volume is not tracked. */
+   collection_status: CollectionStatus | null;
++  /** Legacy unresolved store volume; its old store prices are withheld. */
++  unverified?: boolean;
+ }
+ 
+ export interface WishlistState {
+@@ -197,3 +199,33 @@ export interface PriceRefreshStatus {
+   last_successful_refresh: string | null;
+   next_scheduled_refresh: string | null;
+ }
++
++// ---------------------------------------------------------------------------
++// Signed-in user's own lists (GET /me/*)
++// ---------------------------------------------------------------------------
++export interface MyVolume {
++  volume_id: number;
++  /** 0 is a real volume; null = unknown number. */
++  volume_number: number | null;
++  series_id: number;
++  series_title: string;
++  publisher: string;
++  cover_url: string | null;
++  best_price: number | null;
++}
++
++export interface MyCollectionItem extends MyVolume {
++  status: CollectionStatus;
++  updated_at: string;
++}
++
++export interface MyWishlistItem extends MyVolume {
++  added_at: string;
++}
++
++export interface MyPriceAlert extends MyVolume {
++  /** Threshold in CENTS. */
++  threshold_price: number;
++  is_active: boolean;
++  updated_at: string;
++}

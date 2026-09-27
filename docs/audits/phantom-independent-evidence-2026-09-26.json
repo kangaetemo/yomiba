@@ -1,0 +1,627 @@
+{
+  "2336": {
+    "target_id": 96,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/sayonara-eri",
+    "products": [
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/elveda-eri",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/elveda-eri",
+        "title": "Elveda Eri",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786258237559",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 208,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapsec.com/Products/Elveda-Eri-Gerekli-Seyler-Yayincilik-848850.html",
+        "source_url": "https://www.kitapsec.com/Products/Elveda-Eri-Gerekli-Seyler-Yayincilik-848850.html",
+        "title": "Elveda Eri",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786258237559",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 208,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://bkmkitap.com/elveda-eri",
+        "source_url": "https://bkmkitap.com/elveda-eri",
+        "title": "Elveda Eri",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786258237559",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 208,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapsepeti.com/elveda-eri",
+        "source_url": "https://www.kitapsepeti.com/elveda-eri",
+        "title": "Elveda Eri",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786258237559",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 208,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapbulan.com/elveda-eri",
+        "source_url": "https://www.kitapbulan.com/elveda-eri",
+        "title": "Elveda Eri",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786258237559",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 208,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge."
+  },
+  "2338": {
+    "target_id": 145,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/look-back",
+    "products": [
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/look-back-1",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/look-back-1",
+        "title": "Look Back",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786256031302",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 148,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapsec.com/Products/Look-Back-Gerekli-Seyler-Yayincilik-898788.html",
+        "source_url": "https://www.kitapsec.com/Products/Look-Back-Gerekli-Seyler-Yayincilik-898788.html",
+        "title": "Look Back",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786256031302",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 148,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://bkmkitap.com/look-back",
+        "source_url": "https://bkmkitap.com/look-back",
+        "title": "Look Back",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786256031302",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 148,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapsepeti.com/look-back",
+        "source_url": "https://www.kitapsepeti.com/look-back",
+        "title": "Look Back",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786256031302",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 148,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapbulan.com/look-back",
+        "source_url": "https://www.kitapbulan.com/look-back",
+        "title": "Look Back",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786256031302",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 148,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge."
+  },
+  "2359": {
+    "target_id": 1156,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/nijigahara-holograph",
+    "products": [
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/nijigahara-holograf",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/nijigahara-holograf",
+        "title": "Nijigahara Holograf",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786257590594",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 296,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapsec.com/Products/Nijigahara-Holograf-Gerekli-Seyler-Yayincilik-742720.html",
+        "source_url": "https://www.kitapsec.com/Products/Nijigahara-Holograf-Gerekli-Seyler-Yayincilik-742720.html",
+        "title": "Nijigahara Holograf",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786257590594",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 296,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapbulan.com/nijigahara-holograf",
+        "source_url": "https://www.kitapbulan.com/nijigahara-holograf",
+        "title": "Nijigahara Holograf",
+        "publisher": "Gerekli Şeyler",
+        "isbn": "9786257590594",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 296,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge."
+  },
+  "2375": {
+    "target_id": 1263,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/humanitas",
+    "products": [
+      {
+        "product_url": "https://bkmkitap.com/humanitas",
+        "source_url": "https://bkmkitap.com/humanitas",
+        "title": "Humanitas",
+        "publisher": "Athica",
+        "isbn": "9786259961347",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 256,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapsepeti.com/humanitas",
+        "source_url": "https://www.kitapsepeti.com/humanitas",
+        "title": "Humanitas",
+        "publisher": "Athica",
+        "isbn": "9786259961347",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 256,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapbulan.com/humanitas",
+        "source_url": "https://www.kitapbulan.com/humanitas",
+        "title": "Humanitas",
+        "publisher": "Athica",
+        "isbn": "9786259961347",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 256,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/humanitas",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/humanitas",
+        "title": "Humanitas",
+        "publisher": "Athica",
+        "isbn": "9786259961347",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 256,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge."
+  },
+  "2397": {
+    "target_id": 1334,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/black-paradox",
+    "products": [
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/kara-paradoks",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/kara-paradoks",
+        "title": "Kara Paradoks",
+        "publisher": "Kayıp Kıta",
+        "isbn": "9786259324074",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 244,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapsec.com/Products/Kara-Paradoks-Kayip-Kita-Yayinlari-942168.html",
+        "source_url": "https://www.kitapsec.com/Products/Kara-Paradoks-Kayip-Kita-Yayinlari-942168.html",
+        "title": "Kara Paradoks",
+        "publisher": "Kayıp Kıta",
+        "isbn": "9786259324074",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 244,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://bkmkitap.com/kara-paradoks",
+        "source_url": "https://bkmkitap.com/kara-paradoks",
+        "title": "Kara Paradoks",
+        "publisher": "Kayıp Kıta",
+        "isbn": "9786259324074",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 244,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapsepeti.com/kara-paradoks-575892",
+        "source_url": "https://www.kitapsepeti.com/kara-paradoks-575892",
+        "title": "Kara Paradoks",
+        "publisher": "Kayıp Kıta",
+        "isbn": "9786259324074",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 244,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapbulan.com/kara-paradoks",
+        "source_url": "https://www.kitapbulan.com/kara-paradoks",
+        "title": "Kara Paradoks",
+        "publisher": "Kayıp Kıta",
+        "isbn": "9786259324074",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 244,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge."
+  },
+  "2418": {
+    "target_id": 1442,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/one-room-angel",
+    "products": [
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/one-room-angel",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/one-room-angel",
+        "title": "One Room Angel",
+        "publisher": "Komik Şeyler",
+        "isbn": "9786256449282",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 240,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://komikseyler.com.tr/urun/one-room-angel/",
+        "source_url": "https://komikseyler.com.tr/urun/one-room-angel/",
+        "title": "One Room Angel",
+        "publisher": "Komik Şeyler",
+        "isbn": "9786256449282",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 240,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge."
+  },
+  "2419": {
+    "target_id": 1446,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/kotonoha-no-niwa",
+    "products": [
+      {
+        "product_url": "https://bkmkitap.com/kelimeler-bahcesi",
+        "source_url": "https://bkmkitap.com/kelimeler-bahcesi",
+        "title": "Kelimeler Bahçesi",
+        "publisher": "Satori",
+        "isbn": "9786058033412",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 200,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapsepeti.com/kelimeler-bahcesi",
+        "source_url": "https://www.kitapsepeti.com/kelimeler-bahcesi",
+        "title": "Kelimeler Bahçesi",
+        "publisher": "Satori",
+        "isbn": "9786058033412",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 200,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/kelimeler-bahcesi",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/kelimeler-bahcesi",
+        "title": "Kelimeler Bahçesi",
+        "publisher": "Satori",
+        "isbn": "9786058033412",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 200,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge."
+  },
+  "2420": {
+    "target_id": 1460,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/bus-hashiru",
+    "products": [
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/tadimlik-otobus-hikayeleri",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/tadimlik-otobus-hikayeleri",
+        "title": "Tadımlık Otobüs Hikayeleri",
+        "publisher": "Komik Şeyler",
+        "isbn": "9786057111593",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 176,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://komikseyler.com.tr/urun/tadimlik-otobus-hikayeleri/",
+        "source_url": "https://komikseyler.com.tr/urun/tadimlik-otobus-hikayeleri/",
+        "title": "Tadımlık Otobüs Hikayeleri",
+        "publisher": "Komik Şeyler",
+        "isbn": "9786057111593",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 176,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://bkmkitap.com/tadimlik-otobus-hikayeleri",
+        "source_url": "https://bkmkitap.com/tadimlik-otobus-hikayeleri",
+        "title": "Tadımlık Otobüs Hikayeleri",
+        "publisher": "Komik Şeyler",
+        "isbn": "9786057111593",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 176,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge."
+  },
+  "2422": {
+    "target_id": 1496,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/scientia",
+    "products": [
+      {
+        "product_url": "https://www.kitapsec.com/Products/Scientia-Ithaki-Yayinlari-947278.html",
+        "source_url": "https://www.kitapsec.com/Products/Scientia-Ithaki-Yayinlari-947278.html",
+        "title": "Scientia",
+        "publisher": "İthaki",
+        "isbn": "9786052656051",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 256,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://bkmkitap.com/scientia",
+        "source_url": "https://bkmkitap.com/scientia",
+        "title": "Scientia",
+        "publisher": "İthaki",
+        "isbn": "9786052656051",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 256,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge.",
+    "additional_sources": [
+      "https://www.ithakiyayingrubu.com/scientia"
+    ]
+  },
+  "2428": {
+    "target_id": 1800,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/monotone-blue",
+    "products": [
+      {
+        "product_url": "https://bkmkitap.com/monotone-blue",
+        "source_url": "https://bkmkitap.com/monotone-blue",
+        "title": "Monotone Blue",
+        "publisher": "Beta Byou",
+        "isbn": "9786254239946",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 232,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapsepeti.com/monotone-blue",
+        "source_url": "https://www.kitapsepeti.com/monotone-blue",
+        "title": "Monotone Blue",
+        "publisher": "Beta Byou",
+        "isbn": "9786254239946",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 232,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.kitapbulan.com/monotone-blue",
+        "source_url": "https://www.kitapbulan.com/monotone-blue",
+        "title": "Monotone Blue",
+        "publisher": "Beta Byou",
+        "isbn": "9786254239946",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 232,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      },
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/monotone-blue",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/monotone-blue",
+        "title": "Monotone Blue",
+        "publisher": "Beta Byou",
+        "isbn": "9786254239946",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 232,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge.",
+    "review_note": "Catalog title is Monoton Blue; product title is Monotone Blue, also the catalog original title. Identity corroborated, but do not falsify the product title to bypass the existing exact-title planner. Keep its actual verdict."
+  },
+  "2451": {
+    "target_id": 2245,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/kyousantou-sengen",
+    "products": [
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/komunist-manifesto",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/komunist-manifesto",
+        "title": "Komünist Manifesto",
+        "publisher": "Kırmızı Kedi",
+        "isbn": "9786254180835",
+        "isbn_verified": true,
+        "edition_verified": false,
+        "conflicts": [
+          "publisher_edition_conflict:catalog_Yordam_product_Kirmizi_Kedi"
+        ],
+        "observed_at": "2026-09-26",
+        "observed_pages": 80,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [
+      "publisher_edition_conflict:catalog_Yordam_product_Kirmizi_Kedi"
+    ],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge.",
+    "additional_sources": [
+      "https://www.kirmizikedi.com/komunist-manifesto-p-6341"
+    ]
+  },
+  "2452": {
+    "target_id": 2276,
+    "catalog_confirmed": true,
+    "catalog_source_url": "https://mangakol.com/manga/kuma-to-karasu",
+    "products": [
+      {
+        "product_url": "https://www.gerekliseyler.com.tr/urun/karga-ve-ayi",
+        "source_url": "https://www.gerekliseyler.com.tr/urun/karga-ve-ayi",
+        "title": "Karga İle Ayı",
+        "publisher": "Baobab",
+        "isbn": "9786259617572",
+        "isbn_verified": true,
+        "edition_verified": true,
+        "conflicts": [],
+        "observed_at": "2026-09-26",
+        "observed_pages": 184,
+        "observation_note": "Semantic book title excludes the retailer's appended publisher label; ISBN and publisher were inspected separately. Page counts are corroboration across the inspected sources, not an assertion that every page displayed them."
+      }
+    ],
+    "conflicts": [],
+    "reviewed_at": "2026-09-26",
+    "decision_scope": "Read-only candidate classification; never permission to merge."
+  }
+}

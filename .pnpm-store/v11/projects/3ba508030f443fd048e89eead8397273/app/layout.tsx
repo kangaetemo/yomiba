@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Geist } from "next/font/google";
 import "./globals.css";
-import { currentUser } from "@/services/auth";
+import { currentUserOrNull } from "@/services/auth";
 import { LogoutButton } from "@/components/LogoutButton";
 
 const geistSans = Geist({
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     template: "%s | Yomiba",
   },
   description:
-    "Manga fiyatlarını Türk mağazaları (Amazon, BKM Kitap, D&R ve diğerleri) arasında karşılaştırın ve koleksiyonunuzu takip edin.",
+    "Manga fiyatlarını Türk mağazaları (BKM Kitap, Gerekli Şeyler, Kitap Sepeti ve diğerleri) arasında karşılaştırın ve koleksiyonunuzu takip edin.",
 };
 
 export default async function RootLayout({
@@ -24,7 +24,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const user = await currentUser();
+  const user = await currentUserOrNull();
   return (
     <html lang="tr">
       <body className={`${geistSans.variable} font-sans antialiased`}>
@@ -38,7 +38,7 @@ export default async function RootLayout({
             </Link>
             <span className="text-xs text-neutral-500">
               {user?.role === "ADMIN" && <Link href="/admin" className="mr-3 hover:text-orange-400">Admin</Link>}
-              {user ? <span className="space-x-3"><span>{user.display_name}</span><LogoutButton /></span> : <span className="space-x-3"><Link href="/login">Giriş Yap</Link><Link href="/register">Kayıt Ol</Link></span>}
+              {user ? <span className="space-x-3"><Link href="/collection" className="hover:text-orange-400">Koleksiyonum</Link><span>{user.display_name}</span><LogoutButton /></span> : <span className="space-x-3"><Link href="/login">Giriş Yap</Link><Link href="/register">Kayıt Ol</Link></span>}
             </span>
           </div>
         </header>

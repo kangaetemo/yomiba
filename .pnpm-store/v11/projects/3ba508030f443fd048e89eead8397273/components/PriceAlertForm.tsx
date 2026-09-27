@@ -33,12 +33,22 @@ export function PriceAlertForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /** Parse a user-entered TRY amount into integer cents (or null if invalid). */
+  /**
+   * Parse a user-entered TRY amount into integer cents (or null if invalid).
+   * Accepts Turkish formatting: "1.500,50" / "1.500" (dot = thousands) as
+   * well as "150,50" and "150.50".
+   */
   function toCents(raw: string): number | null {
-    const normalized = raw.trim().replace(",", ".");
-    if (!normalized) return null;
-    const value = Number.parseFloat(normalized);
-    if (!Number.isFinite(value) || value <= 0) return null;
+    let text = raw.trim().replace(/\s|₺|TL/gi, "");
+    if (!text) return null;
+    if (text.includes(",")) {
+      text = text.replace(/\./g, "").replace(",", ".");
+    } else if (/^\d{1,3}(\.\d{3})+$/.test(text)) {
+      text = text.replace(/\./g, "");
+    }
+    if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
+    const value = Number(text);
+    if (!Number.isFinite(value) || value <= 0 || value > 10_000_000) return null;
     return Math.round(value * 100);
   }
 

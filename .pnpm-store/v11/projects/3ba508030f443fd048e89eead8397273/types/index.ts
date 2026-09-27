@@ -73,6 +73,8 @@ export interface VolumeDetail {
   stores: VolumeStore[];
   /** Collection status; null when the volume is not tracked. */
   collection_status: CollectionStatus | null;
+  /** Legacy unresolved store volume; its old store prices are withheld. */
+  unverified?: boolean;
 }
 
 export interface WishlistState {
@@ -196,4 +198,34 @@ export interface PriceRefreshStatus {
   last_cycle_completed_at: string | null;
   last_successful_refresh: string | null;
   next_scheduled_refresh: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Signed-in user's own lists (GET /me/*)
+// ---------------------------------------------------------------------------
+export interface MyVolume {
+  volume_id: number;
+  /** 0 is a real volume; null = unknown number. */
+  volume_number: number | null;
+  series_id: number;
+  series_title: string;
+  publisher: string;
+  cover_url: string | null;
+  best_price: number | null;
+}
+
+export interface MyCollectionItem extends MyVolume {
+  status: CollectionStatus;
+  updated_at: string;
+}
+
+export interface MyWishlistItem extends MyVolume {
+  added_at: string;
+}
+
+export interface MyPriceAlert extends MyVolume {
+  /** Threshold in CENTS. */
+  threshold_price: number;
+  is_active: boolean;
+  updated_at: string;
 }
