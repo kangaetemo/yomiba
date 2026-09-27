@@ -72,7 +72,10 @@ class VolumeParseResult:
 def _is_volume_range(text: str) -> bool:
     for match in _RANGE_RE.finditer(text):
         first, second = int(match.group(1)), int(match.group(2))
-        if first <= _MAX_VOLUME and second <= _MAX_VOLUME:
+        # A range goes up ("1-5"). "8 - 8" is not a box set: it is how
+        # "Kaiju No: 8 - 8 No'lu Canavar" spells its own title, and treating
+        # it as a range made every scraper drop the whole series.
+        if first < second <= _MAX_VOLUME:
             return True
     return False
 

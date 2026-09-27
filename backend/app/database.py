@@ -149,7 +149,12 @@ def init_db() -> None:
     from .readiness import expected_revision
 
     if os.getenv("AUTO_MIGRATION_BACKUP", "1").strip().lower() not in {"0", "false", "no", "off"}:
-        backup_before_migration(get_settings().database_url, expected_revision())
+        # Resolve the URL exactly like alembic/env.py does (config module
+        # attribute at call time), so the backup always targets the database
+        # Alembic is about to migrate — never a different default file.
+        from . import config as _config
+
+        backup_before_migration(_config.get_settings().database_url, expected_revision())
 
     from alembic import command
     from alembic.config import Config

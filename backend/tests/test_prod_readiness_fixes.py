@@ -157,7 +157,7 @@ def test_m3_catalog_titles_with_numbers_match(db_session, import_service, catalo
 @pytest.mark.parametrize("product,reason", [
     ("Kaiju No: 8 - 8 No'lu Canavar 1-3 Kutu Set", "box_set"),
     ("Kaiju No: 8 - 8 No'lu Canavar 9", "volume_not_found"),
-    ("Kaiju No: 8 - 8 No'lu Canavar Artbook", "box_set"),
+    ("Kaiju No: 8 - 8 No'lu Canavar Artbook", "publisher_conflict"),
     ("Kaiju No: 8 - 8 No'lu Canavar", "no_volume_number"),
 ])
 def test_m3_prefix_fallback_stays_strict(db_session, import_service, product, reason):
@@ -443,3 +443,67 @@ def test_m3_collection_word_inside_catalog_title(db_session, import_service):
     assert import_service.import_result(make_result("bkm", "Mavi Kutu 4", "100", publisher="Yayinci")) == ImportAction.CREATED
     assert import_service.import_result(make_result("bkm", "Mavi Kutu 1-3 Set", "100", publisher="Yayinci")) == ImportAction.SKIPPED
     assert import_service.last_reason == "box_set"
+
+
+def test_m7_backup_targets_the_database_alembic_migrates(monkeypatch, tmp_path):
+    """Regression: the backup must follow the URL Alembic uses (config
+    module), never another default file such as backend/yomiba.db."""
+    import sqlite3
+    from dataclasses import replace
+
+    from app import config as config_mod, database
+
+    def old_db(path):
+        with sqlite3.connect(path) as c:
+            c.execute("CREATE TABLE alembic_version(version_num TEXT)")
+            c.execute("INSERT INTO alembic_version VALUES ('0004_catalog_exclusion')")
+
+    target, bystander = tmp_path / "target.db", tmp_path / "bystander.db"
+    old_db(bystander)
+    target.touch()  # empty: Alembic creates the schema, no backup needed
+    migrate = replace(config_mod.get_settings(), database_url=f"sqlite:///{target}", app_env="development")
+    other = replace(config_mod.get_settings(), database_url=f"sqlite:///{bystander}", app_env="development")
+    monkeypatch.setattr(config_mod, "get_settings", lambda: migrate)
+    monkeypatch.setattr(database, "get_settings", lambda: other)
+    database.init_db()
+    assert list(tmp_path.glob("*.bak")) == []
+
+
+# ------------------------------------ BKM real titles (2026-09-27 staging) ---
+def test_kaiju_real_bkm_titles_survive_scraper_and_match(db_session, import_service):
+    """Real BKM titles use a curly apostrophe and "8 - 8" (not a range)."""
+    from app.normalization import parse_volume_title
+
+    seed_catalog_series(db_session, "Kaiju No: 8 - 8 No'lu Canavar", "Kurukafa", volumes=range(1, 9))
+    for title, number in [("Kaiju No: 8 - 8 No\u2019lu Canavar 6", 6), ("Kaiju No: 8 - 8 No`lu Canavar 7", 7)]:
+        assert not parse_volume_title(title).is_collection  # scrapers drop collections
+        assert import_service.import_result(make_result("bkm", title, "160", publisher="Kurukafa")) == ImportAction.CREATED
+        db_session.commit()
+    nums = sorted(l.volume.volume_number for l in db_session.scalars(select(StoreListing)))
+    assert nums == [6, 7]
+
+
+@pytest.mark.parametrize("holder_title,holder_number,expected", [
+    ("One Piece", 55, ImportAction.CREATED),   # legacy same-work duplicate
+    ("One Piece", -1, ImportAction.CREATED),
+    ("One Piece", 12, ImportAction.SKIPPED),   # ISBN says another volume
+    ("Outside", 55, ImportAction.SKIPPED),     # ISBN belongs to another work
+])
+def test_isbn_on_legacy_non_catalog_duplicate(db_session, import_service, holder_title, holder_number, expected):
+    from sqlalchemy import delete
+    from app.models import CatalogSeries
+
+    catalog = seed_catalog_series(db_session, "One Piece", "Gerekli Şeyler", volumes=range(1, 63))
+    legacy = seed_catalog_series(db_session, holder_title, "Gerekli Şeyler Yayıncılık", volumes=(holder_number,))
+    legacy.volumes[0].isbn = "9786256031791"
+    db_session.execute(delete(CatalogSeries).where(CatalogSeries.series_id == legacy.id))
+    db_session.commit()
+    result = make_result("bkm", "One Piece 55. Cilt", "180", isbn="9786256031791", publisher="Gerekli Şeyler")
+    assert import_service.import_result(result) == expected
+    db_session.commit()
+    listing = db_session.scalar(select(StoreListing))
+    if expected is ImportAction.CREATED:
+        assert listing.volume.series_id == catalog.id and listing.volume.volume_number == 55
+        assert listing.volume.isbn is None  # ISBN stays on the legacy row
+    else:
+        assert listing is None and import_service.last_reason == "non_catalog_volume"

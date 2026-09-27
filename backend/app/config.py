@@ -169,6 +169,17 @@ class Settings:
     )
     #: Minimum gap between two HTTP requests of one scraper instance
     #: (per-store rate limit; stores never wait for each other).
+    # Stores that block the production host (Amazon: HTTP 503 robot check,
+    # D&R: HTTP 403, Cizman: Cloudflare 403 — see RAILWAY_STAGING.md) are
+    # not scraped by scheduled/background imports. Comma-separated store ids;
+    # set DISABLED_STORES="" to re-enable all. Explicitly requested store ids
+    # (get_scrapers(["cizman"])) still run, e.g. for a manual probe.
+    disabled_stores: tuple[str, ...] = tuple(
+        s.strip().lower()
+        for s in os.getenv("DISABLED_STORES", "amazon,dr,cizman").split(",")
+        if s.strip()
+    )
+
     scraper_min_request_interval_seconds: float = float(
         os.getenv("SCRAPER_MIN_REQUEST_INTERVAL_SECONDS", "0.5")
     )

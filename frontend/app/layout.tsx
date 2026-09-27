@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     template: "%s | Yomiba",
   },
   description:
-    "Manga fiyatlarını Türk mağazaları (Amazon, BKM Kitap, D&R ve diğerleri) arasında karşılaştırın ve koleksiyonunuzu takip edin.",
+    "Manga fiyatlarını Türk mağazaları (BKM Kitap, Gerekli Şeyler, Kitap Sepeti ve diğerleri) arasında karşılaştırın ve koleksiyonunuzu takip edin.",
 };
 
 export default async function RootLayout({

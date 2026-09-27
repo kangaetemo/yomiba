@@ -18,6 +18,7 @@ from .kitapsec import KitapsecScraper
 from .kitapsepeti import KitapsepetiScraper
 from .komikseyler import KomikseylerScraper
 from .base import BaseScraper
+from ..config import get_settings
 
 #: store_id -> scraper class
 _SCRAPERS: dict[str, type[BaseScraper]] = {
@@ -41,14 +42,23 @@ def registered_scrapers() -> dict[str, type[BaseScraper]]:
     return dict(_SCRAPERS)
 
 
+def enabled_store_ids() -> list[str]:
+    """Registered stores minus ``settings.disabled_stores`` (in order)."""
+    disabled = set(get_settings().disabled_stores)
+    return [sid for sid in _SCRAPERS if sid not in disabled]
+
+
 def get_scrapers(store_ids: list[str] | None = None) -> list[BaseScraper]:
     """Instantiate scrapers, optionally restricted to ``store_ids``.
 
-    Unknown ids are ignored (never raise), so a stale config can't take the
-    import down.
+    Without ``store_ids`` only ENABLED stores run (``DISABLED_STORES`` is
+    skipped: stores that block the production host would only add a
+    guaranteed failure to every import). Explicit ``store_ids`` are honoured
+    as given. Unknown ids are ignored (never raise), so a stale config can't
+    take the import down.
     """
     if store_ids is None:
-        classes = list(_SCRAPERS.values())
+        classes = [_SCRAPERS[sid] for sid in enabled_store_ids()]
     else:
         wanted = set(store_ids)
         classes = [_SCRAPERS[sid] for sid in _SCRAPERS if sid in wanted]

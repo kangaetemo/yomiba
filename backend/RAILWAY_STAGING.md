@@ -46,6 +46,7 @@ Production's pre-existing-file rule remains unchanged.
 | `CATALOG_SYNC_INTERVAL_HOURS` | Catalog cycle interval | No | `24` (default) |
 | `PRICE_REFRESH_ENABLED` | Price scheduler | Yes for first smoke | `0`, later deliberate `1` |
 | `PRICE_REFRESH_INTERVAL_HOURS` | Price cycle interval | No | `12` (default) |
+| `DISABLED_STORES` | Stores skipped by imports (block the Railway host: Amazon 503, D&R 403, Cizman Cloudflare 403) | No | `amazon,dr,cizman` (default); empty = all stores |
 | `PRICE_REFRESH_STARTUP_DELAY_MINUTES` | Settle delay before a catch-up cycle after restart | No | `10` (default) |
 | `LISTING_PRODUCT_SWITCH_HOURS` | Hours before a listing may switch to another product of the same store | No | `48` (default) |
 | `IMPORT_MAX_CONCURRENT_JOBS` | Import worker count | No | `2` (default) |

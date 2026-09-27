@@ -284,6 +284,9 @@ class ImportService:
         rolls back as usual.
         """
         self.last_reason = None
+        #: Non-catalog volume that holds this result's ISBN (legacy store
+        #: data); resolution may continue only for the SAME work.
+        self._non_catalog_holder = None
         title = (result.title or "").strip()
         if not title or not result.product_url:
             return self._reject("invalid_result")
@@ -325,13 +328,22 @@ class ImportService:
             volume = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
             if volume is not None:
                 if not self._series_is_catalog(volume.series_id):
+                    # Legacy store-created (non-catalog) row holds the ISBN.
+                    # A DIFFERENT work stays rejected (the ISBN proves the
+                    # product is that work). A same-title duplicate — e.g. the
+                    # pre-catalog importer's own "One Piece" series next to
+                    # the Mangakol catalog "One Piece" — must not starve the
+                    # catalog edition: resolve by title/number below and
+                    # verify it is the same work before importing. The ISBN
+                    # is never moved (unique).
                     logger.info(
-                        "import: skipping %r — ISBN %s resolves outside the catalog",
-                        title,
-                        isbn,
+                        "import: ISBN %s is held by non-catalog volume %s; "
+                        "resolving %r by title (same work only)",
+                        isbn, volume.id, title,
                     )
-                    return self._reject("non_catalog_volume")
-                if volume.volume_number < 0:
+                    self._non_catalog_holder = volume
+                    isbn = None
+                elif volume.volume_number < 0:
                     # Legacy phantom (old import bug) still holds this ISBN.
                     # It is not a catalog identity: never attach to it, and
                     # never move/copy the ISBN (unique). Resolve the product
@@ -369,6 +381,8 @@ class ImportService:
             else:
                 series = self._resolve_series_no_publisher(shorter)
         if series is None:
+            if self._non_catalog_holder is not None:
+                return self._reject("non_catalog_volume")
             if parsed.evidence in {"numeric_metadata", "ambiguous_numbers"}:
                 reason = "ambiguous_volume"
             else:
@@ -378,6 +392,8 @@ class ImportService:
             return self._reject("ambiguous_volume")
         if parsed.evidence in {"numeric_metadata", "ambiguous_numbers"}:
             return self._reject("ambiguous_volume")
+        if not self._same_work_as_holder(series, volume_number):
+            return self._reject("non_catalog_volume")
         volume = self._resolve_volume(series, isbn, volume_number, result)
         if volume is None:
             return None
@@ -415,9 +431,12 @@ class ImportService:
         if isbn:
             holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
             if holder is not None and not self._series_is_catalog(holder.series_id):
-                return self._reject("non_catalog_volume")
-            if holder is not None and holder.volume_number < 0:
+                self._non_catalog_holder = holder
+                isbn = None
+            elif holder is not None and holder.volume_number < 0:
                 isbn = None  # legacy phantom keeps it; see _resolve_target
+        if not self._same_work_as_holder(series, remainder_number):
+            return self._reject("non_catalog_volume")
         volume = self._resolve_volume(series, isbn, remainder_number, result, title_verified=True)
         if volume is None:
             return None
@@ -456,6 +475,26 @@ class ImportService:
         if len(best) != 1:
             return None
         return best[0], title_key[best_len:].strip()
+
+    def _same_work_as_holder(self, series: Series, volume_number: int | None) -> bool:
+        """True unless a non-catalog row holds the ISBN for a DIFFERENT work.
+
+        Same work = the holder's series has the catalog series' normalized
+        title (or its original title) AND the holder's volume number agrees
+        (unknown/-1 on either side is not a contradiction).
+        """
+        holder = self._non_catalog_holder
+        if holder is None:
+            return True
+        holder_series = self.session.get(Series, holder.series_id)
+        titles = {series.normalized_title}
+        if series.original_title:
+            titles.add(series.original_title)
+        if holder_series is None or holder_series.normalized_title not in titles:
+            return False
+        if holder.volume_number < 0 or volume_number is None:
+            return True
+        return holder.volume_number == volume_number
 
     def _reject(self, reason: str):
         self.last_reason = reason
