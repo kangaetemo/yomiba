@@ -31,3 +31,14 @@ npm-debug.log*
 research/
 /tmp/
 .audit-cache/
+
+# Package-manager caches
+.pnpm-store/
+.config/
+
+# Local tooling / notes
+.agents/
+.claude/
+skills-lock.json
+fiyatsızlar.txt
+/yomiba-*.tar.gz
