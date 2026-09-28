@@ -155,6 +155,7 @@ def test_series_detail(seeded):
     vol1 = data["volumes"][0]
     assert vol1["best_price"] == 163.54  # Amazon is cheapest
     assert vol1["store_count"] == 3
+    assert vol1["in_stock_count"] == 3
 
     vol2 = data["volumes"][1]
     assert vol2["best_price"] == 199.0
@@ -344,3 +345,66 @@ def test_health(client):
     res = client.get("/health")
     assert res.status_code == 200
     assert res.json()["status"] == "ok"
+
+
+def test_volume_stats_counts_in_stock_listings():
+    from types import SimpleNamespace
+
+    from app.services.catalog_service import _volume_stats
+
+    ids = iter(range(1, 100))
+
+    def listing(price, in_stock):
+        return SimpleNamespace(id=next(ids), price=price, in_stock=in_stock)
+
+    mixed = _volume_stats([listing(10000, False), listing(12000, True)])
+    assert (mixed.best_price_cents, mixed.store_count, mixed.in_stock_count) == (12000, 2, 1)
+    # Sold out everywhere: the cheapest known price stays visible, and
+    # in_stock_count == 0 tells the UI it is an out-of-stock price.
+    sold_out = _volume_stats([listing(10000, False), listing(9000, False)])
+    assert (sold_out.best_price_cents, sold_out.store_count, sold_out.in_stock_count) == (9000, 2, 0)
+    assert _volume_stats([]).in_stock_count == 0
+
+
+def test_stale_listing_is_stock_unknown_not_in_stock(db_session):
+    """A store dropping a sold-out product from search leaves its listing
+    frozen at "in stock"; once the same store's other listings are much
+    fresher, that listing no longer counts as in stock."""
+    from datetime import timedelta
+
+    from app.models import Publisher, Series, Store, StoreListing, Volume
+    from app.services.catalog_service import _volume_stats, stale_listing_ids
+    from app.utils import utcnow
+
+    now = utcnow()
+    ks = Store(code="kitapsepeti", name="Kitapsepeti")
+    blocked = Store(code="dr", name="D&R")
+    pub = Publisher(name="P", normalized_name="p")
+    db_session.add_all([ks, blocked, pub])
+    db_session.flush()
+    series = Series(publisher_id=pub.id, title="S", slug="s", normalized_title="s")
+    db_session.add(series)
+    db_session.flush()
+    v1, v2 = Volume(series_id=series.id, volume_number=1), Volume(series_id=series.id, volume_number=2)
+    db_session.add_all([v1, v2])
+    db_session.flush()
+
+    def listing(volume, store, hours_ago):
+        row = StoreListing(volume_id=volume.id, store_id=store.id, product_url=f"u{volume.id}{store.id}",
+                           price=10000, in_stock=True, last_checked=now - timedelta(hours=hours_ago))
+        db_session.add(row)
+        return row
+
+    fresh = listing(v1, ks, 1)
+    gone = listing(v2, ks, 100)  # not seen for 4 days while v1 was refreshed
+    # A whole store that is down: all its listings are equally old, so none
+    # is stale (staleness is relative to the store's own newest check).
+    old_a = listing(v1, blocked, 200)
+    old_b = listing(v2, blocked, 210)
+    db_session.flush()
+
+    stale = stale_listing_ids(db_session, [fresh, gone, old_a, old_b])
+    assert stale == {gone.id}
+    stats = _volume_stats([gone], stale)
+    assert (stats.store_count, stats.in_stock_count, stats.stale_count) == (1, 0, 1)
+    assert stats.best_price_cents == 10000  # last known price stays visible

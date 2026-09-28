@@ -20,7 +20,7 @@ def test_default_disables_blocked_stores():
 def test_get_scrapers_skips_disabled_by_default(monkeypatch):
     _with(monkeypatch, ["amazon", "dr", "cizman"])
     ids = [s.store_id for s in registry.get_scrapers()]
-    assert ids == ["bkm", "kitapsepeti", "kitapbulan", "gerekliseyler", "kitapsec", "komikseyler"]
+    assert ids == ["bkm", "kitapsepeti", "kitapbulan", "gerekliseyler", "kitapsec", "komikseyler", "edessa"]
     assert registry.enabled_store_ids() == ids
 
 
@@ -31,4 +31,4 @@ def test_explicit_store_ids_still_run_disabled_store(monkeypatch):
 
 def test_empty_setting_enables_all(monkeypatch):
     _with(monkeypatch, [])
-    assert len(registry.get_scrapers()) == 9
+    assert len(registry.get_scrapers()) == 10

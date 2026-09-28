@@ -64,7 +64,8 @@ _STRONG_MERCH_TOKENS: tuple[str, ...] = (
     "anahtarlık", "keychain", "akrilik", "acrylic", "piggy bank",
     "tişört", "tshirt", "tisort", "t shirt", "mousepad", "sticker",
     "yastık", "pillow",
-    # headwear / lighting / small furniture (store merch lines)
+    # headwear / lighting / small furniture (store merch lines); the
+    # English "hat"/"lamp" are also context-dependent, see below
     "şapka", "hat", "lamp",
     # stationery
     "bloknot", "notebook",
@@ -78,6 +79,17 @@ _MEDIUM_MERCH_TOKENS: tuple[str, ...] = (
     "kart", "puzzle", "defter", "kupa", "maske", "action", "asorti", "chibi",
     "sega",  # Sega-branded items in book stores are almost always figures
 )
+
+#: Strong tokens that are ALSO ordinary English words inside real manga
+#: titles ("Witch Hat Atelier"). They reject on their own only when the
+#: product carries no book evidence (978 ISBN / book category) and no
+#: volume marker; "ONE PIECE - Replica Hat" is still merchandise.
+_CONTEXT_STRONG_TOKENS: frozenset[str] = frozenset({"hat", "lamp"})
+
+#: A volume marker ("Cilt 3", "Vol. 2", "Witch Hat Atelier 5") is book
+#: evidence for the context-dependent tokens above. A size ("25 cm") is
+#: never mistaken for one: it is strong merch evidence on its own.
+_VOLUME_MARKER_RE = re.compile(r"\b(cilt|vol|volume|sayi)\b|\b\d{1,3}\b(?!\s?cm\b)")
 
 #: A centimetre size in the title ("25cm", "16 cm") marks a physical
 #: object; no real book title carries one. Strong evidence.
@@ -167,7 +179,15 @@ def check_manga_relevance(
     score = 0
     evidence: list[str] = []
 
+    code = (isbn or "").strip()
+    book_evidence = (code.startswith("978") or len(code) == 10) or book_category
+
     strong_hits = _STRONG_RE.findall(norm_title)
+    if strong_hits and set(strong_hits) <= _CONTEXT_STRONG_TOKENS and (
+        book_evidence or _VOLUME_MARKER_RE.search(norm_title)
+    ):
+        # Only "hat"/"lamp"-style words, and the product looks like a book.
+        strong_hits = []
     if strong_hits:
         score += _STRONG_SCORE
         evidence.append(f"token:{strong_hits[0]}")
@@ -177,12 +197,9 @@ def check_manga_relevance(
         score += _STRONG_SCORE
         evidence.append(f"size:{size_hit.group(0)}")
 
-    code = (isbn or "").strip()
     if _is_japanese_merch_code(code):
         score += _STRONG_SCORE
         evidence.append("jp-product-code")
-
-    book_evidence = (code.startswith("978") or len(code) == 10) or book_category
 
     pub = normalize_text(publisher) if publisher else ""
     if pub in _TOY_PUBLISHERS:

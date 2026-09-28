@@ -29,7 +29,7 @@ backend/                  FastAPI + SQLAlchemy (Python 3.11+)
     database.py           engine / session factory / Base
     models/               Publisher, Series, Volume, Store, StoreListing, PriceHistory
     normalization/        deterministic text/publisher/ISBN/volume-title rules
-    scrapers/             BaseScraper + SearchResult + bkm/amazon/dr + registry
+    scrapers/             BaseScraper + SearchResult + one module per store + registry
     services/             ImportService (dedup) + catalog_service (queries)
     schemas/              Pydantic API contract
     routes/               thin route handlers
@@ -92,7 +92,8 @@ python -m uvicorn app.main:app --reload               # Windows: py -m uvicorn a
 * Health: `GET /health`
 
 On startup the app creates tables (idempotent) and seeds the known stores
-(Amazon, BKM Kitap, D&R). No fake prices are ever seeded.
+(see `SEED_STORES` in `app/seed.py`; Amazon, D&R and Cizman are disabled by
+default via `DISABLED_STORES`). No fake prices are ever seeded.
 
 ### 2. Frontend
 
@@ -181,7 +182,7 @@ Store     1───────────────────────
   `(series_id, volume_number)`; `volume_number = -1` is the sentinel for
   unnumbered items (boxes/sets) so they dedupe too. `isbn` is globally
   unique and nullable.
-* **Store** — seeded; matched by stable `code` (`amazon`, `bkm`, `dr`).
+* **Store** — seeded; matched by stable `code` (`bkm`, `kitapsepeti`, `edessa`, ...).
 * **StoreListing** — one store's current offer for one volume; unique per
   `(volume_id, store_id)`. Price stored as **integer cents** (no float
   drift); API exposes decimals.
@@ -316,16 +317,30 @@ Every scraper shares the same transport layer in `BaseScraper`:
    `ImportService` logs it automatically.
 2. Register it in `app/scrapers/registry.py`.
 3. Add `(code, name)` to `SEED_STORES` in `app/seed.py`.
+4. Add fixture-backed tests (`tests/fixtures/`, `tests/test_<store>_scraper.py`)
+   and update the store count in `tests/test_disabled_stores.py`.
 
 Nothing else changes — ImportService, API and frontend are store-agnostic.
 
-## Scraper status (verified 2026-09-09)
+## Scraper status (verified 2026-09-28)
 
-| Store    | Live status                                                            |
-| -------- | ---------------------------------------------------------------------- |
-| BKM Kitap| **Live-verified.** Paginated catalog search (WAW Labs `search_v2` service behind `bkmkitap.com/arama`, `row_per_page`/`page_number`) + detail JSON-LD (publisher, author, language, ISBN). Bounded by `BKM_SEARCH_PAGE_SIZE` / `BKM_MAX_SEARCH_PAGES` / `BKM_MAX_SEARCH_RESULTS`; dedups across pages; drops non-book merchandise and collections/boxes. Falls back to BKM's own 10-item `searchAll` suggestion feed if the WAW service is down. |
-| Amazon TR| Real markup implemented (search grid, sponsored `crRedir` resolution, detail bullets). Direct requests from datacenter IPs are bot-walled (HTTP 503); verified with recorded fixtures. May need a residential proxy in production. |
-| D&R      | Real structure implemented (product grid + JSON-LD enrichment). Site is fully bot-walled (HTTP 403 + maintenance page) from datacenter IPs; verified with fixtures. May need a residential proxy in production. |
+| Store (`code`)  | Status | Source |
+| --------------- | ------ | ------ |
+| BKM Kitap (`bkm`) | Active | WAW `search_v2` paginated search + detail JSON-LD |
+| Kitap Sepeti (`kitapsepeti`) | Active | SSR search (`?pg=`) + detail JSON-LD (stock). Sold-out products drop out of search |
+| Kitapbulan (`kitapbulan`) | Active | Same CMS as Kitap Sepeti |
+| Gerekli Şeyler (`gerekliseyler`) | Active | SSR search (`?tp=`), ISBN from "Stok Kodu" |
+| Kitapsec (`kitapsec`) | Active | SSR search with schema.org microdata |
+| Komikşeyler (`komikseyler`) | Active | Public WooCommerce Store API (JSON) |
+| Edessa Kitabevi (`edessa`) | Active | ikas store without server-side search: product/collection sitemaps, series collection `__NEXT_DATA__` (price + stock), capped product-page JSON-LD |
+| Cizman (`cizman`) | Disabled | Implemented; Cloudflare 403 from the production host |
+| Amazon TR (`amazon`) | Disabled | Implemented; HTTP 503 robot check from datacenter IPs |
+| D&R (`dr`) | Disabled | Implemented; HTTP 403 on every URL |
+
+Listings a store stops returning keep their last stock flag; one not seen for
+`LISTING_STALE_HOURS` (default 48) while the same store's other listings were
+refreshed is reported as **stock unknown** (`stale`), never as in stock.
+Candidate stores and access research: `docs/new-store-candidates.md`.
 
 Bot-wall behaviour is detected explicitly and reported per store in the
 import report (isolated, never fatal).

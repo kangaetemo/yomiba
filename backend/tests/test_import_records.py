@@ -77,3 +77,32 @@ def test_records_limit_and_never_attempted_sink(client, db_session):
 def test_records_limit_bounds_rejected(client):
     assert client.get("/import/records", params={"limit": 0}).status_code == 422
     assert client.get("/import/records", params={"limit": 201}).status_code == 422
+
+
+def test_record_import_result_persists_reasons(db_session):
+    from app.services.background_import import record_import_result
+    from app.services.import_service import ImportReport, StoreImportResult
+
+    report = ImportReport(
+        query="Witch Hat Atelier",
+        started_at=utcnow(),
+        stores=[
+            StoreImportResult("bkm", "BKM Kitap", results_found=3,
+                              skipped=3, reasons={"no_series_match": 3}),
+            StoreImportResult("kitapsec", "Kitapsec"),  # nothing rejected
+        ],
+    )
+    record = record_import_result(db_session, "witch hat atelier", report)
+    assert record.reasons == {"bkm": {"no_series_match": 3}}
+
+    report.stores[0].reasons = {}
+    record = record_import_result(db_session, "witch hat atelier", report)
+    assert record.reasons is None
+
+
+def test_records_expose_reasons(client, db_session):
+    r = _record(db_session, "kizil", results_found=2)
+    r.reasons = {"bkm": {"publisher_conflict": 2}}
+    db_session.commit()
+    body = client.get("/import/records").json()
+    assert body[0]["reasons"] == {"bkm": {"publisher_conflict": 2}}

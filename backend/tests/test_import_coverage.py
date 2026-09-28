@@ -127,3 +127,46 @@ def test_coverage_series_without_listing_not_counted(client, db_session):
     assert body["catalog_series"] == 2
     assert body["series_with_listings"] == 0
     assert body["listings_total"] == 0
+
+
+def test_missing_lists_only_series_without_listings(client, db_session):
+    _seed_shelf(db_session, with_listing=True)
+    body = client.get("/import/coverage/missing").json()
+    assert [m["title"] for m in body] == ["Beta"]
+    assert body[0]["outcome"] == "never"
+    assert body[0]["publisher"] == "T Publisher"
+    assert body[0]["volume_count"] == 0
+
+
+def test_missing_outcomes_and_reasons(client, db_session):
+    _seed_shelf(db_session, with_listing=False)
+    # alpha: stores answered with products, none matched the catalog.
+    r = _record(db_session, "alpha", results_found=4)
+    r.reasons = {"bkm": {"no_series_match": 3, "non_book_product": 1}}
+    # beta: stores answered with nothing at all.
+    _record(db_session, "beta", results_found=0)
+    db_session.commit()
+
+    body = client.get("/import/coverage/missing").json()
+    by_title = {m["title"]: m for m in body}
+    assert by_title["Alpha"]["outcome"] == "unmatched"
+    assert by_title["Alpha"]["reasons"] == {
+        "bkm": {"no_series_match": 3, "non_book_product": 1}
+    }
+    assert by_title["Beta"]["outcome"] == "empty"
+    # Actionable "unmatched" rows sort before "empty" ones.
+    assert [m["title"] for m in body] == ["Alpha", "Beta"]
+
+
+def test_missing_failed_outcome(client, db_session):
+    _seed_shelf(db_session, with_listing=False)
+    _record(db_session, "alpha", stores_ok=0, stores_failed=6, error="boom")
+    db_session.commit()
+    by_title = {m["title"]: m for m in client.get("/import/coverage/missing").json()}
+    assert by_title["Alpha"]["outcome"] == "failed"
+    assert by_title["Alpha"]["error"] == "boom"
+
+
+def test_missing_requires_admin(client):
+    client.cookies.clear()
+    assert client.get("/import/coverage/missing").status_code == 401

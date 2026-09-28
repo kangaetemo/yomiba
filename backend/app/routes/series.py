@@ -32,6 +32,8 @@ def get_series_detail(
             number=None if volume.volume_number == UNNUMBERED_VOLUME else volume.volume_number,
             best_price=from_cents(detail.volume_stats[volume.id].best_price_cents),
             store_count=detail.volume_stats[volume.id].store_count,
+            in_stock_count=detail.volume_stats[volume.id].in_stock_count,
+            stale_count=detail.volume_stats[volume.id].stale_count,
             collection_status=collections_service.get_volume_status(session, user.id if user else None, volume.id),  # type: ignore[arg-type]
         )
         for volume in detail.volumes

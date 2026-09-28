@@ -89,6 +89,11 @@ class Settings:
     kitapsec_max_search_results: int = int(os.getenv("KITAPSEC_MAX_SEARCH_RESULTS", "60"))
     komikseyler_max_search_pages: int = int(os.getenv("KOMIKSEYLER_MAX_SEARCH_PAGES", "3"))
     komikseyler_max_search_results: int = int(os.getenv("KOMIKSEYLER_MAX_SEARCH_RESULTS", "100"))
+    # Edessa Kitabevi (ikas; no server-side search): product/collection
+    # sitemaps cached per process, plus a bounded number of ~0.8 MB product
+    # pages per search for volumes the series collection page does not show.
+    edessa_max_detail_requests: int = int(os.getenv("EDESSA_MAX_DETAIL_REQUESTS", "15"))
+    edessa_index_ttl_minutes: float = float(os.getenv("EDESSA_INDEX_TTL_MINUTES", "360"))
 
     # Mangakol catalog sync (catalog source, NOT a store): bounded list
     # pages (445 manga / ~23 per page) and per-manga volume fragment pages.
@@ -153,6 +158,11 @@ class Settings:
     price_refresh_interval_hours: float = float(
         os.getenv("PRICE_REFRESH_INTERVAL_HOURS", "12")
     )
+    # Several stores drop sold-out products from search instead of marking
+    # them, so their listing silently keeps its last "in stock" flag. A
+    # listing not seen for this long while the SAME store's other listings
+    # were refreshed is shown as "stock unknown" (never as in stock).
+    listing_stale_hours: float = float(os.getenv("LISTING_STALE_HOURS", "48"))
     # After a (re)start the first cycle is derived from persisted freshness
     # (catch-up when stale) but never sooner than this settle delay.
     price_refresh_startup_delay_minutes: float = float(

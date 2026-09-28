@@ -50,6 +50,7 @@ def _build_volume_out(session: Session, volume_id: int, user_id: int | None = No
             price=from_cents(listing.price),
             currency="TRY",
             stock=listing.in_stock,
+            stale=listing.id in detail.stale_ids,
             product_url=listing.product_url,
             image_url=listing.image_url,
             last_checked=listing.last_checked,

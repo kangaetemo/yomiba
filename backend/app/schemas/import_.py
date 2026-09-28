@@ -47,3 +47,28 @@ class ImportRecordOut(BaseModel):
     created: int = 0
     updated: int = 0
     error: str | None = None
+    reasons: dict[str, dict[str, int]] | None = None
+
+
+class MissingCoverageOut(BaseModel):
+    """A catalog series with no store listing, plus why (admin view).
+
+    ``outcome`` is derived from the last import of the series' query:
+    ``never`` (not imported yet), ``failed`` (every store errored),
+    ``empty`` (stores answered but returned no products — usually a search
+    query problem), ``unmatched`` (products found, none matched the
+    catalog — see ``reasons``), ``other_series`` (the query matched a
+    different catalog series sharing the title).
+    """
+
+    series_id: int
+    title: str
+    publisher: str | None = None
+    volume_count: int = 0
+    query: str
+    outcome: str
+    status: str | None = None
+    last_attempt_at: datetime | None = None
+    results_found: int = 0
+    reasons: dict[str, dict[str, int]] | None = None
+    error: str | None = None

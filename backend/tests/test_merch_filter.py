@@ -214,3 +214,22 @@ def test_sega_medium_scores():
     assert not check_manga_relevance(
         title="Sailor Moon Kupa", publisher="SEGA"
     ).accept
+
+
+@pytest.mark.parametrize("title, isbn", [
+    ("Witch Hat Atelier 1", None),
+    ("Witch Hat Atelier Cilt 3", None),
+    ("Witch Hat Atelier", "9786256327100"),
+    ("Sapkali Cadi Atolyesi - Witch Hat Atelier Vol. 2", None),
+])
+def test_hat_in_real_title_is_kept(title, isbn):
+    assert check_manga_relevance(title=title, isbn=isbn).accept
+
+
+def test_context_hat_without_book_evidence_still_rejected():
+    assert not check_manga_relevance(title="ONE PIECE - Replica Hat").accept
+    assert not check_manga_relevance(title="ONE PIECE - Lamp - Skull").accept
+    # A size is not a volume marker: "25 cm" stays merchandise.
+    assert not check_manga_relevance(title="Luffy Lamp 25 cm").accept
+    # Other strong tokens are never neutralized by a volume number.
+    assert not check_manga_relevance(title="Witch Hat Atelier Poster 1").accept

@@ -12,6 +12,7 @@ from .amazon import AmazonScraper
 from .bkm import BkmScraper
 from .cizman import CizmanScraper
 from .dr import DrScraper
+from .edessa import EdessaScraper
 from .gerekliseyler import GerekliseylerScraper
 from .kitapbulan import KitapbulanScraper
 from .kitapsec import KitapsecScraper
@@ -33,6 +34,7 @@ _SCRAPERS: dict[str, type[BaseScraper]] = {
         CizmanScraper,
         KitapsecScraper,
         KomikseylerScraper,
+        EdessaScraper,
     )
 }
 

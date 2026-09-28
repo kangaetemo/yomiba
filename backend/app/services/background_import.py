@@ -37,11 +37,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import get_settings
-from ..models import ImportRecord
+from ..models import ImportRecord, Series
 from ..normalization import normalize_text
 from ..scrapers.registry import get_scrapers
 from ..utils import utcnow
-from .import_service import ImportReport, ImportService
+from .import_service import _DASH_SEPARATOR_RE, ImportReport, ImportService
 
 logger = logging.getLogger("yomiba.import.background")
 
@@ -58,6 +58,61 @@ SYNC_GATE_KEY = "__catalog_sync__"
 def normalized_query_key(query: str) -> str:
     """Dedup key for imports: the normalized query ("BERSERK" -> "berserk")."""
     return normalize_text(query)
+
+
+
+
+def fallback_queries(session: Session, query: str) -> list[str]:
+    """Shorter/alternative store queries for a catalog title that matched
+    nothing: the main title before a subtitle separator, then the catalog's
+    original (foreign) title. Store searches often return nothing for the
+    full subtitled title. Matching still runs against the catalog, so a
+    broader query can never create series or volumes.
+    """
+    candidates: list[str] = []
+    # "Kamisama Kiss -Tanrılık Görevine Başladım" -> "Kamisama Kiss": the
+    # same spaced-dash rule the importer's title-without-subtitle match uses.
+    head = _DASH_SEPARATOR_RE.split(query, maxsplit=1)[0].strip()
+    if head != query.strip() and len(head) >= 3:
+        candidates.append(head)
+    original = session.scalar(
+        select(Series.original_title)
+        .where(Series.title == query, Series.original_title.is_not(None))
+        .limit(1)
+    )
+    if original:
+        candidates.append(original)
+    seen = {normalize_text(query)}
+    out: list[str] = []
+    for candidate in candidates:
+        key = normalize_text(candidate)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(candidate)
+    return out
+
+
+def merge_reports(primary: ImportReport, extra: ImportReport) -> None:
+    """Fold a fallback-query report into ``primary`` per store, so the
+    ImportRecord counts stores once and sums what every query found."""
+    by_code = {s.store_code: s for s in primary.stores}
+    for s in extra.stores:
+        target = by_code.get(s.store_code)
+        if target is None:
+            primary.stores.append(s)
+            by_code[s.store_code] = s
+            continue
+        target.results_found += s.results_found
+        target.created += s.created
+        target.updated += s.updated
+        target.skipped += s.skipped
+        target.errors += s.errors
+        for reason, n in s.reasons.items():
+            target.reasons[reason] = target.reasons.get(reason, 0) + n
+        # A store that answered on any query is not a failed store.
+        if target.error is not None and s.error is None:
+            target.error = None
+    primary.finished_at = extra.finished_at or primary.finished_at
 
 
 def aware_datetime(value: datetime | None) -> datetime | None:
@@ -202,6 +257,9 @@ def record_import_result(
         " | ".join(f"{s.store_code}: {s.error}" for s in report.stores if s.error)
         or None
     )
+    record.reasons = {
+        s.store_code: dict(s.reasons) for s in report.stores if s.reasons
+    } or None
     if stores_ok > 0:
         record.last_success_at = now
     session.commit()
@@ -486,6 +544,22 @@ class BackgroundImportRunner:
                     session, scrapers=self._scraper_factory(self._store_ids)
                 )
                 report = service.run_import(query)
+                if report.total_created + report.total_updated == 0 and any(
+                    s.error is None for s in report.stores
+                ):
+                    for alt in fallback_queries(session, query):
+                        logger.info(
+                            "background import for %r matched nothing; "
+                            "retrying with %r",
+                            query,
+                            alt,
+                        )
+                        service = ImportService(
+                            session, scrapers=self._scraper_factory(self._store_ids)
+                        )
+                        merge_reports(report, service.run_import(alt))
+                        if report.total_created + report.total_updated > 0:
+                            break
                 record = record_import_result(session, key, report)
                 logger.info(
                     "background import for %r finished: status=%s ok=%d failed=%d "

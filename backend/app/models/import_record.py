@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import JSON, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -40,6 +40,10 @@ class ImportRecord(Base):
     updated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     #: Store errors of the last attempt ("amazon: <err> | dr: <err>"), if any.
     error: Mapped[str | None] = mapped_column(String(2000))
+    #: Per-store rejection counts of the last attempt, e.g.
+    #: ``{"bkm": {"no_series_match": 3}}``. Empty/None when nothing was
+    #: rejected. Explains why a query found products but matched none.
+    reasons: Mapped[dict | None] = mapped_column(JSON)
 
     def __repr__(self) -> str:  # pragma: no cover
         return (

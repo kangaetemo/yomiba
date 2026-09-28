@@ -49,8 +49,11 @@ export default async function VolumePage({ params }: VolumePageProps) {
   const volumeLabel = labelFor(detail.number);
 
   // The API already returns listings sorted by price ascending (cheapest
-  // first, no-price last); the first priced listing is the cheapest.
-  const cheapestStore = detail.stores.find((s) => s.price !== null)?.store;
+  // first, no-price last); the first priced listing that can actually be
+  // bought (in stock, not stale) is the cheapest.
+  const cheapestStore = detail.stores.find(
+    (s) => s.price !== null && s.stock && !s.stale,
+  )?.store;
 
   // Price history is a secondary view: a failed fetch must degrade to the
   // empty state, never break the volume page itself.

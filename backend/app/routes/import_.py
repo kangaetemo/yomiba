@@ -23,12 +23,13 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..auth import require_admin
 from ..database import get_db
-from ..models import CatalogSeries, ImportRecord, StoreListing, Volume
+from ..models import CatalogSeries, ImportRecord, Series, StoreListing, Volume
 from ..schemas.import_ import (
     ImportRecordOut,
     ImportReportOut,
     ImportRequest,
     ImportStoreOut,
+    MissingCoverageOut,
 )
 from ..services.background_import import (
     SYNC_GATE_KEY,
@@ -72,6 +73,7 @@ def list_import_records(
             created=r.created,
             updated=r.updated,
             error=r.error,
+            reasons=r.reasons,
         )
         for r in rows
     ]
@@ -126,6 +128,75 @@ def import_coverage(session: Session = Depends(get_db)) -> dict:
         "fresh_records": fresh,
         "freshness_ttl_minutes": settings.import_freshness_ttl_minutes,
     }
+
+
+def _missing_outcome(record: ImportRecord | None) -> str:
+    if record is None or record.last_attempt_at is None:
+        return "never"
+    if record.stores_ok == 0:
+        return "failed"
+    if record.results_found == 0:
+        return "empty"
+    if record.created + record.updated == 0:
+        return "unmatched"
+    return "other_series"
+
+
+@router.get("/import/coverage/missing", response_model=list[MissingCoverageOut])
+def import_coverage_missing(
+    limit: int = Query(default=200, ge=1, le=1000),
+    session: Session = Depends(get_db),
+) -> list[MissingCoverageOut]:
+    """Catalog series with no store listing, with the last import outcome.
+
+    Read-only. The price refresh scheduler queries stores with
+    ``Series.title``, so each series is joined to the ImportRecord of that
+    title's normalized key. Ordered so actionable rows come first: product
+    found but unmatched, then empty searches, then the rest.
+    """
+    has_listing = (
+        select(Volume.series_id)
+        .join(StoreListing, StoreListing.volume_id == Volume.id)
+        .where(Volume.series_id == Series.id)
+        .exists()
+    )
+    volume_count = (
+        select(func.count(Volume.id))
+        .where(Volume.series_id == Series.id)
+        .scalar_subquery()
+    )
+    rows = session.execute(
+        select(Series, volume_count)
+        .join(CatalogSeries, CatalogSeries.series_id == Series.id)
+        .where(~has_listing)
+        .distinct()
+        .order_by(Series.title)
+    ).all()
+    records = {
+        r.normalized_query: r for r in session.scalars(select(ImportRecord)).all()
+    }
+    order = {"unmatched": 0, "empty": 1, "other_series": 2, "failed": 3, "never": 4}
+    out: list[MissingCoverageOut] = []
+    for series, count in rows:
+        key = normalized_query_key(series.title)
+        record = records.get(key)
+        out.append(
+            MissingCoverageOut(
+                series_id=series.id,
+                title=series.title,
+                publisher=series.publisher.name if series.publisher else None,
+                volume_count=count or 0,
+                query=series.title,
+                outcome=_missing_outcome(record),
+                status=record.status if record else None,
+                last_attempt_at=record.last_attempt_at if record else None,
+                results_found=record.results_found if record else 0,
+                reasons=record.reasons if record else None,
+                error=record.error if record else None,
+            )
+        )
+    out.sort(key=lambda m: (order[m.outcome], m.title.casefold()))
+    return out[:limit]
 
 
 @router.post("/import", response_model=ImportReportOut)

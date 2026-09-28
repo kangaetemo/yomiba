@@ -26,10 +26,18 @@ const STATUS_LABEL: Record<CollectionStatus, string> = {
 
 export function VolumeCard({ volume }: { volume: SeriesVolume }) {
   const label = volumeLabel(volume.number);
+  // No store has it in stock right now. If every store SAYS sold out, the
+  // price is an out-of-stock price (struck through); if some listings are
+  // just stale (the store stopped showing the product), stock is unknown.
+  const noStock = volume.store_count > 0 && volume.in_stock_count === 0;
+  const soldOut = noStock && volume.stale_count === 0;
+  const stockUnknown = noStock && volume.stale_count > 0;
   const storeLabel =
     volume.store_count === 0
       ? "Henüz mağaza yok"
-      : `${volume.store_count} mağaza`;
+      : volume.in_stock_count === volume.store_count
+        ? `${volume.store_count} mağaza`
+        : `${volume.in_stock_count}/${volume.store_count} mağazada stokta`;
 
   return (
     <Link
@@ -52,10 +60,26 @@ export function VolumeCard({ volume }: { volume: SeriesVolume }) {
         <p className="text-xs text-neutral-500">{storeLabel}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {volume.store_count > 1 && (
+        {soldOut && (
+          <span className="rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rose-400">
+            Stokta yok
+          </span>
+        )}
+        {stockUnknown && (
+          <span
+            className="rounded bg-neutral-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-400"
+            title="Mağaza bu ürünü son taramalarda göstermedi; tükenmiş olabilir."
+          >
+            Stok belirsiz
+          </span>
+        )}
+        {!noStock && volume.in_stock_count > 1 && (
           <span className="text-xs text-neutral-500">başlangıç</span>
         )}
-        <PriceBadge price={volume.best_price} />
+        <PriceBadge
+          price={volume.best_price}
+          className={soldOut ? "line-through opacity-50" : stockUnknown ? "opacity-50" : ""}
+        />
         <span
           aria-hidden
           className="text-neutral-600 transition-transform group-hover:translate-x-0.5 group-hover:text-orange-400"

@@ -35,6 +35,11 @@ export interface SeriesVolume {
   /** Cheapest current price; null when unknown. */
   best_price: number | null;
   store_count: number;
+  /** Stores with the volume in stock; 0 with store_count > 0 = sold out
+   * everywhere (best_price is then an out-of-stock price). */
+  in_stock_count: number;
+  /** Stores whose stock flag is stale (not seen lately): stock unknown. */
+  stale_count: number;
   /** Collection status; null when the volume is not tracked. */
   collection_status: CollectionStatus | null;
 }
@@ -53,6 +58,8 @@ export interface VolumeStore {
   price: number | null;
   currency: string;
   stock: boolean;
+  /** Not seen by the store's recent scrapes: `stock` may be outdated. */
+  stale: boolean;
   product_url: string;
   image_url: string | null;
   last_checked: string | null;
@@ -167,6 +174,23 @@ export interface ImportRecord {
   results_found: number;
   created: number;
   updated: number;
+  error: string | null;
+  /** Per-store rejection counts of the last attempt ({store: {reason: n}}). */
+  reasons: Record<string, Record<string, number>> | null;
+}
+
+/** GET /import/coverage/missing — a catalog series with no store listing. */
+export interface MissingCoverage {
+  series_id: number;
+  title: string;
+  publisher: string | null;
+  volume_count: number;
+  query: string;
+  outcome: "never" | "failed" | "empty" | "unmatched" | "other_series";
+  status: string | null;
+  last_attempt_at: string | null;
+  results_found: number;
+  reasons: Record<string, Record<string, number>> | null;
   error: string | null;
 }
 

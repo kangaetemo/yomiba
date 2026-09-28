@@ -13,7 +13,14 @@ export function StoreListingCard({
   listing: VolumeStore;
   isCheapest: boolean;
 }) {
-  const outOfStock = !listing.stock;
+  // A stale listing's "in stock" flag is only the last known value: the
+  // store stopped showing the product (often because it sold out).
+  const outOfStock = !listing.stock || listing.stale;
+  const stockLabel = !listing.stock
+    ? "Stokta yok"
+    : listing.stale
+      ? "Stok belirsiz · mağazada artık görünmüyor"
+      : "Stokta var";
   return (
     <div
       className={`flex flex-col gap-3 rounded-xl border bg-neutral-900 p-4 sm:flex-row sm:items-center sm:justify-between ${
@@ -34,10 +41,14 @@ export function StoreListingCard({
           </div>
           <p
             className={`text-xs ${
-              outOfStock ? "text-red-400" : "text-emerald-400"
+              !listing.stock
+                ? "text-red-400"
+                : listing.stale
+                  ? "text-neutral-400"
+                  : "text-emerald-400"
             }`}
           >
-            {outOfStock ? "Stokta yok" : "Stokta var"}
+            {stockLabel}
           </p>
         </div>
       </div>
@@ -47,7 +58,9 @@ export function StoreListingCard({
           price={listing.price}
           currency={listing.currency}
           size="lg"
-          className={outOfStock ? "line-through opacity-60" : ""}
+          className={
+            !listing.stock ? "line-through opacity-60" : listing.stale ? "opacity-60" : ""
+          }
         />
         <a
           href={listing.product_url}

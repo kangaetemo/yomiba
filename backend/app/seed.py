@@ -28,6 +28,7 @@ SEED_STORES: tuple[tuple[str, str], ...] = (
     ("cizman", "Cizman"),
     ("kitapsec", "Kitapsec"),
     ("komikseyler", "Komikşeyler"),
+    ("edessa", "Edessa Kitabevi"),
 )
 
 

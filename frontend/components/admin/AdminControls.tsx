@@ -17,6 +17,7 @@ import {
   getCatalogSyncStatus,
   getImportCoverage,
   getImportRecords,
+  getMissingCoverage,
   getPriceRefreshStatus,
   runImport,
   startCatalogSync,
@@ -27,6 +28,7 @@ import type {
   ImportCoverage,
   ImportRecord,
   ImportReport,
+  MissingCoverage,
   PriceRefreshStatus,
 } from "@/types";
 
@@ -551,10 +553,123 @@ function CoveragePanel() {
   );
 }
 
+// -- 0b) Catalog series without any price (why?) -----------------------------------
+
+const OUTCOME_LABEL: Record<MissingCoverage["outcome"], string> = {
+  unmatched: "ürün bulundu, eşleşmedi",
+  empty: "mağazalar sonuç döndürmedi",
+  other_series: "başka seriyle eşleşti",
+  failed: "mağazalar hata verdi",
+  never: "henüz denenmedi",
+};
+
+function formatReasons(reasons: MissingCoverage["reasons"]): string {
+  if (!reasons) return "";
+  return Object.entries(reasons)
+    .map(
+      ([store, counts]) =>
+        `${store}: ${Object.entries(counts)
+          .map(([reason, n]) => `${reason}×${n}`)
+          .join(", ")}`,
+    )
+    .join(" · ");
+}
+
+function MissingCoveragePanel() {
+  const [rows, setRows] = useState<MissingCoverage[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      setRows(await getMissingCoverage());
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Fiyatsız seriler alınamadı");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const counts = rows?.reduce<Record<string, number>>((acc, r) => {
+    acc[r.outcome] = (acc[r.outcome] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-neutral-100">
+          Fiyatsız seriler
+          {rows && (
+            <span className="ml-2 text-sm font-normal text-neutral-400">· {rows.length}</span>
+          )}
+        </h2>
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={loading}
+          className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? "Yükleniyor…" : rows ? "Yenile" : "Listele"}
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-rose-400">{error}</p>}
+
+      {counts && (
+        <p className="text-xs text-neutral-400">
+          {Object.entries(counts)
+            .map(([k, v]) => `${OUTCOME_LABEL[k as MissingCoverage["outcome"]] ?? k}: ${v}`)
+            .join(" · ")}
+        </p>
+      )}
+
+      {rows && rows.length > 0 && (
+        <div className="max-h-[28rem] overflow-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="text-xs uppercase tracking-wide text-neutral-500">
+                <th className="py-1 pr-3">Seri</th>
+                <th className="py-1 pr-3">Sonuç</th>
+                <th className="py-1 pr-3">Bulunan</th>
+                <th className="py-1">Ret nedenleri</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.series_id} className="border-t border-neutral-800/60 align-top">
+                  <td className="py-1.5 pr-3 text-neutral-200">
+                    {r.title}
+                    <span className="block text-xs text-neutral-500">
+                      {r.publisher ?? "—"} · {r.volume_count} cilt
+                    </span>
+                  </td>
+                  <td className="py-1.5 pr-3 text-neutral-400">{OUTCOME_LABEL[r.outcome]}</td>
+                  <td className="py-1.5 pr-3 text-neutral-400">{r.results_found}</td>
+                  <td className="py-1.5 text-xs text-neutral-500">
+                    {formatReasons(r.reasons)}
+                    {r.error && <span className="block text-rose-400">{r.error}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {rows && rows.length === 0 && (
+        <p className="text-sm text-neutral-500">Tüm katalog serilerinde en az bir fiyat var.</p>
+      )}
+    </section>
+  );
+}
+
 export function AdminControls() {
   return (
     <div className="space-y-6">
       <CoveragePanel />
+      <MissingCoveragePanel />
       <CatalogSyncPanel />
       <ImportPanel />
     </div>

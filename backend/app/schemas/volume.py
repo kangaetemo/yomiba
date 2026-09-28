@@ -16,6 +16,9 @@ class VolumeStoreOut(BaseModel):
     price: float | None = None
     currency: str = "TRY"
     stock: bool = True
+    #: Not seen by the store's recent scrapes: ``stock`` is the last known
+    #: value and may be outdated (the product likely left the store's search).
+    stale: bool = False
     product_url: str
     image_url: str | None = None
     last_checked: datetime | None = None

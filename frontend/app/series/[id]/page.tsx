@@ -27,11 +27,14 @@ const FILTERS: { value: CollectionStatus | "all"; label: string }[] = [
 const SHOW_FIRST = 12;
 
 /** Compact header line: "19 cilt" plus the best-price span, e.g.
- * "19 cilt · ₺182–₺260". Compact (no decimals unless needed) so it fits. */
+ * "19 cilt · ₺182–₺260". Compact (no decimals unless needed) so it fits.
+ * Only volumes in stock somewhere count toward the span: a sold-out
+ * volume's price is not a price anyone can pay today. */
 function seriesOverview(volumes: SeriesVolume[]): string {
   const count = volumes.length;
   const base = `${count} cilt`;
   const prices = volumes
+    .filter((v) => v.in_stock_count > 0)
     .map((v) => v.best_price)
     .filter((p): p is number => p !== null);
   if (prices.length === 0) return base;

@@ -509,3 +509,59 @@ def test_startup_db_failure_leaves_visible_failed_record(sessions, engine):
     assert record is not None, "job died pre-startup but left no trace"
     assert record.status == "failed"
     assert "içe aktarma başlatılamadı" in record.error
+
+
+# -- 11. a subtitled catalog title that matched nothing retries shorter ---------
+
+class _HeadOnlyScraper(RecordingScraper):
+    """Store search that finds nothing for the full subtitled title."""
+
+    def search(self, query: str) -> list:
+        self.calls.append(query)
+        return list(self.results) if query == "Kamisama Kiss" else []
+
+
+def test_fallback_queries_head_and_original(db_session):
+    from app.services.background_import import fallback_queries
+    from tests.test_import_service import seed_catalog_series
+
+    seed_catalog_series(db_session, "Tokyo Gül - Yeniden", "P", original="tokyo ghoul re")
+    db_session.commit()
+    assert fallback_queries(db_session, "Kamisama Kiss -Tanrılık Görevine Başladım") == [
+        "Kamisama Kiss"
+    ]
+    assert fallback_queries(db_session, "Tokyo Gül - Yeniden") == ["Tokyo Gül", "tokyo ghoul re"]
+    assert fallback_queries(db_session, "Berserk") == []
+
+
+def test_zero_match_import_retries_main_title(sessions, runner_factory):
+    from tests.test_import_service import seed_catalog_series
+
+    session = sessions()
+    try:
+        seed_catalog_series(session, "Kamisama Kiss -Tanrılık Görevine Başladım",
+                            "Komik Şeyler", volumes=range(1, 10))
+        session.commit()
+    finally:
+        session.close()
+
+    scraper = _HeadOnlyScraper(results=[
+        make_result("bkm", "Kamisama Kiss Cilt 07", "100", publisher="Komikşeyler Yayıncılık"),
+    ])
+    runner = runner_factory([scraper])
+    title = "Kamisama Kiss -Tanrılık Görevine Başladım"
+    key = normalized_query_key(title)
+    assert runner.submit(key, title)
+    assert runner.wait_for(key)
+
+    assert scraper.calls == [title, "Kamisama Kiss"]
+    record = runner.get_record(key)
+    assert record.status == "success"
+    assert record.stores_ok == 1  # one store, counted once across both queries
+    assert record.results_found == 1
+    assert record.created == 1
+    session = sessions()
+    try:
+        assert session.scalar(select(func.count(StoreListing.id))) == 1
+    finally:
+        session.close()

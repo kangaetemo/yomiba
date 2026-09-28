@@ -9,6 +9,7 @@ import type {
   ImportCoverage,
   ImportRecord,
   ImportReport,
+  MissingCoverage,
   PriceRefreshStatus,
 } from "@/types";
 
@@ -30,6 +31,10 @@ export function getImportRecords(limit = 50): Promise<ImportRecord[]> {
 
 export function getImportCoverage(): Promise<ImportCoverage> {
   return getJson<ImportCoverage>("/import/coverage");
+}
+
+export function getMissingCoverage(limit = 200): Promise<MissingCoverage[]> {
+  return getJson<MissingCoverage[]>(`/import/coverage/missing?limit=${limit}`);
 }
 
 export function getPriceRefreshStatus(): Promise<PriceRefreshStatus> {
