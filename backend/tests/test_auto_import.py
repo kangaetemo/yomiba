@@ -532,6 +532,10 @@ def test_fallback_queries_head_and_original(db_session):
     ]
     assert fallback_queries(db_session, "Tokyo Gül - Yeniden") == ["Tokyo Gül", "tokyo ghoul re"]
     assert fallback_queries(db_session, "Berserk") == []
+    assert fallback_queries(db_session, "Zom 100: Ölülerin Yapılacaklar Listesi") == ["Zom 100"]
+    assert fallback_queries(db_session, "Avatar: The Last Airbender - Uçurum") == [
+        "Avatar: The Last Airbender", "Avatar",
+    ]
 
 
 def test_zero_match_import_retries_main_title(sessions, runner_factory):
@@ -563,5 +567,53 @@ def test_zero_match_import_retries_main_title(sessions, runner_factory):
     session = sessions()
     try:
         assert session.scalar(select(func.count(StoreListing.id))) == 1
+    finally:
+        session.close()
+
+
+class _QueryScraper(RecordingScraper):
+    """Store search whose results depend on the query."""
+
+    def __init__(self, by_query):
+        super().__init__(results=[])
+        self.by_query = by_query
+
+    def search(self, query: str) -> list:
+        self.calls.append(query)
+        return list(self.by_query.get(query, []))
+
+
+def test_fallback_runs_when_query_only_priced_another_series(sessions, runner_factory):
+    """"Oşi No Ko: Seçtiğim Yıldız" matched products of ANOTHER catalog
+    series, so the old "nothing matched" condition never retried the head
+    query and the series stayed unpriced ("başka seriyle eşleşti")."""
+    from tests.test_import_service import seed_catalog_series
+
+    session = sessions()
+    try:
+        seed_catalog_series(session, "Oşi No Ko: Seçtiğim Yıldız", "Gerekli Şeyler",
+                            volumes=range(1, 13))
+        seed_catalog_series(session, "Berserk", "Gerekli Şeyler", volumes=(1,))
+        session.commit()
+    finally:
+        session.close()
+
+    title = "Oşi No Ko: Seçtiğim Yıldız"
+    pub = "Gerekli Şeyler Yayıncılık"
+    scraper = _QueryScraper({
+        title: [make_result("bkm", "Berserk 1", "100", publisher=pub)],
+        "Oşi No Ko": [make_result("bkm", "Oşi No Ko 4. Cilt", "100", publisher=pub)],
+    })
+    runner = runner_factory([scraper])
+    key = normalized_query_key(title)
+    assert runner.submit(key, title)
+    assert runner.wait_for(key)
+
+    assert scraper.calls == [title, "Oşi No Ko"]
+    session = sessions()
+    try:
+        from app.services.background_import import catalog_series_unpriced
+
+        assert not catalog_series_unpriced(session, title)
     finally:
         session.close()

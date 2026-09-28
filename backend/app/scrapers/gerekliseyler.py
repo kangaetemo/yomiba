@@ -47,8 +47,8 @@ from .relevance import filter_manga_results
 logger = logging.getLogger("yomiba.scraper.gerekliseyler")
 
 NON_MANGA_KEYWORDS: tuple[str, ...] = (
-    "figur", "asorti", "oyuncak", "puzzle", "kupa", "tisort", "tshirt",
-    "poster", "defter", "pelus", "heykel", "bust", "action", "kart oyun",
+    "figur", "asorti", "puzzle", "kupa", "tisort", "tshirt",
+    "poster", "pelus", "heykel", "bust", "action", "kart oyun",
     "model kit", "blind bag",
 )
 

@@ -45,8 +45,8 @@ from .relevance import filter_manga_results
 logger = logging.getLogger("yomiba.scraper.kitapsec")
 
 NON_MANGA_KEYWORDS: tuple[str, ...] = (
-    "figur", "asorti", "oyuncak", "puzzle", "kupa", "tisort", "tshirt",
-    "poster", "defter", "pelus", "kart oyun",
+    "figur", "asorti", "puzzle", "kupa", "tisort", "tshirt",
+    "poster", "pelus", "kart oyun",
 )
 
 #: kitapsec embeds the publisher at the END of the product name, e.g.

@@ -79,9 +79,34 @@ _REMAINDER_VOLUME_RE = re.compile(
 # hyphenated words ("Tamon-Kun") are never split.
 _DASH_SEPARATOR_RE = re.compile(r"\s+[-\u2013\u2014]\s*|\s*[-\u2013\u2014]\s+")
 _CILT_NUMBER_RE = re.compile(r"\bcilt\s*0*(\d{1,3})\b")
+#: "Warcraft - Efsaneler (Birinci Kitap)": a spelled-out ordinal volume.
+_ORDINAL_WORDS = {
+    "birinci": 1, "ikinci": 2, "ucuncu": 3, "dorduncu": 4, "besinci": 5,
+    "altinci": 6, "yedinci": 7, "sekizinci": 8, "dokuzuncu": 9, "onuncu": 10,
+}
+_REMAINDER_ORDINAL_RE = re.compile(
+    r"(" + "|".join(_ORDINAL_WORDS) + r")\s+(?:kitap|cilt)"
+)
+#: Catalog-title subtitle separators: a spaced dash or a colon
+#: ("Zom 100: Ölülerin Yapılacaklar Listesi").
+_SUBTITLE_SEPARATOR_RE = re.compile(_DASH_SEPARATOR_RE.pattern + r"|\s*:\s+")
 _REMAINDER_COLLECTION_RE = re.compile(
     r"\b(?:box|set|seti|kutu|bundle|toplu|koleksiyon|collection|complete|deluxe)\b|\b\d{1,3}\s+\d{1,3}\b"
 )
+
+
+def _remainder_volume(remainder: str) -> int | None:
+    """Volume number of a plain volume-token remainder ("3", "cilt 3",
+    "3 cilt", "birinci kitap"), else None. A trailing "ana kapak" (the
+    regular cover, as opposed to a variant) is the same product."""
+    remainder = remainder.removesuffix(" ana kapak")
+    token = _REMAINDER_VOLUME_RE.fullmatch(remainder)
+    if token is not None:
+        return int(token.group(1))
+    ordinal = _REMAINDER_ORDINAL_RE.fullmatch(remainder)
+    if ordinal is not None:
+        return _ORDINAL_WORDS[ordinal.group(1)]
+    return None
 
 
 class ImportAction(str, Enum):
@@ -441,7 +466,7 @@ class ImportService:
         if match is not None and match[1]:
             if _REMAINDER_COLLECTION_RE.search(match[1]):
                 return self._reject("box_set")
-            if _REMAINDER_VOLUME_RE.fullmatch(match[1]) is None:
+            if _remainder_volume(match[1]) is None:
                 # "Ragnarok Valkürleri - Tuhaf Öykü Cilt 3" also prefixes the
                 # shorter "Ragnarok Valkürleri"; the rest is not a volume
                 # token, so this prefix proves nothing — try the stricter
@@ -451,26 +476,28 @@ class ImportService:
             # "Rosario + Vampire - Tılsımlı Kolye ve Vampir 8": the catalog
             # title starts after a dash separator (original title first).
             found = self._catalog_series_after_dash(result.title, publisher_name)
+            how = "title after dash"
+            if found is None:
+                # "Yalnız Kurt ve Yavrusu Cilt 24 - Küçücük Ellerde": catalog
+                # title + volume, then a per-volume subtitle.
+                found = self._catalog_series_before_dash(result.title, publisher_name)
+                how = "title before volume subtitle"
             if found is None:
                 # "Kamisama Kiss Cilt 7" for the catalog title "Kamisama Kiss
                 # -Tanrılık Görevine Başladım": store omits the subtitle.
                 found = self._catalog_series_by_head(result.title, publisher_name)
-                if found is None:
-                    return self._reject(reason)
-                series, remainder_number = found
                 how = "title without subtitle"
-            else:
-                series, remainder_number = found
-                how = "title after dash"
+            if found is None:
+                return self._reject(reason)
+            series, remainder_number = found
         else:
             series, remainder = match
             if remainder:
                 if _REMAINDER_COLLECTION_RE.search(remainder):
                     return self._reject("box_set")
-                token = _REMAINDER_VOLUME_RE.fullmatch(remainder)
-                if token is None:
+                remainder_number = _remainder_volume(remainder)
+                if remainder_number is None:
                     return self._reject(reason)
-                remainder_number = int(token.group(1))
         store = self._resolve_store(result.store_id, result.store_name)
         isbn = normalize_isbn(result.isbn)
         if isbn:
@@ -510,44 +537,82 @@ class ImportService:
             if remainder:
                 if _REMAINDER_COLLECTION_RE.search(remainder):
                     continue
-                token = _REMAINDER_VOLUME_RE.fullmatch(remainder)
-                if token is None:
+                number = _remainder_volume(remainder)
+                if number is None:
                     continue
-                number = int(token.group(1))
             before_numbers = {int(n) for n in _CILT_NUMBER_RE.findall(normalize_text(before))}
             if before_numbers and before_numbers != {number}:
                 continue
             return series, number
         return None
 
+    def _catalog_series_before_dash(self, raw_title: str, publisher_name: str):
+        """Catalog title + explicit volume token BEFORE a dash, per-volume
+        subtitle after it ("Yalnız Kurt ve Yavrusu Cilt 24 - Küçücük
+        Ellerde"). The volume token is required, and the subtitle must carry
+        no numbers or collection words (ranges / box sets stay rejected).
+        """
+        for m in _DASH_SEPARATOR_RE.finditer(raw_title or ""):
+            before = normalize_text(raw_title[: m.start()])
+            after = normalize_text(raw_title[m.end():])
+            if not before or not after:
+                continue
+            if re.search(r"\d", after) or _REMAINDER_COLLECTION_RE.search(after):
+                continue
+            match = self._catalog_series_prefix(before, publisher_name)
+            if match is None or not match[1]:
+                continue
+            series, remainder = match
+            number = _remainder_volume(remainder)
+            if number is not None:
+                return series, number
+        return None
+
+    def _publisher_ids_for(self, publisher_name: str) -> set[int]:
+        ids = set(self._publisher_family_ids(publisher_name))
+        publisher = self._find_publisher(publisher_name)
+        if publisher is not None:
+            ids.add(publisher.id)
+        return ids
+
     def _catalog_series_by_head(self, raw_title: str, publisher_name: str):
-        """Store title = catalog title minus its LAST dash subtitle, plus an
-        explicit volume number ("Ragnarok Valkürleri - Tuhaf Öykü Cilt 3" for
-        "Ragnarok Valkürleri - Tuhaf Öykü - Lü Bu Fengxian").
+        """Store title = catalog title minus a subtitle, plus an explicit
+        volume number: "Ragnarok Valkürleri - Tuhaf Öykü Cilt 3" for
+        "Ragnarok Valkürleri - Tuhaf Öykü - Lü Bu Fengxian", "Zom 100 Cilt 9"
+        for "Zom 100: Ölülerin Yapılacaklar Listesi".
 
         Strict: explicit volume marker required, the head must not itself be
         a catalog title (that would have matched earlier), publisher family
         must match, and exactly one catalog series may qualify.
         """
+        if not publisher_name:
+            return None
+        ids = self._publisher_ids_for(publisher_name)
+        if not ids:
+            return None
+        catalog = select(CatalogSeries.series_id).distinct()
+        family = list(self.session.scalars(
+            select(Series).where(Series.id.in_(catalog), Series.publisher_id.in_(ids))
+        ))
+        found = self._head_by_parser(raw_title, family)
+        if found is None:
+            found = self._head_by_prefix(raw_title, family)
+        return found
+
+    @staticmethod
+    def _head_by_parser(raw_title: str, family: list[Series]):
+        """Head = catalog title before its LAST dash; the store title parses
+        to that head plus an unambiguous volume number."""
         parsed = parse_volume_title(raw_title)
         if parsed.volume_number is None or parsed.evidence in {"numeric_metadata", "ambiguous_numbers"}:
             return None
         if parsed.is_collection:
             return None
         base_key = normalize_text(parsed.base_title)
-        if not base_key or not publisher_name:
+        if not base_key:
             return None
-        ids = set(self._publisher_family_ids(publisher_name))
-        publisher = self._find_publisher(publisher_name)
-        if publisher is not None:
-            ids.add(publisher.id)
-        if not ids:
-            return None
-        catalog = select(CatalogSeries.series_id).distinct()
         candidates = []
-        for series in self.session.scalars(
-            select(Series).where(Series.id.in_(catalog), Series.publisher_id.in_(ids))
-        ):
+        for series in family:
             if series.normalized_title == base_key:
                 return None  # exact title exists; not a subtitle case
             separators = list(_DASH_SEPARATOR_RE.finditer(series.title or ""))
@@ -560,6 +625,36 @@ class ImportService:
         if len(candidates) != 1:
             return None
         return candidates[0], parsed.volume_number
+
+    @staticmethod
+    def _head_by_prefix(raw_title: str, family: list[Series]):
+        """Head = catalog title before any subtitle separator (dash or
+        colon); the store title is exactly that head plus a plain volume
+        token. Does not use the generic parser, so numbers inside the head
+        ("Zom 100 Cilt 9") are not mistaken for ambiguous volumes."""
+        title_key = normalize_text(raw_title)
+        if not title_key:
+            return None
+        found: dict[int, tuple[Series, int]] = {}
+        for series in family:
+            if series.normalized_title and (
+                title_key == series.normalized_title
+                or title_key.startswith(series.normalized_title + " ")
+            ):
+                return None  # the full catalog title is present; not this case
+            for sep in _SUBTITLE_SEPARATOR_RE.finditer(series.title or ""):
+                head = normalize_text(series.title[: sep.start()])
+                if not head or not title_key.startswith(head + " "):
+                    continue
+                remainder = title_key[len(head):].strip()
+                if _REMAINDER_COLLECTION_RE.search(remainder):
+                    continue
+                number = _remainder_volume(remainder)
+                if number is not None:
+                    found[series.id] = (series, number)
+        if len(found) != 1:
+            return None
+        return next(iter(found.values()))
 
     def _catalog_series_prefix(self, title_key: str, publisher_name: str):
         """Longest catalog series title that prefixes ``title_key`` at a word

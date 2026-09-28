@@ -123,3 +123,65 @@ def test_hyphenated_word_is_not_a_separator(db_session, import_service):
     db_session.commit()
     r = make_result("bkm", "Tamon-Kun Hikayesi 2", "100", publisher="Komik Şeyler")
     assert import_service.import_result(r) == ImportAction.SKIPPED
+
+
+# -- 2026-09-28 unpriced-series report: real store titles -----------------------
+
+@pytest.mark.parametrize("catalog,publisher,store_pub,title,number", [
+    # colon subtitle omitted; the number inside the head is not a volume
+    ("Zom 100: Ölülerin Yapılacaklar Listesi", "Marmara Çizgi", "Marmara Çizgi",
+     "Zom 100 Cilt 9", 9),
+    ("Kızıl Ejder: Bir Felakette Yumurtasını Kaybeden Ejderha", "Uykulu Kahve",
+     "Uykulu Kahve Yayınevi", "Kızıl Ejder 1. Cilt", 1),
+    ("Oşi No Ko: Seçtiğim Yıldız", "Gerekli Şeyler", "Gerekli Şeyler Yayıncılık",
+     "Oşi No Ko 4. Cilt", 4),
+    # per-volume subtitle after "Cilt N -"
+    ("Yalnız Kurt ve Yavrusu", "Marmara Çizgi", "Marmara Çizgi",
+     "Yalnız Kurt ve Yavrusu Cilt 24 - Küçücük Ellerde", 24),
+    ("Yalnız Kurt ve Yavrusu", "Marmara Çizgi", "Marmara Çizgi",
+     "Yalnız Kurt ve Yavrusu Cilt: 18 - Kurokuwa`nın Alacakaranlığı", 18),
+    # spelled-out ordinal
+    ("Warcraft Efsaneler", "Epsilon", "Epsilon Yayınevi",
+     "Warcraft - Efsaneler (Birinci Kitap)", 1),
+    # the regular cover is the same product
+    ("Omniscient Reader’s Viewpoint", "Komik Şeyler", "Komikşeyler Yayıncılık",
+     "Omniscient Reader`s Viewpoint Cilt 2 (Ana Kapak)", 2),
+])
+def test_unpriced_report_title_shapes(db_session, import_service, catalog, publisher,
+                                      store_pub, title, number):
+    series = seed_catalog_series(db_session, catalog, publisher, volumes=range(1, 30))
+    r = make_result("bkm", title, "100", publisher=store_pub)
+    assert import_service.import_result(r) == ImportAction.CREATED
+    db_session.commit()
+    assert _target(db_session) == (series.id, number)
+
+
+@pytest.mark.parametrize("title", [
+    "Zom 100 Cilt 9",  # other publisher family
+])
+def test_colon_head_needs_publisher_family(db_session, import_service, title):
+    seed_catalog_series(db_session, "Zom 100: Ölülerin Yapılacaklar Listesi", "Marmara Çizgi",
+                        volumes=range(1, 11))
+    r = make_result("bkm", title, "100", publisher="Epsilon Yayınevi")
+    assert import_service.import_result(r) == ImportAction.SKIPPED
+
+
+def test_volume_subtitle_must_not_hide_a_range(db_session, import_service):
+    seed_catalog_series(db_session, "Yalnız Kurt ve Yavrusu", "Marmara Çizgi", volumes=range(1, 29))
+    for title in ("Yalnız Kurt ve Yavrusu Cilt 1 - 5", "Yalnız Kurt ve Yavrusu Cilt 1 - Kutu Set"):
+        r = make_result("bkm", title, "100", publisher="Marmara Çizgi")
+        assert import_service.import_result(r) == ImportAction.SKIPPED, title
+
+
+def test_variant_cover_is_not_the_regular_volume(db_session, import_service):
+    seed_catalog_series(db_session, "Omniscient Reader’s Viewpoint", "Komik Şeyler", volumes=(1, 2))
+    r = make_result("bkm", "Omniscient Reader`s Viewpoint Cilt 2 (Varyant Kapak)", "100",
+                    publisher="Komikşeyler Yayıncılık")
+    assert import_service.import_result(r) == ImportAction.SKIPPED
+
+
+def test_colon_head_refuses_two_candidates(db_session, import_service):
+    seed_catalog_series(db_session, "Avatar: The Last Airbender - Uçurum", "Gerekli Şeyler")
+    seed_catalog_series(db_session, "Avatar: The Last Airbender - Arayış", "Gerekli Şeyler")
+    r = make_result("bkm", "Avatar 1", "100", publisher="Gerekli Şeyler Yayıncılık")
+    assert import_service.import_result(r) == ImportAction.SKIPPED

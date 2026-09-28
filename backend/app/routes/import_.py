@@ -319,3 +319,16 @@ def start_price_refresh(request: Request) -> dict:
     if not scheduler.manual_refresh():
         raise HTTPException(status_code=409, detail="Price refresh cycle already running")
     return scheduler.status()
+
+
+@router.post("/import/price-refresh/missing")
+def start_missing_price_refresh(request: Request) -> dict:
+    """Admin-only: refresh just the catalog series that have no price yet
+    (the "Fiyatsız seriler" list), ignoring record freshness. Does not
+    postpone the regular full refresh."""
+    scheduler = getattr(request.app.state, "price_refresh_scheduler", None)
+    if scheduler is None or not scheduler.is_running:
+        raise HTTPException(status_code=503, detail="Price refresh scheduler disabled")
+    if not scheduler.manual_refresh(only_unpriced=True):
+        raise HTTPException(status_code=409, detail="Price refresh cycle already running")
+    return scheduler.status()

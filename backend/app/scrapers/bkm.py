@@ -56,12 +56,10 @@ logger = logging.getLogger("yomiba.scraper.bkm")
 NON_MANGA_KEYWORDS: tuple[str, ...] = (
     "figur",
     "asorti",
-    "oyuncak",
     "puzzle",
     "kupa",
     "tisort",
     "poster",
-    "defter",
     "pelus",
     "kutulu fig",
 )

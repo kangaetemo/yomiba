@@ -51,8 +51,8 @@ from .relevance import filter_manga_results
 logger = logging.getLogger("yomiba.scraper.cizman")
 
 NON_MANGA_KEYWORDS: tuple[str, ...] = (
-    "figur", "asorti", "oyuncak", "puzzle", "kupa", "tisort", "tshirt",
-    "poster", "defter", "pelus", "action", "fig", "model kit", "blind bag",
+    "figur", "asorti", "puzzle", "kupa", "tisort", "tshirt",
+    "poster", "pelus", "action", "fig", "model kit", "blind bag",
 )
 
 _ISBN_RE = re.compile(r"\b(978\d{10})\b")

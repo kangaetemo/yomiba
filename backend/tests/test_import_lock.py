@@ -159,6 +159,25 @@ def test_background_skips_when_manual_made_data_fresh_while_waiting(sessions):
     assert slow.calls == []  # already fresh -> skipped, zero store requests
 
 
+def test_forced_job_scrapes_despite_fresh_record(sessions):
+    """The unpriced-series refresh: a fresh zero-match record must not
+    block the retry."""
+    seed_catalog(sessions, make_result("bkm", "Berserk 1", "182"))
+    key = normalized_query_key("berserk")
+    set_fresh(sessions, key, minutes_ago=1)
+
+    slow = RecordingScraper(store_id="bkm", delay=0.1)
+    runner = make_runner(sessions, [slow])
+
+    assert runner.submit(key, "berserk", force=True) is True
+    assert runner.wait_for(key, timeout=10)
+    assert slow.calls == ["berserk"]
+    # The force flag is per job: the next plain submit skips again.
+    assert runner.submit(key, "berserk") is True
+    assert runner.wait_for(key, timeout=10)
+    assert slow.calls == ["berserk"]
+
+
 def test_manual_import_unexpected_failure_marks_record_failed(client, db_session, monkeypatch):
     """An unexpected exception must not leave the ImportRecord stuck "running"."""
     import app.routes.import_ as import_route

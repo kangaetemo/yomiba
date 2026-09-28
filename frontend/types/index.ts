@@ -219,6 +219,8 @@ export interface PriceRefreshStatus {
   total_catalog_series: number;
   current_cycle_total: number;
   current_cycle_started_at: string | null;
+  /** "full" = whole catalog, "unpriced" = only series without a price. */
+  current_cycle_mode?: "full" | "unpriced" | null;
   last_cycle_completed_at: string | null;
   last_successful_refresh: string | null;
   next_scheduled_refresh: string | null;

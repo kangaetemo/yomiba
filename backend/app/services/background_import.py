@@ -37,11 +37,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import get_settings
-from ..models import ImportRecord, Series
+from ..models import CatalogSeries, ImportRecord, Series, StoreListing, Volume
 from ..normalization import normalize_text
 from ..scrapers.registry import get_scrapers
 from ..utils import utcnow
-from .import_service import _DASH_SEPARATOR_RE, ImportReport, ImportService
+from .import_service import _SUBTITLE_SEPARATOR_RE, ImportReport, ImportService
 
 logger = logging.getLogger("yomiba.import.background")
 
@@ -64,17 +64,20 @@ def normalized_query_key(query: str) -> str:
 
 def fallback_queries(session: Session, query: str) -> list[str]:
     """Shorter/alternative store queries for a catalog title that matched
-    nothing: the main title before a subtitle separator, then the catalog's
-    original (foreign) title. Store searches often return nothing for the
-    full subtitled title. Matching still runs against the catalog, so a
-    broader query can never create series or volumes.
+    nothing: the title before each subtitle separator (longest first),
+    then the catalog's original (foreign) title. Store searches often
+    return nothing for the full subtitled title. Matching still runs
+    against the catalog, so a broader query can never create series or
+    volumes.
     """
     candidates: list[str] = []
-    # "Kamisama Kiss -Tanrılık Görevine Başladım" -> "Kamisama Kiss": the
-    # same spaced-dash rule the importer's title-without-subtitle match uses.
-    head = _DASH_SEPARATOR_RE.split(query, maxsplit=1)[0].strip()
-    if head != query.strip() and len(head) >= 3:
-        candidates.append(head)
+    # "Kamisama Kiss -Tanrılık Görevine Başladım" -> "Kamisama Kiss",
+    # "Zom 100: Ölülerin Yapılacaklar Listesi" -> "Zom 100": the same
+    # separators the importer's title-without-subtitle match uses.
+    for sep in reversed(list(_SUBTITLE_SEPARATOR_RE.finditer(query))):
+        head = query[: sep.start()].strip()
+        if len(head) >= 3:
+            candidates.append(head)
     original = session.scalar(
         select(Series.original_title)
         .where(Series.title == query, Series.original_title.is_not(None))
@@ -90,6 +93,26 @@ def fallback_queries(session: Session, query: str) -> list[str]:
             seen.add(key)
             out.append(candidate)
     return out
+
+
+def catalog_series_unpriced(session: Session, query: str) -> bool:
+    """True when ``query`` is a catalog series title and none of its
+    catalog editions has a store listing yet. A query that merely matched
+    ANOTHER series' products ("Oşi No Ko: Seçtiğim Yıldız" pulling in
+    unrelated listings) still leaves its own series unpriced."""
+    catalog = select(CatalogSeries.series_id).distinct()
+    series_ids = list(session.scalars(
+        select(Series.id).where(Series.title == query, Series.id.in_(catalog))
+    ))
+    if not series_ids:
+        return False
+    listed = session.scalar(
+        select(StoreListing.id)
+        .join(Volume, Volume.id == StoreListing.volume_id)
+        .where(Volume.series_id.in_(series_ids))
+        .limit(1)
+    )
+    return listed is None
 
 
 def merge_reports(primary: ImportReport, extra: ImportReport) -> None:
@@ -293,6 +316,8 @@ class BackgroundImportRunner:
         self._running: set[str] = set()
         self._active: set[str] = set()
         self._completion: dict[str, threading.Event] = {}
+        #: Queued keys that must scrape even when their record is fresh.
+        self._forced: set[str] = set()
         self._workers: list[threading.Thread] = []
         self._closing = False
         #: Shared with the manual /import route (see routes/import_.py).
@@ -343,11 +368,13 @@ class BackgroundImportRunner:
         with self._lock:
             return set(self._active)
 
-    def submit(self, key: str, query: str) -> bool:
+    def submit(self, key: str, query: str, *, force: bool = False) -> bool:
         """Start a background import for ``key`` unless one is already running.
 
         Returns ``True`` when a job was started, ``False`` when an existing
-        job already covers this normalized query.
+        job already covers this normalized query. ``force`` scrapes even when
+        the record is fresh: an unpriced series' zero-match import still
+        counts as a fresh success.
         """
         with self._lock:
             if self._closing or key in self._running:
@@ -360,6 +387,8 @@ class BackgroundImportRunner:
             if self._queue.qsize() == max(1, (self._queue_capacity * 4 + 4) // 5):
                 logger.warning("import queue reached 80%% capacity (%d/%d)", self._queue.qsize(), self._queue_capacity)
             self._running.add(key)
+            if force:
+                self._forced.add(key)
             self._completion[key] = threading.Event()
             if not self._workers:
                 for index in range(self._max_workers):
@@ -389,6 +418,7 @@ class BackgroundImportRunner:
                 with self._lock:
                     self._active.discard(key)
                     self._running.discard(key)
+                    self._forced.discard(key)
                     done = self._completion.pop(key, None)
                     if done is not None:
                         done.set()
@@ -513,7 +543,9 @@ class BackgroundImportRunner:
                 record = session.scalar(
                     select(ImportRecord).where(ImportRecord.normalized_query == key)
                 )
-                if is_fresh_record(record):
+                with self._lock:
+                    forced = key in self._forced
+                if not forced and is_fresh_record(record):
                     logger.info(
                         "background import for %r skipped: catalog already fresh",
                         query,
@@ -544,9 +576,10 @@ class BackgroundImportRunner:
                     session, scrapers=self._scraper_factory(self._store_ids)
                 )
                 report = service.run_import(query)
-                if report.total_created + report.total_updated == 0 and any(
-                    s.error is None for s in report.stores
-                ):
+                if (
+                    report.total_created + report.total_updated == 0
+                    or catalog_series_unpriced(session, query)
+                ) and any(s.error is None for s in report.stores):
                     for alt in fallback_queries(session, query):
                         logger.info(
                             "background import for %r matched nothing; "
@@ -558,7 +591,9 @@ class BackgroundImportRunner:
                             session, scrapers=self._scraper_factory(self._store_ids)
                         )
                         merge_reports(report, service.run_import(alt))
-                        if report.total_created + report.total_updated > 0:
+                        if not catalog_series_unpriced(session, query) and (
+                            report.total_created + report.total_updated > 0
+                        ):
                             break
                 record = record_import_result(session, key, report)
                 logger.info(

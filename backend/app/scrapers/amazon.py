@@ -57,7 +57,6 @@ NON_MANGA_KEYWORDS: tuple[str, ...] = (
     "battaniye",
     "kumas",
     "kanvas",
-    "oyuncak",
 )
 
 _ASIN_RE = re.compile(r"/dp/([A-Z0-9]{10})")

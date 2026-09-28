@@ -233,3 +233,27 @@ def test_context_hat_without_book_evidence_still_rejected():
     assert not check_manga_relevance(title="Luffy Lamp 25 cm").accept
     # Other strong tokens are never neutralized by a volume number.
     assert not check_manga_relevance(title="Witch Hat Atelier Poster 1").accept
+
+
+def test_oyuncak_title_with_book_isbn_is_a_book():
+    # "Oyuncak Bebek Sevgilim" (My Dress-Up Darling): all 11 volumes were
+    # dropped as toys before 2026-09-28.
+    assert check_manga_relevance(
+        title="Oyuncak Bebek Sevgilim 3", publisher="Gerekli Şeyler Yayıncılık",
+        isbn="9786258237535",
+    ).accept
+
+
+@pytest.mark.parametrize("title,isbn", [
+    ("Mega Oyuncak Elaıne Bebek 003", "8695160816015"),  # model number is no volume
+    ("Oyuncak Bebek Seti", None),
+])
+def test_oyuncak_without_book_evidence_still_rejected(title, isbn):
+    assert not check_manga_relevance(title=title, isbn=isbn).accept
+
+
+def test_scraper_keyword_lists_leave_book_words_to_the_common_filter():
+    from app.scrapers.bkm import BkmScraper
+
+    assert not BkmScraper._is_non_manga("Oyuncak Bebek Sevgilim 3")
+    assert not BkmScraper._is_non_manga("Death Note - Ölüm Defteri 6")

@@ -324,7 +324,9 @@ def test_import_warmup_queues_every_catalog_series(client, db_session):
         res = client.post("/import/price-refresh")
         assert res.status_code == 200
         assert res.json()["total_catalog_series"] == 2
+        assert res.json()["current_cycle_mode"] == "full"
         assert client.post("/import/price-refresh").status_code == 409
+        assert client.post("/import/price-refresh/missing").status_code == 409
     finally:
         scheduler.stop()
     runner = client.app.state.import_runner
@@ -408,3 +410,7 @@ def test_stale_listing_is_stock_unknown_not_in_stock(db_session):
     stats = _volume_stats([gone], stale)
     assert (stats.store_count, stats.in_stock_count, stats.stale_count) == (1, 0, 1)
     assert stats.best_price_cents == 10000  # last known price stays visible
+
+
+def test_missing_price_refresh_needs_scheduler(client):
+    assert client.post("/import/price-refresh/missing").status_code == 503

@@ -47,15 +47,18 @@ class _StubRunner:
 
     def __init__(self, running_keys: set[str] | None = None):
         self.submitted: list[tuple[str, str]] = []
+        self.forced: list[str] = []
         self._running = set(running_keys or set())
         self._lock = threading.Lock()
 
-    def submit(self, key: str, query: str) -> bool:
+    def submit(self, key: str, query: str, *, force: bool = False) -> bool:
         with self._lock:
             if key in self._running:
                 return False
             self._running.add(key)
             self.submitted.append((key, query))
+            if force:
+                self.forced.append(key)
             return True
 
     def is_running(self, key: str) -> bool:
@@ -241,6 +244,55 @@ def test_tick_ignores_records_created_by_other_schedulers(sessions):
 
     assert sched.tick() == 1
     assert [k for k, _ in runner.submitted] == ["b"]
+
+
+# -- unpriced-only manual refresh ------------------------------------------------
+
+def _give_listing(sessions, title: str) -> None:
+    from app.models import Store, StoreListing, Volume
+
+    with sessions() as session:
+        series = session.scalar(select(Series).where(Series.title == title))
+        store = Store(code=f"s-{title}", name=f"Store {title}")
+        volume = Volume(series_id=series.id, volume_number=1)
+        session.add_all([store, volume])
+        session.flush()
+        session.add(StoreListing(volume_id=volume.id, store_id=store.id,
+                                 product_url=f"https://example.com/{title}"))
+        session.commit()
+
+
+def test_unpriced_refresh_submits_only_series_without_listing(sessions):
+    _add_catalog(sessions, "berserk", "vinland")
+    _give_listing(sessions, "berserk")
+    # Fresh zero-match record: a full cycle would skip it, this one must not.
+    _seed(sessions, "vinland", success_minutes_ago=5, attempt_minutes_ago=5)
+    runner = _StubRunner()
+    sched = PriceRefreshScheduler(runner, sessions, interval_seconds=3600)
+
+    assert sched.manual_refresh(only_unpriced=True)
+    assert runner.submitted == [("vinland", "vinland")]
+    assert runner.forced == ["vinland"]
+    assert sched.status()["current_cycle_mode"] == "unpriced"
+    assert sched.status()["current_cycle_total"] == 1
+
+
+def test_unpriced_refresh_keeps_full_cycle_schedule(sessions):
+    _add_catalog(sessions, "vinland")
+    runner = _StubRunner()
+    sched = PriceRefreshScheduler(runner, sessions, interval_seconds=3600)
+    due = utcnow() + timedelta(minutes=17)
+    sched._next_scheduled_at = due  # noqa: SLF001 - test access
+
+    assert sched.manual_refresh(only_unpriced=True)
+    assert not sched.manual_refresh()  # one cycle at a time
+    runner._running.clear()  # job finished
+    sched.tick()
+    status = sched.status()
+    assert status["current_cycle_started_at"] is None
+    assert status["current_cycle_mode"] is None
+    assert status["next_scheduled_refresh"] == due
+    assert status["last_cycle_completed_at"] is None  # full cycles only
 
 
 # -- loop lifecycle ------------------------------------------------------------------

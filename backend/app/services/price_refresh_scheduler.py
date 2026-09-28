@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import get_settings
-from ..models import CatalogSeries, ImportRecord, Series
+from ..models import CatalogSeries, ImportRecord, Series, StoreListing, Volume
 from ..utils import utcnow
 from .background_import import BackgroundImportRunner, aware_datetime, normalized_query_key
 
@@ -57,6 +57,11 @@ class PriceRefreshScheduler:
         self._successful_jobs = 0
         self._failed_jobs = 0
         self._skipped = 0
+        #: "full" or "unpriced" while a cycle runs, else None.
+        self._mode: str | None = None
+        #: Full-cycle due time saved while an unpriced-only cycle runs, so
+        #: that partial cycle never postpones the regular refresh.
+        self._saved_next: datetime | None = None
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -139,16 +144,28 @@ class PriceRefreshScheduler:
             except Exception:  # noqa: BLE001 - a bad cycle must not kill the loop
                 logger.exception("price refresh tick failed")
 
-    def _start_cycle(self) -> None:
+    def _start_cycle(self, *, only_unpriced: bool = False) -> None:
+        """Queue the catalog's queries. ``only_unpriced`` queues just the
+        catalog series without any store listing and scrapes them even when
+        their record is fresh (a zero-match import is a fresh success)."""
         now = utcnow()
         settings = get_settings()
         with self._session_factory() as session:
-            catalog = session.execute(
+            stmt = (
                 select(Series.id, Series.title)
                 .join(CatalogSeries, CatalogSeries.series_id == Series.id)
                 .distinct()
                 .order_by(Series.id)
-            ).all()
+            )
+            if only_unpriced:
+                has_listing = (
+                    select(Volume.id)
+                    .join(StoreListing, StoreListing.volume_id == Volume.id)
+                    .where(Volume.series_id == Series.id)
+                    .exists()
+                )
+                stmt = stmt.where(~has_listing)
+            catalog = session.execute(stmt).all()
             records = {
                 r.normalized_query: r
                 for r in session.scalars(select(ImportRecord)).all()
@@ -178,8 +195,10 @@ class PriceRefreshScheduler:
             success = aware_datetime(record.last_success_at) if record else None
             if success and (self._last_successful_refresh is None or success > self._last_successful_refresh):
                 self._last_successful_refresh = success
+            if only_unpriced:
+                self._pending.append((key, query, weight))
             # A recent manual success needs no immediate duplicate scrape.
-            if success and now - success < freshness:
+            elif success and now - success < freshness:
                 self._completed += weight
                 self._skipped += weight
             elif record and record.status == "failed" and attempt and now - attempt < retry:
@@ -189,8 +208,11 @@ class PriceRefreshScheduler:
             else:
                 self._pending.append((key, query, weight))
         self._cycle_started_at = now
+        self._mode = "unpriced" if only_unpriced else "full"
+        self._saved_next = self._next_scheduled_at if only_unpriced else None
         self._next_scheduled_at = None
-        logger.info("price refresh cycle started: %d catalog series, %d queries", self._total, len(grouped))
+        logger.info("price refresh cycle started (%s): %d catalog series, %d queries",
+                    self._mode, self._total, len(grouped))
 
     def _collect_finished(self) -> None:
         for key, weight in list(self._inflight.items()):
@@ -217,7 +239,7 @@ class PriceRefreshScheduler:
             submitted = 0
             while self._pending and self._runner.available_slots() > 0:
                 key, query, weight = self._pending[0]
-                if self._runner.submit(key, query):
+                if self._runner.submit(key, query, force=self._mode == "unpriced"):
                     self._inflight[key] = weight
                     self._pending.popleft()
                     submitted += 1
@@ -229,22 +251,31 @@ class PriceRefreshScheduler:
                 else:
                     break  # queue full or runner shutting down; keep pending
             if not self._pending and not self._inflight:
-                self._last_cycle_completed_at = utcnow()
-                duration = (self._last_cycle_completed_at - self._cycle_started_at).total_seconds()
+                ended = utcnow()
+                duration = (ended - self._cycle_started_at).total_seconds()
                 logger.info(
-                    "price refresh cycle ended: catalog=%d submitted=%d skipped=%d success=%d failed=%d duration=%.1fs",
-                    self._total, self._submitted_jobs, self._skipped,
+                    "price refresh cycle ended (%s): catalog=%d submitted=%d skipped=%d success=%d failed=%d duration=%.1fs",
+                    self._mode, self._total, self._submitted_jobs, self._skipped,
                     self._successful_jobs, self._failed_jobs, duration,
                 )
                 self._cycle_started_at = None
-                self._next_scheduled_at = utcnow() + timedelta(seconds=self._interval)
+                if self._mode == "unpriced":
+                    # Keep the regular full-cycle schedule untouched.
+                    self._next_scheduled_at = self._saved_next or ended + timedelta(seconds=self._interval)
+                else:
+                    self._last_cycle_completed_at = ended
+                    self._next_scheduled_at = ended + timedelta(seconds=self._interval)
+                self._mode = None
+                self._saved_next = None
             return submitted
 
-    def manual_refresh(self) -> bool:
-        """Start a full cycle now; return False if one is already active."""
+    def manual_refresh(self, *, only_unpriced: bool = False) -> bool:
+        """Start a cycle now; return False if one is already active.
+        ``only_unpriced`` refreshes just the catalog series with no price."""
         with self._lock:
             if self._cycle_started_at is not None:
                 return False
+            self._start_cycle(only_unpriced=only_unpriced)
             self.tick()
             return True
 
@@ -271,6 +302,7 @@ class PriceRefreshScheduler:
                 "total_catalog_series": catalog_total,
                 "current_cycle_total": self._total,
                 "current_cycle_started_at": self._cycle_started_at,
+                "current_cycle_mode": self._mode,
                 "last_cycle_completed_at": self._last_cycle_completed_at,
                 "last_successful_refresh": self._last_successful_refresh,
                 "next_scheduled_refresh": self._next_scheduled_at,

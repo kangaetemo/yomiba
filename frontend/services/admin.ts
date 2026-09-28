@@ -44,3 +44,8 @@ export function getPriceRefreshStatus(): Promise<PriceRefreshStatus> {
 export function startPriceRefresh(): Promise<PriceRefreshStatus> {
   return postJson<PriceRefreshStatus>("/import/price-refresh", {});
 }
+
+/** Refresh only the catalog series that have no price yet. */
+export function startMissingPriceRefresh(): Promise<PriceRefreshStatus> {
+  return postJson<PriceRefreshStatus>("/import/price-refresh/missing", {});
+}

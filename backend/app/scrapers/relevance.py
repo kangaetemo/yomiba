@@ -86,6 +86,12 @@ _MEDIUM_MERCH_TOKENS: tuple[str, ...] = (
 #: volume marker; "ONE PIECE - Replica Hat" is still merchandise.
 _CONTEXT_STRONG_TOKENS: frozenset[str] = frozenset({"hat", "lamp"})
 
+#: Strong tokens that also start real manga titles ("Oyuncak Bebek
+#: Sevgilim" = My Dress-Up Darling). Only a book ISBN / book category
+#: neutralizes them — not a bare number, since toy lines carry model
+#: numbers ("Elaine Bebek 003").
+_BOOK_EVIDENCE_STRONG_TOKENS: frozenset[str] = frozenset({"oyuncak"})
+
 #: A volume marker ("Cilt 3", "Vol. 2", "Witch Hat Atelier 5") is book
 #: evidence for the context-dependent tokens above. A size ("25 cm") is
 #: never mistaken for one: it is strong merch evidence on its own.
@@ -187,6 +193,8 @@ def check_manga_relevance(
         book_evidence or _VOLUME_MARKER_RE.search(norm_title)
     ):
         # Only "hat"/"lamp"-style words, and the product looks like a book.
+        strong_hits = []
+    if strong_hits and set(strong_hits) <= _BOOK_EVIDENCE_STRONG_TOKENS and book_evidence:
         strong_hits = []
     if strong_hits:
         score += _STRONG_SCORE

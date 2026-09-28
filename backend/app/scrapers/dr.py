@@ -32,7 +32,7 @@ logger = logging.getLogger("yomiba.scraper.dr")
 NON_MANGA_KEYWORDS: tuple[str, ...] = (
     "tisort", "tshirt", "kompresyon", "poster", "tablo", "kupa",
     "mousepad", "hoodie", "sweatshirt", "esofman", "sapka", "corap",
-    "sticker", "dekal", "yastik", "battaniye", "oyuncak",
+    "sticker", "dekal", "yastik", "battaniye",
 )
 
 # Candidate anchors that wrap a product in the search grid.

@@ -21,6 +21,7 @@ import {
   getPriceRefreshStatus,
   runImport,
   startCatalogSync,
+  startMissingPriceRefresh,
   startPriceRefresh,
 } from "@/services/admin";
 import type {
@@ -402,7 +403,7 @@ function CoveragePanel() {
   const [coverage, setCoverage] = useState<ImportCoverage | null>(null);
   const [priceRefresh, setPriceRefresh] = useState<PriceRefreshStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [warming, setWarming] = useState(false);
+  const [warming, setWarming] = useState<"full" | "unpriced" | null>(null);
   const [warmupMsg, setWarmupMsg] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -437,18 +438,27 @@ function CoveragePanel() {
     };
   }, [cycleActive, refresh]);
 
-  async function triggerWarmup() {
+  async function triggerWarmup(mode: "full" | "unpriced") {
     if (warming) return;
-    setWarming(true);
+    setWarming(mode);
     setWarmupMsg(null);
     try {
-      await startPriceRefresh();
-      setWarmupMsg("Katalog fiyat yenileme döngüsü başlatıldı.");
+      if (mode === "unpriced") {
+        const status = await startMissingPriceRefresh();
+        setWarmupMsg(
+          status.current_cycle_total > 0
+            ? `Fiyatsız ${status.current_cycle_total} seri için yenileme başlatıldı.`
+            : "Fiyatsız seri yok.",
+        );
+      } else {
+        await startPriceRefresh();
+        setWarmupMsg("Katalog fiyat yenileme döngüsü başlatıldı.");
+      }
       await refresh();
     } catch (e) {
       setWarmupMsg(e instanceof Error ? e.message : "Isıtma başlatılamadı");
     } finally {
-      setWarming(false);
+      setWarming(null);
     }
   }
 
@@ -464,18 +474,30 @@ function CoveragePanel() {
           Raf kapsaması
           {cycleActive && (
             <span className="ml-2 text-sm font-normal text-orange-400">
-              · {running} iş çalışıyor…
+              · {priceRefresh?.current_cycle_mode === "unpriced" ? "fiyatsızlar: " : ""}
+              {running} iş çalışıyor…
             </span>
           )}
         </h2>
-        <button
-          type="button"
-          onClick={triggerWarmup}
-          disabled={warming || !priceRefresh?.enabled || cycleActive}
-          className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {warming ? "Başlatılıyor…" : "Fiyatları yenile"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void triggerWarmup("unpriced")}
+            disabled={warming !== null || !priceRefresh?.enabled || cycleActive}
+            title="Sadece hiç fiyatı olmayan katalog serilerini mağazalarda yeniden arar"
+            className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {warming === "unpriced" ? "Başlatılıyor…" : "Fiyatsızları yenile"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void triggerWarmup("full")}
+            disabled={warming !== null || !priceRefresh?.enabled || cycleActive}
+            className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {warming === "full" ? "Başlatılıyor…" : "Fiyatları yenile"}
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-xs text-rose-400">{error}</p>}
