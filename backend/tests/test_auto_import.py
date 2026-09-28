@@ -574,8 +574,8 @@ def test_zero_match_import_retries_main_title(sessions, runner_factory):
 class _QueryScraper(RecordingScraper):
     """Store search whose results depend on the query."""
 
-    def __init__(self, by_query):
-        super().__init__(results=[])
+    def __init__(self, by_query, store_id="bkm", store_name="BKM Kitap"):
+        super().__init__(store_id=store_id, store_name=store_name, results=[])
         self.by_query = by_query
 
     def search(self, query: str) -> list:
@@ -617,3 +617,71 @@ def test_fallback_runs_when_query_only_priced_another_series(sessions, runner_fa
         assert not catalog_series_unpriced(session, title)
     finally:
         session.close()
+
+
+def test_fallback_is_per_store_once_another_store_priced_the_series(sessions, runner_factory):
+    """Zom 100: BKM's fuzzy search finds "Zom 100 Cilt 10" for the full
+    subtitled title; a strict all-words store returns nothing for it. The
+    series is priced (by BKM), yet the strict store must still be asked for
+    "Zom 100" — and BKM must not be searched twice."""
+    from tests.test_import_service import seed_catalog_series
+
+    session = sessions()
+    try:
+        seed_catalog_series(session, "Zom 100: Ölülerin Yapılacaklar Listesi",
+                            "Marmara Çizgi", volumes=range(1, 11))
+        session.commit()
+    finally:
+        session.close()
+
+    title = "Zom 100: Ölülerin Yapılacaklar Listesi"
+    fuzzy = _QueryScraper({
+        title: [make_result("bkm", "Zom 100 Cilt 10", "100", publisher="Marmara Çizgi")],
+    })
+    strict = _QueryScraper({
+        "Zom 100": [make_result("dr", "Zom 100 Cilt 10", "95", publisher="Marmara Çizgi")],
+    }, store_id="dr", store_name="D&R")
+    runner = runner_factory([fuzzy, strict])
+    key = normalized_query_key(title)
+    assert runner.submit(key, title)
+    assert runner.wait_for(key)
+
+    assert fuzzy.calls == [title]
+    assert strict.calls == [title, "Zom 100"]
+    session = sessions()
+    try:
+        stores = {
+            listing.store.code
+            for listing in session.scalars(select(StoreListing))
+        }
+    finally:
+        session.close()
+    assert stores == {"bkm", "dr"}
+
+
+def test_store_with_unrelated_results_is_not_retried_when_series_priced(sessions, runner_factory):
+    """Bounded cost: a store that answered the full title with other
+    products (and the series is priced elsewhere) gets no extra query."""
+    from tests.test_import_service import seed_catalog_series
+
+    session = sessions()
+    try:
+        seed_catalog_series(session, "Zom 100: Ölülerin Yapılacaklar Listesi",
+                            "Marmara Çizgi", volumes=range(1, 11))
+        session.commit()
+    finally:
+        session.close()
+
+    title = "Zom 100: Ölülerin Yapılacaklar Listesi"
+    fuzzy = _QueryScraper({
+        title: [make_result("bkm", "Zom 100 Cilt 10", "100", publisher="Marmara Çizgi")],
+    })
+    other = _QueryScraper({
+        title: [make_result("dr", "Başka Bir Kitap", "50", publisher="X Yayınları")],
+    }, store_id="dr", store_name="D&R")
+    runner = runner_factory([fuzzy, other])
+    key = normalized_query_key(title)
+    assert runner.submit(key, title)
+    assert runner.wait_for(key)
+
+    assert other.calls == [title]

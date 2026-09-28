@@ -127,6 +127,8 @@ class StoreImportResult:
     #: Set when the scraper itself failed (transport / parse / block).
     error: str | None = None
     reasons: dict[str, int] = field(default_factory=dict)
+    #: Series ids at least one of this store's results resolved to.
+    matched_series: set[int] = field(default_factory=set)
 
 
 @dataclass
@@ -245,6 +247,7 @@ class ImportService:
                         conflict_publishers[name] = conflict_publishers.get(name, 0) + 1
                     continue
                 volume, store = target
+                store_report.matched_series.add(volume.series_id)
                 groups.setdefault((volume.id, store.id), []).append(
                     (to_cents(result.price), result)
                 )

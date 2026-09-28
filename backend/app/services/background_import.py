@@ -95,15 +95,19 @@ def fallback_queries(session: Session, query: str) -> list[str]:
     return out
 
 
+def _catalog_series_ids(session: Session, query: str) -> set[int]:
+    catalog = select(CatalogSeries.series_id).distinct()
+    return set(session.scalars(
+        select(Series.id).where(Series.title == query, Series.id.in_(catalog))
+    ))
+
+
 def catalog_series_unpriced(session: Session, query: str) -> bool:
     """True when ``query`` is a catalog series title and none of its
     catalog editions has a store listing yet. A query that merely matched
     ANOTHER series' products ("Oşi No Ko: Seçtiğim Yıldız" pulling in
     unrelated listings) still leaves its own series unpriced."""
-    catalog = select(CatalogSeries.series_id).distinct()
-    series_ids = list(session.scalars(
-        select(Series.id).where(Series.title == query, Series.id.in_(catalog))
-    ))
+    series_ids = _catalog_series_ids(session, query)
     if not series_ids:
         return False
     listed = session.scalar(
@@ -113,6 +117,34 @@ def catalog_series_unpriced(session: Session, query: str) -> bool:
         .limit(1)
     )
     return listed is None
+
+
+def stores_needing_fallback(
+    session: Session, query: str, report: ImportReport
+) -> set[str]:
+    """Stores to retry with the shorter fallback queries.
+
+    Per store, not per series: BKM's fuzzy search finds "Zom 100 Cilt 10"
+    for the full "Zom 100: Ölülerin Yapılacaklar Listesi", while a store
+    with strict all-words search (Gerekli Şeyler) returns nothing — and
+    once BKM priced the series, a series-level check never asked the
+    strict store for "Zom 100". A working store is retried when it matched
+    none of the query's catalog series AND either returned nothing at all
+    or the series is still unpriced everywhere (bounded extra requests).
+    A non-catalog query keeps the old rule: retry only if nothing matched.
+    """
+    ok = [s for s in report.stores if s.error is None]
+    target = _catalog_series_ids(session, query)
+    if not target:
+        if report.total_created + report.total_updated == 0:
+            return {s.store_code for s in ok}
+        return set()
+    unpriced = catalog_series_unpriced(session, query)
+    return {
+        s.store_code
+        for s in ok
+        if not (s.matched_series & target) and (unpriced or s.results_found == 0)
+    }
 
 
 def merge_reports(primary: ImportReport, extra: ImportReport) -> None:
@@ -132,6 +164,7 @@ def merge_reports(primary: ImportReport, extra: ImportReport) -> None:
         target.errors += s.errors
         for reason, n in s.reasons.items():
             target.reasons[reason] = target.reasons.get(reason, 0) + n
+        target.matched_series |= s.matched_series
         # A store that answered on any query is not a failed store.
         if target.error is not None and s.error is None:
             target.error = None
@@ -576,25 +609,26 @@ class BackgroundImportRunner:
                     session, scrapers=self._scraper_factory(self._store_ids)
                 )
                 report = service.run_import(query)
-                if (
-                    report.total_created + report.total_updated == 0
-                    or catalog_series_unpriced(session, query)
-                ) and any(s.error is None for s in report.stores):
-                    for alt in fallback_queries(session, query):
-                        logger.info(
-                            "background import for %r matched nothing; "
-                            "retrying with %r",
-                            query,
-                            alt,
-                        )
-                        service = ImportService(
-                            session, scrapers=self._scraper_factory(self._store_ids)
-                        )
-                        merge_reports(report, service.run_import(alt))
-                        if not catalog_series_unpriced(session, query) and (
-                            report.total_created + report.total_updated > 0
-                        ):
-                            break
+                needed = stores_needing_fallback(session, query, report)
+                alts = fallback_queries(session, query) if needed else []
+                for alt in alts:
+                    logger.info(
+                        "background import for %r: retrying %s with %r",
+                        query,
+                        sorted(needed),
+                        alt,
+                    )
+                    scrapers = [
+                        s for s in self._scraper_factory(self._store_ids)
+                        if s.store_id in needed
+                    ]
+                    if not scrapers:
+                        break
+                    service = ImportService(session, scrapers=scrapers)
+                    merge_reports(report, service.run_import(alt))
+                    needed &= stores_needing_fallback(session, query, report)
+                    if not needed:
+                        break
                 record = record_import_result(session, key, report)
                 logger.info(
                     "background import for %r finished: status=%s ok=%d failed=%d "
