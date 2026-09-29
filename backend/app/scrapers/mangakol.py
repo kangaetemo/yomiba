@@ -77,6 +77,9 @@ class CatalogVolume:
 
     number: int | None
     cover_url: str | None
+    #: Original-volume span of a 2-in-1 / 3-in-1 book ((9, 10) for
+    #: "Dragon Ball 9&10"); None for single-volume books.
+    covers: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -240,8 +243,26 @@ class MangakolCatalogScraper(BaseScraper):
             cover = img.get("src") if img is not None else None
             if cover and not cover.startswith(("http://", "https://")):
                 cover = urljoin(cls.base_url + "/", cover)
-            volumes.append(CatalogVolume(number=number, cover_url=cover or None))
+            volumes.append(CatalogVolume(
+                number=number, cover_url=cover or None, covers=cls._covers(item, img),
+            ))
         return volumes
+
+    @staticmethod
+    def _covers(item, img) -> tuple[int, int] | None:
+        """Span of an omnibus volume: ``data-binding-format="TwoInOne"``
+        (or ThreeInOne) plus the volume label "Dragon Ball 9&10"."""
+        from ..normalization import parse_volume_range
+
+        binding = (item.get("data-binding-format") or "").lower()
+        if "inone" not in binding:
+            return None
+        title_el = item.select_one(".mk-vol-title")
+        label = (title_el.get("title") or title_el.get_text(" ", strip=True)) if title_el else None
+        if not label and img is not None:
+            label = img.get("alt")
+        span = parse_volume_range(label)
+        return (span.first, span.last) if span else None
 
     def _load_more_volumes(
         self, manga_id: str, volumes: list[CatalogVolume]

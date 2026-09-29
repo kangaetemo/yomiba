@@ -277,16 +277,23 @@ class CatalogSyncService:
                     Volume.volume_number == number,
                 )
             )
+            covers = getattr(volume, "covers", None)
             if existing is not None:
                 if existing.cover_url is None and volume.cover_url:
                     existing.cover_url = volume.cover_url
                     report.covers_backfilled += 1
+                # The omnibus span follows the catalog source (only a known
+                # span overwrites; a page without one never erases it).
+                if covers and (existing.covers_from, existing.covers_to) != covers:
+                    existing.covers_from, existing.covers_to = covers
                 continue
             self.session.add(
                 Volume(
                     series_id=series.id,
                     volume_number=number,
                     cover_url=volume.cover_url,
+                    covers_from=covers[0] if covers else None,
+                    covers_to=covers[1] if covers else None,
                 )
             )
             report.volumes_added += 1

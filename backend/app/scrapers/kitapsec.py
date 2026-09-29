@@ -36,7 +36,7 @@ import logging
 import re
 from urllib.parse import quote_plus, urljoin
 
-from ..normalization import normalize_isbn, normalize_text, parse_volume_title
+from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
 from .base import BaseScraper, ScraperError
 from .common import looks_like_blocked_page, parse_tr_price
 from .search_result import SearchResult
@@ -64,6 +64,9 @@ class KitapsecScraper(BaseScraper):
     store_name = "Kitapsec"
     base_url = "https://www.kitapsec.com"
     search_path = "/Arama/index.php"
+    #: Live-verified 2026-09-29: sold-out products vanish from search (every
+    #: search row is InStock); the product page JSON-LD still has the stock.
+    verifies_unseen_listings = True
 
     def search(self, query: str) -> list[SearchResult]:
         self.stats = {
@@ -221,7 +224,9 @@ class KitapsecScraper(BaseScraper):
         # display title keeps the publisher suffix; only the PARSED
         # series/volume uses the cleaned title (ISBN stays the match key).
         parsed = parse_volume_title(self._strip_publisher_suffix(title))
-        if parsed.is_collection:
+        # An omnibus span ("Cilt 5 - 6") may be one 2-in-1 book: the importer
+        # decides against the catalog, only real boxes are dropped here.
+        if parsed.is_collection and parse_volume_range(self._strip_publisher_suffix(title)) is None:
             logger.debug("kitapsec: skipping collection: %r", title)
             return None, "collection"
 

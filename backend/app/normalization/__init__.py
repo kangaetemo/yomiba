@@ -6,7 +6,7 @@ ad-hoc string handling.
 """
 
 from .text import normalize_publisher, normalize_text, publisher_family_key
-from .volume import VolumeParseResult, parse_volume_title
+from .volume import VolumeParseResult, VolumeRange, parse_volume_range, parse_volume_title
 from .isbn import normalize_isbn
 
 __all__ = [
@@ -14,6 +14,8 @@ __all__ = [
     "normalize_publisher",
     "publisher_family_key",
     "parse_volume_title",
+    "parse_volume_range",
     "VolumeParseResult",
+    "VolumeRange",
     "normalize_isbn",
 ]

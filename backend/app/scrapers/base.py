@@ -5,16 +5,26 @@ from __future__ import annotations
 import logging
 import random
 import time
+from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
 
 from ..config import get_settings
-from .common import has_block_marker
+from .common import has_block_marker, looks_like_blocked_page, parse_tr_price
 from .search_result import SearchResult
 
 logger = logging.getLogger("yomiba.scraper")
+
+
+@dataclass(frozen=True)
+class ListingCheck:
+    """Stock (and price, when shown) read from one product page."""
+
+    in_stock: bool
+    price: Decimal | None = None
 
 
 class ScraperError(RuntimeError):
@@ -37,6 +47,10 @@ class BaseScraper:
     store_id: str = ""
     store_name: str = ""
     base_url: str = ""
+    #: The store drops sold-out products from its search results (Kitapseç,
+    #: Kitap Sepeti), so a listing missing from a successful search is
+    #: re-checked on its product page instead of keeping "in stock".
+    verifies_unseen_listings: bool = False
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         settings = get_settings()
@@ -213,6 +227,34 @@ class BaseScraper:
             if any(t in ("Product", "Book") for t in types if isinstance(t, str)):
                 return node
         return None
+
+    def check_listing(self, url: str) -> ListingCheck | None:
+        """Read stock/price of one product page from its schema.org
+        Product JSON-LD ``offers``. None when unknown: HTTP error, bot wall,
+        a removed product redirecting elsewhere (no Product node), or an
+        availability value without a clear meaning. May raise ScraperError
+        on transport failure."""
+        response = self.get(url)
+        if response.status_code >= 400 or looks_like_blocked_page(
+            response.status_code, response.text
+        ):
+            return None
+        node = self.product_json_ld_node(self.extract_json_ld(response.text))
+        if node is None:
+            return None
+        offers = node.get("offers")
+        if isinstance(offers, list):
+            offers = offers[0] if offers else None
+        if not isinstance(offers, dict):
+            return None
+        availability = str(offers.get("availability") or "")
+        if "OutOfStock" in availability or "Discontinued" in availability or "SoldOut" in availability:
+            in_stock = False
+        elif "InStock" in availability or "LimitedAvailability" in availability or "PreOrder" in availability:
+            in_stock = True
+        else:
+            return None
+        return ListingCheck(in_stock=in_stock, price=parse_tr_price(offers.get("price")))
 
     def close(self) -> None:
         if self._owns_client:

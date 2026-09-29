@@ -37,7 +37,7 @@ import logging
 import re
 from urllib.parse import quote_plus, urljoin
 
-from ..normalization import normalize_isbn, normalize_text, parse_volume_title
+from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
 from .base import BaseScraper, ScraperError
 from .common import looks_like_blocked_page, parse_tr_price
 from .search_result import SearchResult
@@ -56,6 +56,9 @@ class KitapsepetiScraper(BaseScraper):
     store_name = "Kitap Sepeti"
     base_url = "https://www.kitapsepeti.com"
     search_path = "/arama?q={query}"
+    #: Drops sold-out products from search (see catalog_service
+    #: stale_listing_ids); the detail JSON-LD carries offers.availability.
+    verifies_unseen_listings = True
 
     def search(self, query: str) -> list[SearchResult]:
         self.stats = {
@@ -191,7 +194,9 @@ class KitapsepetiScraper(BaseScraper):
             return None, "non_manga_keyword"
 
         parsed = parse_volume_title(title)
-        if parsed.is_collection:
+        # An omnibus span ("Cilt 5 - 6") may be one 2-in-1 book: the importer
+        # decides against the catalog, only real boxes are dropped here.
+        if parsed.is_collection and parse_volume_range(title) is None:
             logger.debug("kitapsepeti: skipping collection: %r", title)
             return None, "collection"
 

@@ -605,6 +605,7 @@ class BackgroundImportRunner:
                 return
             # --- scrape + import --------------------------------------------------
             try:
+                started = utcnow()
                 service = ImportService(
                     session, scrapers=self._scraper_factory(self._store_ids)
                 )
@@ -629,6 +630,7 @@ class BackgroundImportRunner:
                     needed &= stores_needing_fallback(session, query, report)
                     if not needed:
                         break
+                self._verify_unseen(session, query, report, started)
                 record = record_import_result(session, key, report)
                 logger.info(
                     "background import for %r finished: status=%s ok=%d failed=%d "
@@ -653,6 +655,30 @@ class BackgroundImportRunner:
             # session dropped without close leaks its pool connection until
             # garbage collection — never acceptable with a bounded pool.
             session.close()
+
+
+    def _verify_unseen(
+        self, session: Session, query: str, report: ImportReport, started: datetime
+    ) -> None:
+        """Product-page stock check for this series' listings that a working
+        store's search no longer returned (sold-out products vanish from
+        Kitapseç / Kitap Sepeti search). Best effort: never fails the job."""
+        target = _catalog_series_ids(session, query)
+        ok = {s.store_code for s in report.stores if s.error is None}
+        if not target or not ok:
+            return
+        for scraper in self._scraper_factory(self._store_ids):
+            if scraper.store_id not in ok or not getattr(scraper, "verifies_unseen_listings", False):
+                continue
+            try:
+                with scraper:
+                    n = ImportService(session).verify_unseen_listings(scraper, target, started)
+                if n:
+                    logger.info("background import for %r: re-checked %d unseen %s listings",
+                                query, n, scraper.store_id)
+            except Exception:  # noqa: BLE001 - verification is best effort
+                logger.exception("unseen-listing check for %r at %s failed", query, scraper.store_id)
+                session.rollback()
 
 
 def upsert_failed_record(session: Session, key: str, query: str, error: str) -> None:

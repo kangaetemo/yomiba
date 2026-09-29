@@ -53,6 +53,7 @@ from ..normalization import (
     normalize_isbn,
     normalize_publisher,
     normalize_text,
+    parse_volume_range,
     parse_volume_title,
     publisher_family_key,
 )
@@ -93,6 +94,11 @@ _SUBTITLE_SEPARATOR_RE = re.compile(_DASH_SEPARATOR_RE.pattern + r"|\s*:\s+")
 _REMAINDER_COLLECTION_RE = re.compile(
     r"\b(?:box|set|seti|kutu|bundle|toplu|koleksiyon|collection|complete|deluxe)\b|\b\d{1,3}\s+\d{1,3}\b"
 )
+
+
+def _aware(value: datetime) -> datetime:
+    """SQLite returns naive datetimes; they are stored as UTC."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 def _remainder_volume(remainder: str) -> int | None:
@@ -302,6 +308,63 @@ class ImportService:
         report.finished_at = utcnow()
         return report
 
+    def verify_unseen_listings(
+        self, scraper: BaseScraper, series_ids: set[int], since: datetime
+    ) -> int:
+        """Re-check listings of ``series_ids`` at ``scraper``'s store that the
+        search did not return (``last_checked`` older than ``since``, the
+        start of this import) on their own product page.
+
+        For stores that hide sold-out products from search: without this
+        the listing kept its last "in stock" until the 48 h stale window.
+        Unknown answers leave the listing alone (the stale window still
+        applies). Bounded by ``max_detail_requests``. Returns the number of
+        listings updated; the caller's session is committed per listing.
+        """
+        if not getattr(scraper, "verifies_unseen_listings", False) or not series_ids:
+            return 0
+        store = self.session.scalar(select(Store).where(Store.code == scraper.store_id))
+        if store is None:
+            return 0
+        since = _aware(since)
+        rows = self.session.execute(
+            select(StoreListing, Volume)
+            .join(Volume, Volume.id == StoreListing.volume_id)
+            .where(StoreListing.store_id == store.id, Volume.series_id.in_(series_ids))
+            .order_by(StoreListing.id)
+        ).all()
+        unseen = [(l, v) for l, v in rows if l.last_checked is None or _aware(l.last_checked) < since]
+        updated = 0
+        for listing, volume in unseen[: max(0, get_settings().max_detail_requests)]:
+            try:
+                check = scraper.check_listing(listing.product_url)
+            except Exception:  # noqa: BLE001 - one page must not stop the rest
+                logger.warning("import: stock re-check failed for %s", listing.product_url)
+                continue
+            if check is None:
+                continue
+            result = SearchResult(
+                store_id=scraper.store_id,
+                store_name=scraper.store_name,
+                title=f"{volume.series.title} {volume.volume_number}",
+                product_url=listing.product_url,
+                price=check.price,
+                in_stock=check.in_stock,
+            )
+            try:
+                self._upsert_listing(volume, store, result)
+                self.session.commit()
+            except Exception:  # noqa: BLE001 - per-listing isolation
+                logger.exception("import: could not store re-check of %s", listing.product_url)
+                self.session.rollback()
+                continue
+            updated += 1
+            logger.info(
+                "import: %s listing %s not in search; product page says in_stock=%s",
+                scraper.store_id, listing.id, check.in_stock,
+            )
+        return updated
+
     def import_result(self, result: SearchResult) -> ImportAction:
         """Import one normalized result. Caller commits/rolls back.
 
@@ -465,7 +528,11 @@ class ImportService:
         publisher_name = (result.publisher or "").strip()
         remainder_number = None
         how = "prefix"
-        match = self._catalog_series_prefix(title_key, publisher_name)
+        # "Dragon Ball 9&10" / "Oldboy Cilt 5-6": a 2-in-1 book the catalog
+        # knows by its span. Checked first: the prefix rule below would read
+        # the "9 10" remainder as a box set.
+        omnibus = self._catalog_series_by_range(result.title, publisher_name)
+        match = None if omnibus else self._catalog_series_prefix(title_key, publisher_name)
         if match is not None and match[1]:
             if _REMAINDER_COLLECTION_RE.search(match[1]):
                 return self._reject("box_set")
@@ -475,7 +542,10 @@ class ImportService:
                 # token, so this prefix proves nothing — try the stricter
                 # alternatives below.
                 match = None
-        if match is None:
+        if omnibus is not None:
+            series, remainder_number = omnibus
+            how = "omnibus span"
+        elif match is None:
             # "Rosario + Vampire - Tılsımlı Kolye ve Vampir 8": the catalog
             # title starts after a dash separator (original title first).
             found = self._catalog_series_after_dash(result.title, publisher_name)
@@ -517,6 +587,33 @@ class ImportService:
             return None
         logger.info("import: %r matched catalog title %r by %s", result.title, series.title, how)
         return (volume, store)
+
+    def _catalog_series_by_range(self, raw_title: str, publisher_name: str):
+        """Omnibus book titled by its original-volume span.
+
+        "Dragon Ball 9&10" -> the catalog volume that covers exactly 9-10
+        (Mangakol "Cilt 5", TwoInOne). The title before the span must be
+        exactly one catalog title (publisher-family filtered). Only volumes
+        the catalog marks with that span qualify, so a real "1-2" box of a
+        single-volume edition never maps onto volume 1.
+        """
+        span = parse_volume_range(raw_title)
+        if span is None:
+            return None
+        match = self._catalog_series_prefix(normalize_text(span.base_title), publisher_name)
+        if match is None or match[1]:
+            return None
+        series = match[0]
+        volume = self.session.scalar(
+            select(Volume).where(
+                Volume.series_id == series.id,
+                Volume.covers_from == span.first,
+                Volume.covers_to == span.last,
+            )
+        )
+        if volume is None:
+            return None
+        return series, volume.volume_number
 
     def _catalog_series_after_dash(self, raw_title: str, publisher_name: str):
         """Try each part of ``raw_title`` that follows a spaced dash

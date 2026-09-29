@@ -43,6 +43,11 @@ class Volume(Base):
     #: because not every store exposes an ISBN.
     isbn: Mapped[str | None] = mapped_column(String(20), unique=True, index=True)
     cover_url: Mapped[str | None] = mapped_column(String(1000))
+    #: Original volumes a 2-in-1 / 3-in-1 book collects (catalog source:
+    #: Dragon Ball "Cilt 5" = 9-10). Stores title such books by that span
+    #: ("Dragon Ball 9&10"); NULL for single-volume books.
+    covers_from: Mapped[int | None] = mapped_column(Integer)
+    covers_to: Mapped[int | None] = mapped_column(Integer)
 
     series: Mapped[Series] = relationship(back_populates="volumes")
     listings: Mapped[list[StoreListing]] = relationship(

@@ -42,7 +42,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from ..normalization import normalize_isbn, normalize_text, parse_volume_title
+from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
 from .base import BaseScraper, ScraperError
 from .common import looks_like_blocked_page, parse_tr_price
 from .search_result import SearchResult
@@ -278,7 +278,9 @@ class CizmanScraper(BaseScraper):
             return None, "non_manga_keyword"
 
         parsed = parse_volume_title(title)
-        if parsed.is_collection:
+        # An omnibus span ("Cilt 5 - 6") may be one 2-in-1 book: the importer
+        # decides against the catalog, only real boxes are dropped here.
+        if parsed.is_collection and parse_volume_range(title) is None:
             logger.debug("cizman: skipping collection: %r", title)
             return None, "collection"
 

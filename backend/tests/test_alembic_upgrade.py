@@ -59,7 +59,7 @@ def test_init_db_builds_full_schema_on_fresh_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0007_import_record_reasons"
+        ).fetchone()[0] == "0008_volume_covers_range"
     finally:
         conn.close()
 
@@ -84,7 +84,7 @@ def test_init_db_migrates_unstamped_legacy_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0007_import_record_reasons"
+        ).fetchone()[0] == "0008_volume_covers_range"
     finally:
         conn.close()
 
@@ -99,7 +99,7 @@ def test_init_db_is_noop_when_already_at_head(alembic_url):
     try:
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchall() == [("0007_import_record_reasons",)]
+        ).fetchall() == [("0008_volume_covers_range",)]
     finally:
         conn.close()
 

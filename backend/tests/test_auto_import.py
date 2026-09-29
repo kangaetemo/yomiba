@@ -685,3 +685,55 @@ def test_store_with_unrelated_results_is_not_retried_when_series_priced(sessions
     assert runner.wait_for(key)
 
     assert other.calls == [title]
+
+
+class _HidingStore(RecordingScraper):
+    """Kitapseç-like store: the sold-out product is gone from search, but
+    its product page still answers."""
+
+    verifies_unseen_listings = True
+
+    def __init__(self, pages):
+        super().__init__(store_id="kitapsec", store_name="Kitapsec", results=[])
+        self.pages = pages
+        self.checked: list[str] = []
+
+    def check_listing(self, url):
+        self.checked.append(url)
+        return self.pages.get(url)
+
+
+def test_background_job_rechecks_listing_missing_from_search(sessions, runner_factory):
+    from app.models import Store, Volume
+    from app.scrapers.base import ListingCheck
+    from tests.test_import_service import seed_catalog_series
+
+    url = "https://www.kitapsec.com/Products/Tokyo-Gul-Yeniden-8.html"
+    session = sessions()
+    try:
+        series = seed_catalog_series(session, "Tokyo Gül - Yeniden", "Gerekli Şeyler", volumes=(8,))
+        store = Store(code="kitapsec", name="Kitapsec")
+        session.add(store)
+        session.flush()
+        vol = session.scalar(select(Volume).where(Volume.series_id == series.id))
+        session.add(StoreListing(volume_id=vol.id, store_id=store.id, product_url=url, price=20000,
+                                 in_stock=True, last_checked=utcnow() - timedelta(hours=20)))
+        session.commit()
+    finally:
+        session.close()
+
+    scraper = _HidingStore({url: ListingCheck(in_stock=False)})
+    runner = runner_factory([scraper])
+    title = "Tokyo Gül - Yeniden"
+    key = normalized_query_key(title)
+    assert runner.submit(key, title)
+    assert runner.wait_for(key)
+
+    assert scraper.checked == [url]
+    session = sessions()
+    try:
+        listing = session.scalar(select(StoreListing))
+        assert listing.in_stock is False
+        assert listing.price == 20000  # page gave no price: keep the last one
+    finally:
+        session.close()

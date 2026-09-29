@@ -103,6 +103,51 @@ def _strip_volume_tokens(text: str) -> str:
     return out.strip(" \t:;.,-–#()[]")
 
 
+@dataclass(frozen=True)
+class VolumeRange:
+    """An omnibus book's original-volume span ("Dragon Ball 9&10")."""
+
+    base_title: str
+    first: int
+    last: int
+
+
+# A TRAILING span of 2-3 consecutive original volumes, joined by "&", "ve"
+# or a dash, optionally wrapped in a "Cilt" marker: "9&10", "5 ve 6",
+# "Cilt: 7-8", "1-2 Cilt", "Cilt 5 - 6", "1-2-3".
+_OMNIBUS_RANGE_RE = re.compile(
+    r"(?:\b(?:cilt|vol(?:ume)?)\b\.?\s*:?\s*)?"
+    r"(\d{1,3})\s*(?:&|\bve\b|[-–])\s*(\d{1,3})"
+    r"(?:\s*(?:&|\bve\b|[-–])\s*(\d{1,3}))?"
+    r"(?:\s*\.?\s*cilt\b)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def parse_volume_range(title: str | None) -> VolumeRange | None:
+    """Parse an omnibus title ending in a consecutive volume span.
+
+    Only a candidate: whether "9&10" is one 2-in-1 book or a two-book box
+    is decided by the catalog (a volume that covers exactly 9-10). Titles
+    with collection words ("Kutu Set") are never candidates.
+    """
+    if not title:
+        return None
+    text = re.sub(r"\s+", " ", title.strip()).rstrip(" .")
+    if _COLLECTION_WORD_RE.search(text):
+        return None
+    match = _OMNIBUS_RANGE_RE.search(text)
+    if match is None:
+        return None
+    numbers = [int(n) for n in match.groups() if n is not None]
+    if numbers[0] < 1 or any(b != a + 1 for a, b in zip(numbers, numbers[1:])):
+        return None
+    base = text[: match.start()].strip(" \t:;.,-–#([")
+    if not base:
+        return None
+    return VolumeRange(base, numbers[0], numbers[-1])
+
+
 def parse_volume_title(title: str | None) -> VolumeParseResult:
     """Parse ``title`` into base title, volume number and collection flag."""
     if not title or not title.strip():

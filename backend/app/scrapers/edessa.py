@@ -38,7 +38,7 @@ import time
 import xml.etree.ElementTree as ET
 from decimal import Decimal, InvalidOperation
 
-from ..normalization import normalize_isbn, normalize_text, parse_volume_title
+from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
 from .base import BaseScraper, ScraperError
 from .common import looks_like_blocked_page
 from .relevance import filter_manga_results
@@ -333,7 +333,9 @@ class EdessaScraper(BaseScraper):
         if not title:
             return None, "no_title"
         parsed = parse_volume_title(title)
-        if parsed.is_collection:
+        # An omnibus span ("Cilt 5 - 6") may be one 2-in-1 book: the importer
+        # decides against the catalog, only real boxes are dropped here.
+        if parsed.is_collection and parse_volume_range(title) is None:
             return None, "collection"
         return (
             SearchResult(
