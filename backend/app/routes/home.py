@@ -1,8 +1,10 @@
 """GET /home — the home page shelves, computed from catalog data only.
 
-* ``popular_series``: catalog series ranked by reader interest (collection +
-  wishlist rows) and then by how many in-stock store offers they have. The
-  price shown is the lowest current in-stock price of any of its volumes.
+* ``popular_series``: catalog series with at least one in-stock offer,
+  ranked by time-weighted reader interest (wishlist + collection rows; the
+  last RECENT_DAYS count RECENT_WEIGHT times), then by in-stock offers PER
+  VOLUME (so long series do not win just by length), then by total offers.
+  The price shown is the lowest current in-stock price of any volume.
 * ``new_volumes``: volumes by their LOCAL release date from the catalog
   source (Mangakol "Yayın Tarihi (Yerel)"), newest first, never in the
   future. Volumes without a known date are not listed.
@@ -13,10 +15,10 @@ Read-only; nothing here triggers a scrape.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -29,7 +31,7 @@ from ..models import (
     Volume,
     WishlistItem,
 )
-from ..utils import from_cents
+from ..utils import from_cents, utcnow
 
 router = APIRouter(tags=["home"])
 
@@ -52,6 +54,29 @@ def _series_covers(session: Session, series_ids: list[int]) -> dict[int, str]:
     return covers
 
 
+#: Reader activity within this window counts RECENT_WEIGHT times, so the
+#: shelf follows what readers are into now, not what they added years ago.
+RECENT_DAYS = 30
+RECENT_WEIGHT = 3.0
+
+
+def reader_interest(session: Session) -> dict[int, float]:
+    """Time-weighted reader interest per series: wishlist rows (by when they
+    were added) plus collection rows (by their last status change)."""
+    cutoff = utcnow() - timedelta(days=RECENT_DAYS)
+    interest: dict[int, float] = {}
+    for model, stamp in ((WishlistItem, WishlistItem.created_at),
+                         (UserVolumeCollection, UserVolumeCollection.updated_at)):
+        weight = case((stamp >= cutoff, RECENT_WEIGHT), else_=1.0)
+        for sid, score in session.execute(
+            select(Volume.series_id, func.sum(weight))
+            .select_from(model).join(Volume, Volume.id == model.volume_id)
+            .group_by(Volume.series_id)
+        ):
+            interest[sid] = interest.get(sid, 0.0) + float(score or 0)
+    return interest
+
+
 @router.get("/home")
 def home(
     popular: int = Query(default=8, ge=1, le=24),
@@ -62,20 +87,7 @@ def home(
     real = Volume.volume_number >= 0
 
     # -- popular series ---------------------------------------------------------
-    interest = {
-        sid: n for sid, n in session.execute(
-            select(Volume.series_id, func.count())
-            .select_from(WishlistItem).join(Volume, Volume.id == WishlistItem.volume_id)
-            .group_by(Volume.series_id)
-        )
-    }
-    for sid, n in session.execute(
-        select(Volume.series_id, func.count())
-        .select_from(UserVolumeCollection).join(Volume, Volume.id == UserVolumeCollection.volume_id)
-        .group_by(Volume.series_id)
-    ):
-        interest[sid] = interest.get(sid, 0) + n
-
+    interest = reader_interest(session)
     offers = session.execute(
         select(Volume.series_id, func.count(StoreListing.id), func.min(StoreListing.price))
         .join(StoreListing, StoreListing.volume_id == Volume.id)
@@ -83,7 +95,20 @@ def home(
                StoreListing.price.isnot(None))
         .group_by(Volume.series_id)
     ).all()
-    ranked = sorted(offers, key=lambda r: (-interest.get(r[0], 0), -r[1], r[0]))[:popular]
+    volume_counts = dict(session.execute(
+        select(Volume.series_id, func.count())
+        .where(Volume.series_id.in_([r[0] for r in offers]), real)
+        .group_by(Volume.series_id)
+    ).all())
+
+    def rank(row):
+        sid, offer_count, _ = row
+        # Offers per volume: how easy the series is to buy, without long
+        # series winning merely by having many volumes.
+        availability = offer_count / max(1, volume_counts.get(sid, 0))
+        return (-interest.get(sid, 0.0), -availability, -offer_count, sid)
+
+    ranked = sorted(offers, key=rank)[:popular]
     popular_ids = [r[0] for r in ranked]
     series_rows = {
         s.id: (s, p) for s, p in session.execute(
@@ -91,10 +116,6 @@ def home(
             .where(Series.id.in_(popular_ids))
         )
     }
-    volume_counts = dict(session.execute(
-        select(Volume.series_id, func.count()).where(Volume.series_id.in_(popular_ids), real)
-        .group_by(Volume.series_id)
-    ).all())
     covers = _series_covers(session, popular_ids)
     popular_series = []
     for sid, offer_count, min_price in ranked:

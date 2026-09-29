@@ -87,3 +87,43 @@ def test_volume_detail_exposes_catalog_details(client, db_session):
     assert body["release_date"] == "2023-06-22"
     assert (body["covers_from"], body["covers_to"]) == (9, 10)
     assert body["series"]["author"] == "Akira Toriyama"
+
+
+def test_popular_availability_is_per_volume(client, db_session):
+    """No reader interest: a one-shot in 2 stores (2 offers / volume) outranks
+    a 3-volume series with 3 offers (1 / volume) — length alone never wins."""
+    bkm, ks = Store(code="bkm", name="BKM"), Store(code="ks", name="Kitapsec")
+    db_session.add_all([bkm, ks])
+    long = seed_catalog_series(db_session, "Uzun Seri", "A", volumes=(1, 2, 3))
+    short = seed_catalog_series(db_session, "Tek Cilt", "B", volumes=(1,))
+    for n in (1, 2, 3):
+        _offer(db_session, _vol(db_session, long, n), bkm, 10000)
+    _offer(db_session, _vol(db_session, short, 1), bkm, 10000)
+    _offer(db_session, _vol(db_session, short, 1), ks, 10500)
+    db_session.commit()
+
+    titles = [s["title"] for s in client.get("/home").json()["popular_series"]]
+    assert titles == ["Tek Cilt", "Uzun Seri"]
+
+
+def test_popular_recent_interest_weighs_more(client, db_session):
+    """One wishlist add this month (weight 3) beats two old ones (1 + 1)."""
+    from app.models import UserVolumeCollection
+    from app.utils import utcnow
+
+    bkm = Store(code="bkm", name="BKM")
+    db_session.add(bkm)
+    old = seed_catalog_series(db_session, "Eski İlgi", "A", volumes=(1,))
+    new = seed_catalog_series(db_session, "Yeni İlgi", "B", volumes=(1,))
+    for s in (old, new):
+        _offer(db_session, _vol(db_session, s, 1), bkm, 10000)
+    user = db_session.scalar(select(User))
+    long_ago = utcnow() - timedelta(days=90)
+    db_session.add(WishlistItem(user_id=user.id, volume_id=_vol(db_session, old, 1).id, created_at=long_ago))
+    db_session.add(UserVolumeCollection(user_id=user.id, volume_id=_vol(db_session, old, 1).id,
+                                        status="owned", created_at=long_ago, updated_at=long_ago))
+    db_session.add(WishlistItem(user_id=user.id, volume_id=_vol(db_session, new, 1).id))
+    db_session.commit()
+
+    titles = [s["title"] for s in client.get("/home").json()["popular_series"]]
+    assert titles == ["Yeni İlgi", "Eski İlgi"]
