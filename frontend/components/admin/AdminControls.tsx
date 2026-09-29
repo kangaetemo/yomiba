@@ -20,6 +20,7 @@ import {
   getMissingCoverage,
   getPriceRefreshStatus,
   runImport,
+  runIsbnFix,
   startCatalogSync,
   startMissingPriceRefresh,
   startPriceRefresh,
@@ -29,6 +30,7 @@ import type {
   ImportCoverage,
   ImportRecord,
   ImportReport,
+  IsbnFixResult,
   MissingCoverage,
   PriceRefreshStatus,
 } from "@/types";
@@ -69,6 +71,103 @@ function durationSeconds(start: string, end: string | null): string {
 }
 
 // -- 1) Catalog sync ---------------------------------------------------------------
+
+/** Known wrong-volume ISBNs (Akame 3 on Cilt 2, Teogonia 1-2 on Cilt 2):
+ * preview first, then apply — the admin-panel form of fix_isbn_conflicts.py
+ * for when no shell access is possible. */
+function IsbnFixBox({ disabled }: { disabled: boolean }) {
+  const [result, setResult] = useState<IsbnFixResult | null>(null);
+  const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(apply: boolean) {
+    if (busy) return;
+    if (apply && !window.confirm("ISBN düzeltmeleri uygulansın mı? Önce veritabanı yedeği alınır.")) return;
+    setBusy(apply ? "apply" : "preview");
+    setError(null);
+    try {
+      setResult(await runIsbnFix(apply));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ISBN düzeltmesi çalıştırılamadı");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const pending = result?.mode === "dry-run" && result.cases.some((c) => c.status === "ok");
+
+  return (
+    <div className="space-y-2 rounded-lg border border-line p-3 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted">
+          Bilinen yanlış cilt ISBN&apos;leri (Akame, Teogonia): ISBN doğru cilde taşınır, ilanlar
+          yalnızca ürün sayfasındaki ISBN ile kanıtlanırsa taşınır.
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void run(false)}
+            disabled={disabled || busy !== null}
+            className="rounded-lg border border-line-strong bg-surface-2 px-3 py-1.5 font-semibold text-ink transition-colors hover:bg-line disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy === "preview" ? "Kontrol ediliyor…" : "Önizle"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void run(true)}
+            disabled={disabled || busy !== null || !pending}
+            title={pending ? undefined : "Önce önizleyin"}
+            className="rounded-lg bg-accent px-3 py-1.5 font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy === "apply" ? "Uygulanıyor…" : "Uygula"}
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="text-bad">{error}</p>}
+      {result?.applied && (
+        <p className="text-ok">
+          Uygulandı: {result.moved_listings} ilan taşındı. Yedek: {result.backup}
+        </p>
+      )}
+      {result && !result.applied && result.mode === "apply" && (
+        <p className="text-muted">Uygulanacak bir şey yok.</p>
+      )}
+      {result && (
+        <ul className="space-y-2">
+          {result.cases.map((c) => (
+            <li key={c.series}>
+              <p className="text-ink-2">
+                <span className="font-semibold">{c.series}</span>: ISBN {c.isbn}, Cilt {c.from_volume} → Cilt{" "}
+                {c.to_volume}{" "}
+                {c.status === "ok" ? (
+                  <span className="text-ok">{result.applied ? "düzeltildi" : "düzeltilecek"}</span>
+                ) : (
+                  <span className="text-muted">atlandı ({c.reason})</span>
+                )}
+              </p>
+              {c.listings.length > 0 && (
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
+                  {c.listings.map((l) => (
+                    <li key={l.listing_id}>
+                      {l.store}:{" "}
+                      <span className={l.action === "move" ? "text-ok" : ""}>
+                        {l.action === "move" ? `taşınacak (sayfa ISBN ${l.page_isbn})` : `kalacak (${l.why ?? "—"})`}
+                      </span>{" "}
+                      <a href={l.product_url} target="_blank" rel="noopener noreferrer" className="underline">
+                        ürün
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function CatalogSyncPanel() {
   const [status, setStatus] = useState<CatalogSyncStatus | null>(null);
@@ -197,6 +296,8 @@ function CatalogSyncPanel() {
           </ul>
         </details>
       )}
+
+      <IsbnFixBox disabled={Boolean(status?.running)} />
     </section>
   );
 }

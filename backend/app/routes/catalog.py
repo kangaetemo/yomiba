@@ -17,12 +17,15 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
 
-from ..database import SessionLocal
+from ..database import SessionLocal, get_db
 from ..auth import require_admin
 from ..services.background_import import SYNC_GATE_KEY
+from ..services import isbn_conflict_fix as isbn_fix
 from ..services.catalog_sync import CatalogSyncService
 
 logger = logging.getLogger("yomiba.catalog.routes")
@@ -173,3 +176,22 @@ def start_catalog_sync(request: Request) -> dict:
 def catalog_sync_status() -> dict:
     with _state_lock:
         return {"running": _running, "last": _last_summary()}
+
+
+@router.post("/catalog/isbn-fix")
+def isbn_conflict_fix(apply: bool = False, session: Session = Depends(get_db)) -> dict:
+    """Admin: preview (default) or apply the known ISBN conflict fixes
+    (app.services.isbn_conflict_fix) without shell access. Refused while a
+    catalog sync runs; the fix itself re-checks the DB inside its own
+    transaction and backs the SQLite file up before writing."""
+    with _state_lock:
+        if _running:
+            raise HTTPException(status_code=409, detail="Katalog senkronu çalışıyor; bitince tekrar deneyin.")
+    url = session.get_bind().url
+    if url.get_backend_name() != "sqlite" or not url.database or url.database == ":memory:":
+        raise HTTPException(status_code=400, detail="ISBN düzeltmesi yalnızca dosya tabanlı SQLite ile çalışır.")
+    session.close()  # release the request's connection before the fix locks the file
+    try:
+        return isbn_fix.run(Path(url.database).resolve(), apply=apply)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

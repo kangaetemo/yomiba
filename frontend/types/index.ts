@@ -148,6 +148,31 @@ export interface CatalogSyncStatus {
   } | null;
 }
 
+/** POST /catalog/isbn-fix: known wrong-volume ISBNs, previewed or applied. */
+export interface IsbnFixResult {
+  mode: "dry-run" | "apply";
+  applied: boolean;
+  moved_listings: number;
+  backup: string | null;
+  cases: {
+    series: string;
+    isbn: string;
+    from_volume: number;
+    to_volume: number;
+    status: "ok" | "blocked";
+    reason: string | null;
+    listings: {
+      listing_id: number;
+      store: string;
+      product_url: string;
+      price: number | null;
+      page_isbn?: string | null;
+      action?: "move" | "keep";
+      why?: string;
+    }[];
+  }[];
+}
+
 export interface ImportStoreResult {
   store_code: string;
   store_name: string;

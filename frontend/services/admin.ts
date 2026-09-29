@@ -9,6 +9,7 @@ import type {
   ImportCoverage,
   ImportRecord,
   ImportReport,
+  IsbnFixResult,
   MissingCoverage,
   PriceRefreshStatus,
 } from "@/types";
@@ -19,6 +20,11 @@ export function getCatalogSyncStatus(): Promise<CatalogSyncStatus> {
 
 export function startCatalogSync(): Promise<{ status: string }> {
   return postJson<{ status: string }>("/catalog/sync");
+}
+
+/** Preview (apply=false) or apply the known ISBN conflict fixes. */
+export function runIsbnFix(apply: boolean): Promise<IsbnFixResult> {
+  return postJson<IsbnFixResult>(`/catalog/isbn-fix${apply ? "?apply=true" : ""}`, {});
 }
 
 export function runImport(query: string): Promise<ImportReport> {

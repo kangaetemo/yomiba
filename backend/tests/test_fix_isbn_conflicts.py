@@ -111,3 +111,55 @@ def test_page_isbn_sources():
     gs = '<div class="product-list-title">Stok Kodu</div><div class="product-list-content">9786256335523</div>'
     assert fix.page_isbn(gs) == AKAME_3
     assert fix.page_isbn("<html>anasayfa</html>") is None
+
+
+# -- admin endpoint (no shell access needed) ---------------------------------------------
+
+def _seed_akame(session):
+    pub = Publisher(name="Athica", normalized_name="athica")
+    session.add(pub)
+    session.flush()
+    series = Series(publisher_id=pub.id, title="Akame, Keser!", normalized_title="akame keser",
+                    slug="akame-keser")
+    session.add(series)
+    session.flush()
+    session.add(CatalogSeries(series_id=series.id, mangakol_slug="akame-ga-kill"))
+    v2 = Volume(series_id=series.id, volume_number=2, isbn=AKAME_3)
+    v3 = Volume(series_id=series.id, volume_number=3)
+    bkm = Store(code="bkm", name="BKM")
+    session.add_all([v2, v3, bkm])
+    session.flush()
+    listing = StoreListing(volume_id=v2.id, store_id=bkm.id, product_url="https://bkm/akame-3", price=18000)
+    session.add(listing)
+    session.commit()
+    return v2.id, v3.id, listing.id
+
+
+def test_admin_endpoint_previews_then_applies(client, db_session, engine, monkeypatch):
+    from app.services import isbn_conflict_fix
+
+    v2, v3, listing = _seed_akame(db_session)
+    monkeypatch.setattr(isbn_conflict_fix, "default_fetch", lambda: PAGES.get)
+
+    preview = client.post("/catalog/isbn-fix")
+    assert preview.status_code == 200
+    body = preview.json()
+    assert body["mode"] == "dry-run" and body["applied"] is False
+    akame = next(c for c in body["cases"] if c["series"] == "Akame, Keser!")
+    assert akame["status"] == "ok" and akame["listings"][0]["action"] == "move"
+    teogonia = next(c for c in body["cases"] if c["series"] == "Teogonia")
+    assert teogonia["status"] == "blocked"  # not in this DB: reported, never fails the run
+
+    applied = client.post("/catalog/isbn-fix?apply=true").json()
+    assert applied["applied"] is True and applied["moved_listings"] == 1
+    with sessionmaker(engine)() as s:
+        assert s.get(Volume, v3).isbn == AKAME_3
+        assert s.get(Volume, v2).isbn is None
+        assert s.get(StoreListing, listing).volume_id == v3
+
+
+def test_admin_endpoint_refused_during_catalog_sync(client, monkeypatch):
+    from app.routes import catalog
+
+    monkeypatch.setattr(catalog, "_running", True)
+    assert client.post("/catalog/isbn-fix").status_code == 409
