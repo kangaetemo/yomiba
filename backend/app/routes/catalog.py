@@ -53,7 +53,8 @@ def _last_summary() -> dict | None:
         "isbn_pages": _last.get("isbn_pages"),
         "isbns_added": _last.get("isbns_added"),
         "isbn_conflicts": _last.get("isbn_conflicts"),
-        "isbn_conflict_details": (_last.get("isbn_conflict_details") or [])[:10],
+        "isbn_conflict_details": _last.get("isbn_conflict_details") or [],
+        "isbn_phantoms_merged": _last.get("isbn_phantoms_merged"),
         "errors": (_last.get("errors") or [])[:10],
     }
 
@@ -80,6 +81,7 @@ def _run_sync(runner) -> None:
             "isbns_added": report.isbns_added,
             "isbn_conflicts": report.isbn_conflicts,
             "isbn_conflict_details": report.isbn_conflict_details,
+            "isbn_phantoms_merged": report.isbn_phantoms_merged,
             "errors": report.errors,
         }
         logger.info(

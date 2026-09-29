@@ -98,6 +98,7 @@ from ..scrapers.mangakol import (
     MangakolCatalogScraper,
 )
 from ..utils import utcnow
+from .phantom_review import has_personal_rows, merge_volume_rows
 
 logger = logging.getLogger("yomiba.catalog")
 
@@ -134,6 +135,9 @@ class CatalogSyncReport:
     isbns_added: int = 0
     isbn_conflicts: int = 0
     isbn_conflict_details: list[str] = field(default_factory=list)
+    #: Legacy "Cilt -1" rows of the same series folded into the volume
+    #: whose catalog ISBN they held (not counted as conflicts).
+    isbn_phantoms_merged: int = 0
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -349,17 +353,34 @@ class CatalogSyncService:
                 volume.isbn = isbn
                 self.session.commit()
                 report.isbns_added += 1
-            elif holder.id != volume.id:
-                report.isbn_conflicts += 1
-                holder_series = self.session.get(Series, holder.series_id)
-                detail = (
-                    f"{series.title} Cilt {cv.number}: ISBN {isbn} zaten "
-                    f"{holder_series.title if holder_series else holder.series_id} "
-                    f"Cilt {holder.volume_number} üzerinde"
-                )
-                logger.warning("catalog sync: %s", detail)
-                if len(report.isbn_conflict_details) < 50:
-                    report.isbn_conflict_details.append(detail)
+                continue
+            if holder.id == volume.id:
+                continue
+            note = ""
+            if holder.series_id == series.id and holder.volume_number < 0:
+                # Legacy unnumbered row ("Cilt -1") of THIS series holding
+                # the catalog ISBN: the same book. The ISBN is the identity
+                # proof, so fold it into the real volume (listings + price
+                # history move). Personal rows keep it for manual review.
+                if not has_personal_rows(self.session, holder.id):
+                    merge_volume_rows(self.session, holder.id, volume.id)
+                    self.session.commit()
+                    report.isbns_added += 1
+                    report.isbn_phantoms_merged += 1
+                    logger.info("catalog sync: merged legacy volume %s into %s Cilt %s (ISBN %s)",
+                                holder.id, series.title, cv.number, isbn)
+                    continue
+                note = " (kullanıcı verisi var, elle birleştirilmeli)"
+            report.isbn_conflicts += 1
+            holder_series = self.session.get(Series, holder.series_id)
+            detail = (
+                f"{series.title} Cilt {cv.number}: ISBN {isbn} zaten "
+                f"{holder_series.title if holder_series else holder.series_id} "
+                f"Cilt {holder.volume_number} üzerinde{note}"
+            )
+            logger.warning("catalog sync: %s", detail)
+            if len(report.isbn_conflict_details) < 500:
+                report.isbn_conflict_details.append(detail)
 
     @staticmethod
     def _original_title_key(raw: str) -> str:

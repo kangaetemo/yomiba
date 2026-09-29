@@ -142,6 +142,8 @@ export interface CatalogSyncStatus {
     isbns_added?: number | null;
     isbn_conflicts?: number | null;
     isbn_conflict_details?: string[];
+    /** Legacy "Cilt -1" rows folded into the volume whose ISBN they held. */
+    isbn_phantoms_merged?: number | null;
     errors: string[];
   } | null;
 }

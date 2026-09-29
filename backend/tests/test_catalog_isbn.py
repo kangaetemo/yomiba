@@ -166,3 +166,69 @@ def test_catalog_isbn_rejects_other_printing_by_title(db_session, import_service
                     publisher="Athica Yayınları")
     assert import_service.import_result(r) == ImportAction.SKIPPED
     assert import_service.last_reason == "isbn_conflict"
+
+
+# -- legacy "Cilt -1" rows holding the catalog ISBN -------------------------------------
+
+def _look_back(isbn_map):
+    manga = CatalogManga(slug="look-back", title="Look Back", local_publisher="Gerekli Şeyler",
+                         volumes=[CatalogVolume(number=1, cover_url=None,
+                                                url=f"{BASE}/manga/look-back/cilt-1")])
+    return _IsbnFake([manga], isbn_map)
+
+
+def _phantom_with_listing(db_session, isbn):
+    from app.models import PriceHistory, Store
+
+    CatalogSyncService(db_session, scraper=_look_back({})).sync()  # series + Cilt 1, no ISBN
+    series = db_session.scalar(select(Series).where(Series.title == "Look Back"))
+    phantom = Volume(series_id=series.id, volume_number=-1, isbn=isbn)
+    store = Store(code="bkm", name="BKM Kitap")
+    db_session.add_all([phantom, store])
+    db_session.flush()
+    listing = StoreListing(volume_id=phantom.id, store_id=store.id,
+                           product_url="https://bkm.example/look-back", price=15000)
+    db_session.add(listing)
+    db_session.flush()
+    db_session.add(PriceHistory(listing_id=listing.id, price=15000))
+    db_session.commit()
+    return series, phantom.id, listing.id
+
+
+def test_same_series_legacy_row_is_merged_into_catalog_volume(db_session):
+    from app.models import PriceHistory
+
+    isbn = "9786256031302"
+    series, phantom_id, listing_id = _phantom_with_listing(db_session, isbn)
+
+    report = CatalogSyncService(db_session, scraper=_look_back(
+        {f"{BASE}/manga/look-back/cilt-1": isbn})).sync()
+
+    vol1 = db_session.scalar(select(Volume).where(Volume.series_id == series.id,
+                                                  Volume.volume_number == 1))
+    assert vol1.isbn == isbn
+    assert db_session.get(Volume, phantom_id) is None
+    listing = db_session.get(StoreListing, listing_id)
+    assert listing.volume_id == vol1.id  # the offer moved with its history
+    assert db_session.scalar(select(PriceHistory.listing_id)) == listing_id
+    assert (report.isbn_phantoms_merged, report.isbn_conflicts, report.isbns_added) == (1, 0, 1)
+
+
+def test_legacy_row_with_personal_data_is_only_reported(db_session):
+    from app.models import User, UserVolumeCollection
+
+    isbn = "9786256031302"
+    series, phantom_id, _ = _phantom_with_listing(db_session, isbn)
+    user = User(email="u@example.com", display_name="U")
+    db_session.add(user)
+    db_session.flush()
+    db_session.add(UserVolumeCollection(user_id=user.id, volume_id=phantom_id, status="owned"))
+    db_session.commit()
+
+    report = CatalogSyncService(db_session, scraper=_look_back(
+        {f"{BASE}/manga/look-back/cilt-1": isbn})).sync()
+
+    assert db_session.get(Volume, phantom_id) is not None
+    assert report.isbn_phantoms_merged == 0
+    assert report.isbn_conflicts == 1
+    assert "elle birleştirilmeli" in report.isbn_conflict_details[0]

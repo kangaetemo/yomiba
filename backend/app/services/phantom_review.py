@@ -78,6 +78,23 @@ def apply_safe_merge(session, source_id, target_id, *, products, catalog_confirm
     plan = plan_merge(session, source_id, target_id, products=products, catalog_confirmed=catalog_confirmed)
     if plan["action"] != "SAFE_MERGE":
         raise ValueError(f"Unsafe merge: {plan['reason']}")
+    merge_volume_rows(session, source_id, target_id)
+    return True
+
+
+def has_personal_rows(session, volume_id) -> bool:
+    """Wishlist / price alert / collection rows point at ``volume_id``."""
+    return any(
+        session.scalar(select(func.count()).select_from(model).where(model.volume_id == volume_id))
+        for model in (WishlistItem, PriceAlert, UserVolumeCollection)
+    )
+
+
+def merge_volume_rows(session, source_id, target_id):
+    """Fold volume ``source_id`` into ``target_id``: listings move (or are
+    consolidated per store, keeping the fresher offer), every price-history
+    point survives, ISBN/cover carry over, the source row is deleted.
+    Caller has proven identity and checked personal rows."""
     with session.begin_nested():
         source = session.get(Volume, source_id)
         target = session.get(Volume, target_id)
@@ -98,4 +115,3 @@ def apply_safe_merge(session, source_id, target_id, *, products, catalog_confirm
             isbn=target.isbn or isbn, cover_url=target.cover_url or cover))
         session.execute(delete(Volume).where(Volume.id == source_id))
     session.expire_all()
-    return True

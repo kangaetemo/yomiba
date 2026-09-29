@@ -168,6 +168,10 @@ function CatalogSyncPanel() {
               {last.isbns_added ?? 0} / {last.isbn_pages ?? 0} / {last.isbn_conflicts ?? 0}
             </dd>
           </div>
+          <div>
+            <dt className="text-muted">Birleştirilen eski “Cilt -1” kaydı</dt>
+            <dd className="text-ink-2">{last.isbn_phantoms_merged ?? 0}</dd>
+          </div>
         </dl>
       ) : (
         <p className="text-sm text-muted">
@@ -186,7 +190,7 @@ function CatalogSyncPanel() {
           <summary className="cursor-pointer">
             ISBN çakışmaları ({last.isbn_conflicts}) — otomatik taşınmadı, kontrol edilmeli
           </summary>
-          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
+          <ul className="mt-1 max-h-80 list-disc space-y-0.5 overflow-y-auto pl-5 text-muted">
             {last.isbn_conflict_details!.map((d) => (
               <li key={d}>{d}</li>
             ))}
