@@ -116,13 +116,13 @@ export function PriceAlertForm({
           onKeyDown={(e) => {
             if (e.key === "Enter") saveThreshold();
           }}
-          className="w-32 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-faint focus:border-accent focus:outline-none disabled:opacity-50"
+          className="min-h-11 w-32 rounded-lg border border-line-strong bg-surface px-3 text-base text-ink placeholder:text-faint focus:border-accent focus:outline-none disabled:opacity-50"
         />
         <button
           type="button"
           disabled={pending}
           onClick={saveThreshold}
-          className="rounded-lg border border-accent/60 bg-accent/10 px-3 py-1.5 text-sm text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
+          className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
         >
           {alert ? "Alarmı güncelle" : "Alarm kur"}
         </button>
@@ -135,7 +135,7 @@ export function PriceAlertForm({
               onClick={() =>
                 void call(() => setPriceAlert(volumeId, null, !alert.is_active))
               }
-              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-muted transition-colors hover:border-muted hover:text-ink disabled:opacity-50"
+              className="min-h-11 rounded-lg border border-line bg-surface px-3 text-sm text-muted transition-colors hover:border-muted hover:text-ink disabled:opacity-50"
             >
               {alert.is_active ? "Pasifleştir" : "Etkinleştir"}
             </button>
@@ -143,7 +143,7 @@ export function PriceAlertForm({
               type="button"
               disabled={pending}
               onClick={() => void call(() => deletePriceAlert(volumeId))}
-              className="rounded-lg px-2 py-1.5 text-xs text-muted transition-colors hover:text-bad disabled:opacity-50"
+              className="min-h-11 rounded-lg px-2 text-xs text-muted transition-colors hover:text-bad disabled:opacity-50"
             >
               Alarmı sil
             </button>
@@ -154,8 +154,8 @@ export function PriceAlertForm({
 
       {error && <p className="text-xs text-bad">{error}</p>}
       <p className="text-xs text-faint">
-        Bu fiyatın altına düşünce haber ver (kontrol ve bildirimler ilerideki
-        bir aşamada etkinleşecek; şimdilik koşul kaydediliyor).
+        Hedef fiyatın kaydedilir; fiyat bu seviyeye inince bildirim gönderme özelliği yakında
+        etkinleşecek.
       </p>
     </div>
   );

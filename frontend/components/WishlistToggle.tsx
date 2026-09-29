@@ -41,21 +41,24 @@ export function WishlistToggle({
   }
 
   return (
-    <div className="max-w-xl space-y-2">
+    <div className="space-y-1.5">
       <button
         type="button"
         aria-pressed={wishlisted}
         disabled={pending}
         onClick={toggle}
-        className={`rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${
+        title={wishlisted ? "İstek listesinden çıkar" : undefined}
+        className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold transition-colors disabled:opacity-60 ${
           wishlisted
-            ? "border-info bg-info/10 text-info"
-            : "border-line bg-surface text-muted hover:border-muted hover:text-ink"
+            ? "border-new/40 bg-new-soft text-new"
+            : "border-line-strong bg-surface text-ink hover:border-ink/40"
         }`}
       >
-        {wishlisted ? "✓ İstek listesinde — çıkarmak için tıkla" : "İstek listesine ekle"}
+        <svg aria-hidden viewBox="0 0 24 24" className="size-4" fill={wishlisted ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8">
+          <path d="M6 3.5h12v17l-6-4-6 4z" strokeLinejoin="round" />
+        </svg>
+        {pending ? "Kaydediliyor…" : wishlisted ? "İstek listesinde" : "İstek listesine ekle"}
       </button>
-      {pending && <span className="text-xs text-muted">Kaydediliyor…</span>}
       {error && <p className="text-xs text-bad">{error}</p>}
     </div>
   );

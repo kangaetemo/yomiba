@@ -1,48 +1,127 @@
 @import "tailwindcss";
 
 /*
- * Yomiba design tokens — "manga paper".
- * Cream paper, ink text, one hanko-red accent. Components use ONLY these
- * semantic colors (bg-paper, text-ink, border-line, bg-accent, text-ok …),
- * never raw palette classes, so the theme is changed here and nowhere else.
+ * Yomiba design tokens — "editorial manga paper".
+ * Warm paper surfaces, ink text, a hanko-red accent (deals, primary actions)
+ * and an aizome-indigo secondary (new, info). Components use ONLY these
+ * semantic utilities (bg-paper, text-ink, border-line, bg-accent, text-new …),
+ * never raw palette classes: a theme is a set of values below, nothing more.
+ *
+ * Raw values live on :root / [data-theme="dark"]; @theme inline maps them to
+ * utilities through var(), so switching the theme is one attribute.
  */
+:root {
+  --paper: #f7f2e7;        /* page: warm, lightly aged paper */
+  --surface: #fffdf8;      /* cards, inputs */
+  --surface-2: #f0e8d8;    /* chips, secondary buttons, skeletons */
+  --surface-3: #e7dcc6;    /* pressed / selected */
+  --line: #e4d9c3;         /* hairlines, card borders */
+  --line-strong: #cdbd9e;  /* inputs, emphasized borders */
+
+  --ink: #1f1b16;          /* primary text, prices */
+  --ink-2: #3d372e;        /* secondary headings / values */
+  --muted: #6a6153;        /* body-secondary text (≥ 4.5:1 on paper) */
+  --faint: #8a806d;        /* hints, captions, folios */
+
+  --accent: #b8321b;       /* hanko red */
+  --accent-hover: #9c2914;
+  --on-accent: #fffdf8;
+  --accent-soft: #f6e1d8;
+
+  --new: #2f4f7a;          /* aizome indigo: "new", info, links */
+  --new-soft: #e3e9f1;
+  --ok: #2f6b46;           /* in stock, owned */
+  --ok-soft: #e1ede3;
+  --bad: #9b2335;          /* sold out, errors */
+  --bad-soft: #f4e0e1;
+  --warn: #93600f;         /* stale / unverified */
+  --warn-soft: #f5ead3;
+
+  --shadow-color: 38 28 12;
+}
+
+[data-theme="dark"] {
+  /* Warm charcoal night reading — not an inversion of the paper theme. */
+  --paper: #1a1814;
+  --surface: #221f1a;
+  --surface-2: #2b2721;
+  --surface-3: #37322a;
+  --line: #3a342b;
+  --line-strong: #52493c;
+
+  --ink: #ece4d4;
+  --ink-2: #d4cab7;
+  --muted: #a89d88;
+  --faint: #857b68;
+
+  --accent: #e0654a;
+  --accent-hover: #ea7a61;
+  --on-accent: #1a1814;
+  --accent-soft: #3b231c;
+
+  --new: #8fb0dc;
+  --new-soft: #22303f;
+  --ok: #7fbf93;
+  --ok-soft: #1f2e24;
+  --bad: #e58a95;
+  --bad-soft: #3a2126;
+  --warn: #dcb068;
+  --warn-soft: #362c1b;
+
+  --shadow-color: 0 0 0;
+}
+
 @theme inline {
   --font-sans: var(--font-body);
   --font-display: var(--font-display-face);
 
-  /* surfaces */
-  --color-paper: #f6f0e1;       /* page background: aged manga paper */
-  --color-surface: #fffcf4;     /* cards, inputs */
-  --color-surface-2: #eee6d2;   /* skeletons, secondary buttons, chips */
-  --color-line: #e0d6c0;        /* hairlines, card borders */
-  --color-line-strong: #cbbd9f; /* inputs, emphasized borders */
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
 
-  /* ink */
-  --color-ink: #1d1a16;         /* primary text, prices */
-  --color-ink-2: #3f3a32;       /* secondary headings / values */
-  --color-muted: #6b6356;       /* body-secondary text (5:1 on paper) */
-  --color-faint: #857c69;       /* hints, footer, decorative arrows */
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
 
-  /* accent: hanko (seal) red */
-  --color-accent: #c0391f;
-  --color-accent-hover: #a32f18;
-  --color-on-accent: #fffcf4;
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--on-accent);
+  --color-accent-soft: var(--accent-soft);
 
-  /* states */
-  --color-ok: #2e7148;          /* in stock, owned */
-  --color-bad: #9e2236;         /* sold out, missing, errors */
-  --color-warn: #9a6512;        /* stale / unverified */
-  --color-info: #285f9e;        /* wishlist / informational */
+  --color-new: var(--new);
+  --color-new-soft: var(--new-soft);
+  --color-info: var(--new);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+
+  /* Paper-like depth: a hairline lift plus a soft, low contact shadow. */
+  --shadow-card: 0 1px 0 rgb(var(--shadow-color) / 0.05), 0 10px 24px -16px rgb(var(--shadow-color) / 0.28);
+  --shadow-lift: 0 1px 0 rgb(var(--shadow-color) / 0.06), 0 18px 36px -18px rgb(var(--shadow-color) / 0.36);
+  --shadow-cover: 0 1px 1px rgb(var(--shadow-color) / 0.12), 0 12px 28px -12px rgb(var(--shadow-color) / 0.45);
 }
 
-:root {
-  --background: var(--color-paper);
-  --foreground: var(--color-ink);
+html {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background-color: var(--paper);
+  color: var(--ink);
+  /* Paper grain: a fixed, very faint fractal noise over the page. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .26 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-attachment: fixed;
 }
 
 @layer base {
@@ -50,23 +129,77 @@ body {
   h2,
   h3 {
     font-family: var(--font-display);
-    letter-spacing: -0.015em;
+    letter-spacing: -0.02em;
+    font-optical-sizing: auto;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
   }
 }
 
-/* Screentone: the halftone dot pattern of manga printing, used sparingly. */
-.screentone {
-  background-image: radial-gradient(
-    color-mix(in oklab, var(--color-ink) 9%, transparent) 1px,
-    transparent 1.2px
-  );
-  background-size: 7px 7px;
+@layer components {
+  /* Editorial eyebrow: small caps label above section titles. */
+  .eyebrow {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  /* Hairline rule with a short ink lead, like a magazine section divider. */
+  .rule {
+    height: 1px;
+    background: linear-gradient(90deg, var(--ink) 0 2.25rem, var(--line) 2.25rem 100%);
+  }
+
+  /* Screentone: the halftone dots of manga printing, used sparingly. */
+  .screentone {
+    background-image: radial-gradient(
+      color-mix(in oklab, var(--ink) 11%, transparent) 1px,
+      transparent 1.25px
+    );
+    background-size: 7px 7px;
+  }
+
+  /* Printed-book cover: soft shadow plus a spine highlight on the left. */
+  .cover-art {
+    position: relative;
+    box-shadow: var(--shadow-cover);
+  }
+  .cover-art::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgb(0 0 0 / 0.16) 0, rgb(255 255 255 / 0.18) 2.5%, transparent 7%);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06);
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 * {
-  scrollbar-color: var(--color-line-strong) transparent;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
 ::selection {
-  background: color-mix(in oklab, var(--color-accent) 22%, transparent);
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

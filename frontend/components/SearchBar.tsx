@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * SearchBar: controlled input + submit button for the home page search.
+ * SearchBar: the home page's primary control — a large, paper-card search
+ * field with the submit action inside it.
  */
 
 export function SearchBar({
@@ -22,23 +23,36 @@ export function SearchBar({
         e.preventDefault();
         onSubmit();
       }}
-      className="flex w-full gap-2"
+      className="group flex w-full items-center gap-2 rounded-2xl border border-line-strong bg-surface p-1.5 shadow-card transition-shadow focus-within:border-ink/40 focus-within:shadow-lift"
     >
+      <svg
+        aria-hidden
+        viewBox="0 0 24 24"
+        className="ml-2.5 size-5 shrink-0 text-faint group-focus-within:text-ink"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      >
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="m20 20-4.2-4.2" />
+      </svg>
       <input
         type="search"
         name="q"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Manga ara… (örn. Berserk, One Piece)"
+        placeholder="Seri ara: Berserk, Dragon Ball, Zom 100…"
         aria-label="Manga ara"
-        className="min-w-0 flex-1 rounded-xl border border-line-strong bg-surface px-4 py-3 text-base text-ink placeholder:text-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+        autoComplete="off"
+        className="min-w-0 flex-1 bg-transparent py-2.5 text-base text-ink placeholder:text-faint focus:outline-none sm:text-[1.05rem]"
       />
       <button
         type="submit"
         disabled={loading}
-        className="shrink-0 rounded-xl bg-accent px-5 py-3 text-base font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex min-h-11 shrink-0 items-center rounded-xl bg-accent px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70 sm:px-5 sm:text-base"
       >
-        {loading ? "Aranıyor…" : "Ara"}
+        {loading ? "Aranıyor…" : "Manga ara"}
       </button>
     </form>
   );

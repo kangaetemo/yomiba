@@ -13,7 +13,7 @@ export function SearchSection() {
   const { status, results, error, isEmpty } = useSearch(query);
 
   return (
-    <section className="space-y-6">
+    <div className="space-y-4">
       <SearchBar
         value={query}
         onChange={setQuery}
@@ -23,40 +23,33 @@ export function SearchSection() {
         loading={status === "loading"}
       />
 
-      {status === "idle" && (
-        <p className="text-sm text-muted">
-          Mağazalar arası fiyat karşılaştırmak için yazmaya başlayın.
-        </p>
-      )}
+      <div aria-live="polite" className="space-y-4">
+        {status === "loading" && <ResultsSkeleton />}
 
-      {status === "loading" && <ResultsSkeleton />}
+        {status === "error" && (
+          <div className="rounded-xl border border-bad/30 bg-bad-soft p-4 text-sm text-bad">
+            <p className="font-semibold">Arama başarısız</p>
+            <p className="mt-1">{error}</p>
+          </div>
+        )}
 
-      {status === "error" && (
-        <div className="rounded-xl border border-bad/30 bg-bad/5 p-4 text-sm text-bad">
-          <p className="font-medium">Arama başarısız</p>
-          <p className="mt-1 text-bad/80">{error}</p>
-        </div>
-      )}
+        {isEmpty && (
+          <div className="rounded-xl border border-dashed border-line-strong bg-surface/70 p-6 text-center">
+            <p className="font-display text-lg text-ink-2">“{query.trim()}” katalogda bulunamadı</p>
+            <p className="mt-1 text-sm text-muted">
+              Türkçe ya da orijinal adıyla deneyin; katalog Mangakol&apos;dan beslenir.
+            </p>
+          </div>
+        )}
 
-      {isEmpty && (
-        <div className="rounded-xl border border-line bg-surface p-8 text-center">
-          <p className="text-3xl" aria-hidden>🔍</p>
-          <p className="mt-2 font-medium text-ink-2">
-            “{query.trim()}” katalogda bulunamadı
-          </p>
-          <p className="mt-1 text-sm text-muted">
-            Katalog Mangakol’dan beslenir. Farklı bir başlık deneyin.
-          </p>
-        </div>
-      )}
-
-      {status === "success" && results.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {results.map((series) => (
-            <SeriesCard key={series.id} series={series} />
-          ))}
-        </div>
-      )}
-    </section>
+        {status === "success" && results.length > 0 && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {results.map((series) => (
+              <SeriesCard key={series.id} series={series} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

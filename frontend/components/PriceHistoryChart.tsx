@@ -11,13 +11,14 @@
 import { formatPrice } from "@/components/PriceBadge";
 import type { PriceHistoryListing } from "@/types";
 
+// Muted "ink" colors that sit on paper (and stay legible on warm charcoal).
 const PALETTE = [
-  "#f97316", // orange (brand)
-  "#38bdf8", // sky
-  "#a78bfa", // violet
-  "#34d399", // emerald
-  "#fb7185", // rose
-  "#fbbf24", // amber
+  "#b8321b", // hanko red
+  "#2f4f7a", // aizome indigo
+  "#2f6b46", // matcha
+  "#b07d1a", // ochre
+  "#7a3f6e", // plum
+  "#4d6b73", // slate teal
 ];
 
 /** Stable color per store name (same store -> same color on every page). */
@@ -114,7 +115,7 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
   const xTicks = Array.from({ length: 4 }, (_, i) => new Date(t0 + (tSpan * i) / 3));
 
   return (
-    <div className="rounded-xl border border-line bg-surface p-4">
+    <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
@@ -129,15 +130,15 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
               x2={W - PAD.right}
               y1={y(v)}
               y2={y(v)}
-              stroke="#262626"
+              stroke="var(--line)"
               strokeWidth={1}
             />
             <text
               x={PAD.left - 8}
               y={y(v) + 4}
               textAnchor="end"
-              fontSize={12}
-              fill="#737373"
+              fontSize={15}
+              fill="var(--faint)"
             >
               {formatTickPrice(v)}
             </text>
@@ -152,7 +153,7 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
               x2={x(d.getTime())}
               y1={PAD.top}
               y2={PAD.top + INNER_H}
-              stroke="#262626"
+              stroke="var(--line)"
               strokeWidth={1}
               strokeDasharray="2 4"
             />
@@ -160,8 +161,8 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
               x={x(d.getTime())}
               y={H - 8}
               textAnchor={i === 0 ? "start" : i === xTicks.length - 1 ? "end" : "middle"}
-              fontSize={12}
-              fill="#737373"
+              fontSize={15}
+              fill="var(--faint)"
             >
               {formatTickDate(d, tSpan)}
             </text>
@@ -174,7 +175,7 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
           x2={PAD.left}
           y1={PAD.top}
           y2={PAD.top + INNER_H}
-          stroke="#404040"
+          stroke="var(--line-strong)"
           strokeWidth={1}
         />
         <line
@@ -182,7 +183,7 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
           x2={W - PAD.right}
           y1={PAD.top + INNER_H}
           y2={PAD.top + INNER_H}
-          stroke="#404040"
+          stroke="var(--line-strong)"
           strokeWidth={1}
         />
 
@@ -194,7 +195,7 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
                 points={s.points.map((p) => `${x(p.t)},${y(p.price)}`).join(" ")}
                 fill="none"
                 stroke={s.color}
-                strokeWidth={2}
+                strokeWidth={2.25}
                 strokeLinejoin="round"
                 strokeLinecap="round"
               />
@@ -206,7 +207,7 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
                 cy={y(p.price)}
                 r={3.5}
                 fill={s.color}
-                stroke="#171717"
+                stroke="var(--surface)"
                 strokeWidth={1}
               >
                 <title>{p.label}</title>

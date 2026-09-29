@@ -3,6 +3,60 @@
  * (see backend/app/schemas).
  */
 
+// -- home feed (GET /home, GET /price-drops) ---------------------------------------------
+
+export interface PopularSeries {
+  id: number;
+  title: string;
+  publisher: string;
+  author: string | null;
+  cover_url: string | null;
+  volume_count: number;
+  /** In-stock priced store offers across the series' volumes. */
+  in_stock_offers: number;
+  /** Lowest current in-stock price of any volume. */
+  lowest_price: number | null;
+}
+
+export interface NewVolume {
+  id: number;
+  series_id: number;
+  series_title: string;
+  publisher: string;
+  number: number;
+  covers_from: number | null;
+  covers_to: number | null;
+  cover_url: string | null;
+  /** Local release date from the catalog (YYYY-MM-DD). */
+  release_date: string;
+  lowest_price: number | null;
+  in_stock_offers: number;
+}
+
+export interface HomeFeed {
+  popular_series: PopularSeries[];
+  new_volumes: NewVolume[];
+  stats: { series: number; stores: number; offers: number };
+}
+
+export interface PriceDrop {
+  listing_id: number;
+  volume_id: number;
+  series_id: number;
+  series_title: string;
+  volume_number: number | null;
+  store_name: string;
+  old_price: number | null;
+  new_price: number | null;
+  drop_pct: number;
+  changed_at: string;
+  in_stock: boolean;
+  product_url: string;
+  image_url: string | null;
+  /** The lowest price this store listing has ever been seen at. */
+  lowest_ever?: boolean;
+}
+
 export interface SeriesSummary {
   id: number;
   title: string;
@@ -42,6 +96,9 @@ export interface SeriesVolume {
   stale_count: number;
   /** Collection status; null when the volume is not tracked. */
   collection_status: CollectionStatus | null;
+  cover_url?: string | null;
+  /** Local release date (YYYY-MM-DD); null when unknown. */
+  release_date?: string | null;
 }
 
 export interface SeriesDetail {
@@ -69,6 +126,8 @@ export interface SeriesRef {
   id: number;
   title: string;
   publisher: string;
+  author?: string | null;
+  illustrator?: string | null;
 }
 
 export interface VolumeDetail {
@@ -82,6 +141,14 @@ export interface VolumeDetail {
   collection_status: CollectionStatus | null;
   /** Legacy unresolved store volume; its old store prices are withheld. */
   unverified?: boolean;
+  /** Catalog details; null when unknown. */
+  isbn?: string | null;
+  page_count?: number | null;
+  /** Local release date (YYYY-MM-DD). */
+  release_date?: string | null;
+  /** Original volumes of an omnibus book (2-in-1: 9–10). */
+  covers_from?: number | null;
+  covers_to?: number | null;
 }
 
 export interface WishlistState {

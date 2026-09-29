@@ -17,17 +17,17 @@ const OPTIONS: { value: CollectionStatus; label: string; activeClass: string }[]
   {
     value: "owned",
     label: "Sahibim",
-    activeClass: "border-ok bg-ok/10 text-ok",
+    activeClass: "border-ok/50 bg-ok-soft text-ok",
   },
   {
     value: "missing",
     label: "Eksik",
-    activeClass: "border-bad bg-bad/10 text-bad",
+    activeClass: "border-bad/40 bg-bad-soft text-bad",
   },
   {
     value: "wanted",
     label: "İstediğim",
-    activeClass: "border-accent bg-accent/10 text-accent",
+    activeClass: "border-accent/40 bg-accent-soft text-accent",
   },
 ];
 
@@ -60,7 +60,7 @@ export function CollectionStatusPicker({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
+      <div role="group" aria-label="Koleksiyon durumu" className="grid grid-cols-3 gap-1.5 rounded-xl bg-surface-2 p-1">
         {OPTIONS.map((opt) => {
           const active = status === opt.value;
           return (
@@ -70,29 +70,19 @@ export function CollectionStatusPicker({
               aria-pressed={active}
               disabled={pending}
               onClick={() => pick(active ? null : opt.value)}
-              className={`rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${
-                active
-                  ? opt.activeClass
-                  : "border-line bg-surface text-muted hover:border-muted hover:text-ink"
+              className={`min-h-11 rounded-lg border text-sm font-semibold transition-colors disabled:opacity-60 ${
+                active ? `${opt.activeClass} shadow-card` : "border-transparent text-muted hover:bg-surface hover:text-ink"
               }`}
             >
               {opt.label}
             </button>
           );
         })}
-        {status && (
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => pick(null)}
-            className="rounded-lg px-2 py-1.5 text-xs text-muted transition-colors hover:text-ink disabled:opacity-50"
-          >
-            Temizle
-          </button>
-        )}
-        {pending && <span className="text-xs text-muted">Kaydediliyor…</span>}
       </div>
-      {error && <p className="text-xs text-bad">{error}</p>}
+      <div className="flex min-h-5 items-center justify-between text-xs">
+        <span className="text-muted">{pending ? "Kaydediliyor…" : status ? "Aynı düğmeye tekrar basınca kaldırılır." : ""}</span>
+        {error && <span className="text-bad">{error}</span>}
+      </div>
     </div>
   );
 }

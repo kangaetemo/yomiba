@@ -6,13 +6,23 @@
 import { deleteJson, getJson, patchJson, postJson, putJson } from "@/lib/api";
 import type {
   CollectionStatus,
+  HomeFeed,
   PriceAlertState,
+  PriceDrop,
   PriceHistory,
   SearchResponse,
   SeriesDetail,
   VolumeDetail,
   WishlistState,
 } from "@/types";
+
+export function getHomeFeed(): Promise<HomeFeed> {
+  return getJson<HomeFeed>("/home");
+}
+
+export function getPriceDrops(hours = 168, limit = 6): Promise<{ drops: PriceDrop[] }> {
+  return getJson<{ drops: PriceDrop[] }>(`/price-drops?hours=${hours}&limit=${limit}`);
+}
 
 export function searchSeries(query: string): Promise<SearchResponse> {
   return getJson<SearchResponse>(`/search?q=${encodeURIComponent(query)}`);
