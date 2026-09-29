@@ -44,6 +44,12 @@ GS = "Gerekli Şeyler Yayıncılık"
     ("Kobayaşi Hanesi’nin Hizmetçi Ejderhası Cilt 1 ve 2", "Kobayaşi Hanesi’nin Hizmetçi Ejderhası", 1, 2),
     ("Kobayaşi Hanesi`nin Hizmetçi Ejderhası 3&4", "Kobayaşi Hanesi`nin Hizmetçi Ejderhası", 3, 4),
     ("Vagabond 1-2-3", "Vagabond", 1, 3),
+    # BKM 2026-09-29: Artemis sells Teogonia like this
+    ("Teogonia 1. Cilt - 2. Cilt (İki Cilt Bir Arada)", "Teogonia", 1, 2),
+    ("Teogonia 3. Cilt - 4. Cilt (İki Cilt Bir Arada)", "Teogonia", 3, 4),
+    ("Oldboy Cilt 1 - Cilt 2", "Oldboy", 1, 2),
+    ("Dragon Ball 1-2 (2'si 1 Arada)", "Dragon Ball", 1, 2),
+    ("Vagabond 1-2-3 (3'ü 1 Arada)", "Vagabond", 1, 3),
 ])
 def test_parse_volume_range(title, base, first, last):
     span = parse_volume_range(title)
@@ -58,6 +64,9 @@ def test_parse_volume_range(title, base, first, last):
     "Zom 100 Cilt 10",                # a single volume
     "Kaiju No: 8 - 8 No'lu Canavar",  # not a trailing span
     "9&10",                           # no title
+    "Zom 100 Cilt 10",                # number inside the title, one volume
+    "Teogonia 1. Cilt - 3. Cilt (İki Cilt Bir Arada)",  # not consecutive
+    "Naruto 1-2 (Kutu Set)",          # collection word survives the note strip
 ])
 def test_parse_volume_range_rejects(title):
     assert parse_volume_range(title) is None
@@ -125,6 +134,8 @@ def _target(db_session):
      "Kızların Kıyamet Yolculuğu Cilt 5 - 6", 3),
     ("Kobayaşi Hanesi'nin Hizmetçi Ejderhası", "Komik Şeyler", "Komikşeyler Yayıncılık",
      "Kobayaşi Hanesi’nin Hizmetçi Ejderhası Cilt 1 ve 2", 1),
+    ("Teogonia", "Artemis", "Artemis Yayınları",
+     "Teogonia 3. Cilt - 4. Cilt (İki Cilt Bir Arada)", 2),
 ])
 def test_omnibus_title_matches_catalog_span(db_session, import_service, catalog, publisher,
                                             store_pub, title, number):

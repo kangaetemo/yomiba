@@ -113,13 +113,20 @@ class VolumeRange:
 
 
 # A TRAILING span of 2-3 consecutive original volumes, joined by "&", "ve"
-# or a dash, optionally wrapped in a "Cilt" marker: "9&10", "5 ve 6",
-# "Cilt: 7-8", "1-2 Cilt", "Cilt 5 - 6", "1-2-3".
+# or a dash, each number optionally carrying a "Cilt" marker: "9&10",
+# "5 ve 6", "Cilt: 7-8", "1-2 Cilt", "Cilt 5 - 6", "1-2-3",
+# "1. Cilt - 2. Cilt".
+_SPAN_NUMBER = r"(?:\b(?:cilt|vol(?:ume)?)\b\.?\s*:?\s*)?(\d{1,3})(?:\s*\.?\s*cilt\b)?"
+_SPAN_JOIN = r"\s*(?:&|\bve\b|[-–])\s*"
 _OMNIBUS_RANGE_RE = re.compile(
-    r"(?:\b(?:cilt|vol(?:ume)?)\b\.?\s*:?\s*)?"
-    r"(\d{1,3})\s*(?:&|\bve\b|[-–])\s*(\d{1,3})"
-    r"(?:\s*(?:&|\bve\b|[-–])\s*(\d{1,3}))?"
-    r"(?:\s*\.?\s*cilt\b)?\s*$",
+    _SPAN_NUMBER + _SPAN_JOIN + _SPAN_NUMBER + r"(?:" + _SPAN_JOIN + _SPAN_NUMBER + r")?\s*$",
+    re.IGNORECASE,
+)
+# A trailing note that only restates the binding: "(İki Cilt Bir Arada)",
+# "(2'si 1 Arada)", "(3'ü 1 Arada)", "(İkisi Bir Arada)".
+_OMNIBUS_NOTE_RE = re.compile(
+    r"\s*[(\[]\s*(?:iki|üç|uc|\d)\s*(?:cilt|'?\s*(?:si|sı|ü|u))?\s*(?:bir|1)\s*arada\s*[)\]]\s*$"
+    r"|\s*[(\[]\s*(?:ikisi|üçü|ucu)\s*bir\s*arada\s*[)\]]\s*$",
     re.IGNORECASE,
 )
 
@@ -134,6 +141,7 @@ def parse_volume_range(title: str | None) -> VolumeRange | None:
     if not title:
         return None
     text = re.sub(r"\s+", " ", title.strip()).rstrip(" .")
+    text = _OMNIBUS_NOTE_RE.sub("", text).rstrip(" .")
     if _COLLECTION_WORD_RE.search(text):
         return None
     match = _OMNIBUS_RANGE_RE.search(text)
