@@ -51,11 +51,11 @@ export async function DropsSection() {
 
   if (drops.length === 0) {
     return (
-      <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-        <h2 className="text-sm font-semibold text-neutral-300">
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold text-ink-2">
           🔥 Son indirimler
         </h2>
-        <p className="mt-1.5 text-sm text-neutral-500">
+        <p className="mt-1.5 text-sm text-muted">
           Son 24 saatte gözlenen fiyat düşüşü yok. Fiyatlar düzenli olarak
           (varsayılan 12 saatte bir) otomatik kontrol edilir; düşüş olursa
           burada görünecek.
@@ -67,10 +67,10 @@ export async function DropsSection() {
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-semibold text-neutral-50">
+        <h2 className="text-lg font-semibold text-ink">
           🔥 Son indirimler
         </h2>
-        <span className="text-xs text-neutral-500">
+        <span className="text-xs text-muted">
           son 24 saatte gözlenen fiyat düşüşleri
         </span>
       </div>
@@ -79,7 +79,7 @@ export async function DropsSection() {
           <Link
             key={d.listing_id}
             href={`/volume/${d.volume_id}`}
-            className={`flex gap-3 rounded-xl border border-neutral-800 bg-neutral-900/70 p-3 transition-colors hover:border-orange-500/50 ${
+            className={`flex gap-3 rounded-xl border border-line bg-surface p-3 transition-colors hover:border-accent/50 ${
               d.in_stock ? "" : "opacity-60"
             }`}
           >
@@ -91,27 +91,27 @@ export async function DropsSection() {
                 className="h-20 w-14 shrink-0 rounded-md object-cover"
               />
             ) : (
-              <div className="flex h-20 w-14 shrink-0 items-center justify-center rounded-md bg-neutral-800 text-xl">
+              <div className="flex h-20 w-14 shrink-0 items-center justify-center rounded-md bg-surface-2 text-xl">
                 📖
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-neutral-100">
+              <p className="truncate text-sm font-medium text-ink">
                 {d.series_title}
-                <span className="text-neutral-400"> · {volumeLabel(d.volume_number)}</span>
+                <span className="text-muted"> · {volumeLabel(d.volume_number)}</span>
               </p>
-              <p className="mt-0.5 truncate text-xs text-neutral-500">
+              <p className="mt-0.5 truncate text-xs text-muted">
                 {d.store_name} · {timeAgo(d.changed_at)}
                 {!d.in_stock && " · stokta yok"}
               </p>
               <p className="mt-2 flex items-baseline gap-2">
                 {d.old_price !== null && (
-                  <s className="text-xs text-neutral-500">₺{fmtPrice(d.old_price)}</s>
+                  <s className="text-xs text-muted">₺{fmtPrice(d.old_price)}</s>
                 )}
-                <span className="text-base font-semibold text-neutral-50">
+                <span className="text-base font-semibold text-ink">
                   ₺{d.new_price !== null ? fmtPrice(d.new_price) : "—"}
                 </span>
-                <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-semibold text-orange-400">
+                <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-accent">
                   %{d.drop_pct} indirim
                 </span>
               </p>

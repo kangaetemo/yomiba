@@ -83,14 +83,14 @@ export default async function VolumePage({ params }: VolumePageProps) {
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Link
           href="/"
-          className="text-neutral-500 hover:text-orange-400"
+          className="text-muted hover:text-accent"
         >
           ← Arama
         </Link>
-        <span className="text-neutral-700">/</span>
+        <span className="text-faint">/</span>
         <Link
           href={`/series/${detail.series.id}`}
-          className="text-neutral-500 hover:text-orange-400"
+          className="text-muted hover:text-accent"
         >
           {detail.series.title} — {detail.series.publisher}
         </Link>
@@ -103,61 +103,61 @@ export default async function VolumePage({ params }: VolumePageProps) {
           className="h-44 w-32 sm:h-52 sm:w-36"
         />
         <div className="flex flex-col justify-center gap-2">
-          <h1 className="text-3xl font-bold tracking-tight text-neutral-50">
+          <h1 className="text-3xl font-bold tracking-tight text-ink">
             {detail.series.title}
           </h1>
-          <p className="text-base text-neutral-400">{volumeLabel}</p>
-          <p className="text-sm text-neutral-500">{detail.series.publisher}</p>
+          <p className="text-base text-muted">{volumeLabel}</p>
+          <p className="text-sm text-muted">{detail.series.publisher}</p>
         </div>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-neutral-100">
+        <h2 className="text-lg font-semibold text-ink">
           Koleksiyonum
         </h2>
         <div className="max-w-xl">
           {user ? <CollectionStatusPicker
             volumeId={numId}
             initial={detail.collection_status}
-          /> : <Link href="/login" className="text-orange-400">Koleksiyonunu takip etmek için giriş yap.</Link>}
+          /> : <Link href="/login" className="text-sm text-ink-2 underline decoration-accent/50 underline-offset-4 hover:text-accent">Koleksiyonunu takip etmek için giriş yap.</Link>}
         </div>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-neutral-100">
+        <h2 className="text-lg font-semibold text-ink">
           İstek listesi
         </h2>
         {user ? <WishlistToggle
           volumeId={numId}
           initial={wishlist?.wishlisted ?? false}
-        /> : <Link href="/login" className="text-orange-400">İstek listesi için giriş yap.</Link>}
+        /> : <Link href="/login" className="text-sm text-ink-2 underline decoration-accent/50 underline-offset-4 hover:text-accent">İstek listesi için giriş yap.</Link>}
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-neutral-100">
+        <h2 className="text-lg font-semibold text-ink">
           Fiyat alarmı
         </h2>
         {user ? <PriceAlertForm
           volumeId={numId}
           initialAlert={alertState?.alert ?? null}
-        /> : <Link href="/login" className="text-orange-400">Fiyat alarmı için giriş yap.</Link>}
+        /> : <Link href="/login" className="text-sm text-ink-2 underline decoration-accent/50 underline-offset-4 hover:text-accent">Fiyat alarmı için giriş yap.</Link>}
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-neutral-100">
+        <h2 className="text-lg font-semibold text-ink">
           Mağazalar{" "}
-          <span className="text-sm font-normal text-neutral-500">
+          <span className="text-sm font-normal text-muted">
             (en ucuz önce)
           </span>
         </h2>
 
         {detail.unverified ? (
-          <div className="rounded-xl border border-amber-900/60 bg-amber-950/30 p-8 text-center text-sm text-amber-300/80">
+          <div className="rounded-xl border border-warn/40 bg-warn/10 p-8 text-center text-sm text-warn">
             Bu kaydın cilt numarası doğrulanamadı; eski mağaza fiyatları
             güncel olmadığı için gösterilmiyor.
           </div>
         ) : detail.stores.length === 0 ? (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">
+          <div className="rounded-xl border border-line bg-surface p-8 text-center text-sm text-muted">
             Bu cilt için henüz mağaza listelemesi yok.
           </div>
         ) : (
@@ -174,12 +174,12 @@ export default async function VolumePage({ params }: VolumePageProps) {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-neutral-100">
+        <h2 className="text-lg font-semibold text-ink">
           Fiyat geçmişi
         </h2>
 
         {historyListings.length === 0 ? (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">
+          <div className="rounded-xl border border-line bg-surface p-8 text-center text-sm text-muted">
             Henüz fiyat geçmişi yok — bu cildin fiyatı içe aktarmalarla
             yeniden kontrol edildikçe burada görünecek.
           </div>

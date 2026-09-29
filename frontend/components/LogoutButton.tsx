@@ -7,5 +7,5 @@ export function LogoutButton() {
   return <button onClick={async () => {
     const response = await fetch("/api/auth/logout", { method: "POST" });
     if (response.ok) { router.push("/"); router.refresh(); }
-  }} className="hover:text-orange-400">Çıkış Yap</button>;
+  }} className="hover:text-accent">Çıkış Yap</button>;
 }

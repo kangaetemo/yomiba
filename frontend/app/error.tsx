@@ -16,16 +16,16 @@ export default function ErrorPage({
       <p className="text-5xl" aria-hidden>
         ⚡
       </p>
-      <h1 className="text-2xl font-bold text-neutral-50">Bir şeyler ters gitti</h1>
-      <p className="text-sm text-neutral-500">
+      <h1 className="text-2xl font-bold text-ink">Bir şeyler ters gitti</h1>
+      <p className="text-sm text-muted">
         Sunucuya şu anda ulaşılamıyor olabilir. Birazdan tekrar deneyin.
         {error.digest && (
-          <span className="mt-1 block text-xs text-neutral-600">Hata kodu: {error.digest}</span>
+          <span className="mt-1 block text-xs text-faint">Hata kodu: {error.digest}</span>
         )}
       </p>
       <button
         onClick={reset}
-        className="inline-block rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-orange-400"
+        className="inline-block rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-hover"
       >
         Tekrar dene
       </button>

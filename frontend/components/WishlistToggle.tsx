@@ -49,14 +49,14 @@ export function WishlistToggle({
         onClick={toggle}
         className={`rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${
           wishlisted
-            ? "border-sky-500 bg-sky-500/10 text-sky-400"
-            : "border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"
+            ? "border-info bg-info/10 text-info"
+            : "border-line bg-surface text-muted hover:border-muted hover:text-ink"
         }`}
       >
         {wishlisted ? "✓ İstek listesinde — çıkarmak için tıkla" : "İstek listesine ekle"}
       </button>
-      {pending && <span className="text-xs text-neutral-500">Kaydediliyor…</span>}
-      {error && <p className="text-xs text-rose-400">{error}</p>}
+      {pending && <span className="text-xs text-muted">Kaydediliyor…</span>}
+      {error && <p className="text-xs text-bad">{error}</p>}
     </div>
   );
 }

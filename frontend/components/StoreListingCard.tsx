@@ -23,18 +23,18 @@ export function StoreListingCard({
       : "Stokta var";
   return (
     <div
-      className={`flex flex-col gap-3 rounded-xl border bg-neutral-900 p-4 sm:flex-row sm:items-center sm:justify-between ${
+      className={`flex flex-col gap-3 rounded-xl border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between ${
         isCheapest
-          ? "border-orange-500/70 ring-1 ring-orange-500/40"
-          : "border-neutral-800"
+          ? "border-accent/70 ring-1 ring-accent/40"
+          : "border-line"
       } ${outOfStock ? "opacity-70" : ""}`}
     >
       <div className="flex items-center gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <p className="font-medium text-neutral-50">{listing.store}</p>
+            <p className="font-medium text-ink">{listing.store}</p>
             {isCheapest && (
-              <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-medium text-orange-400">
+              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
                 En düşük fiyat
               </span>
             )}
@@ -42,10 +42,10 @@ export function StoreListingCard({
           <p
             className={`text-xs ${
               !listing.stock
-                ? "text-red-400"
+                ? "text-bad"
                 : listing.stale
-                  ? "text-neutral-400"
-                  : "text-emerald-400"
+                  ? "text-muted"
+                  : "text-ok"
             }`}
           >
             {stockLabel}
@@ -68,8 +68,8 @@ export function StoreListingCard({
           rel="noopener noreferrer"
           className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
             outOfStock
-              ? "border border-neutral-700 text-neutral-400 hover:bg-neutral-800"
-              : "bg-orange-500 text-neutral-950 hover:bg-orange-400"
+              ? "border border-line-strong text-muted hover:bg-surface-2"
+              : "bg-accent text-on-accent hover:bg-accent-hover"
           }`}
           >
             Mağazaya git ↗

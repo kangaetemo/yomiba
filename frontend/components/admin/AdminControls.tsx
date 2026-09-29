@@ -116,12 +116,12 @@ function CatalogSyncPanel() {
   const last = status?.last ?? null;
 
   return (
-    <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
+    <section className="space-y-3 rounded-xl border border-line bg-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-neutral-100">
+        <h2 className="text-lg font-semibold text-ink">
           Katalog senkronu
           {status?.running && (
-            <span className="ml-2 text-sm font-normal text-orange-400">
+            <span className="ml-2 text-sm font-normal text-accent">
               · çalışıyor…
             </span>
           )}
@@ -130,47 +130,47 @@ function CatalogSyncPanel() {
           type="button"
           onClick={trigger}
           disabled={busy || status?.running}
-          className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-neutral-950 transition-colors hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {status?.running ? "Senkron çalışıyor" : "Senkronu başlat"}
         </button>
       </div>
 
-      {error && <p className="text-xs text-rose-400">{error}</p>}
+      {error && <p className="text-xs text-bad">{error}</p>}
 
       {last ? (
         <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-4">
           <div>
-            <dt className="text-neutral-500">Sonuç</dt>
-            <dd className={last.status === "success" ? "text-emerald-400" : "text-rose-400"}>
+            <dt className="text-muted">Sonuç</dt>
+            <dd className={last.status === "success" ? "text-ok" : "text-bad"}>
               {last.status === "success" ? "Başarılı" : "Başarısız"}
             </dd>
           </div>
           <div>
-            <dt className="text-neutral-500">Manga</dt>
-            <dd className="text-neutral-200">
+            <dt className="text-muted">Manga</dt>
+            <dd className="text-ink-2">
               {last.manga_total} (hata: {last.manga_failed})
             </dd>
           </div>
           <div>
-            <dt className="text-neutral-500">Yeni / birleştirilen seri</dt>
-            <dd className="text-neutral-200">
+            <dt className="text-muted">Yeni / birleştirilen seri</dt>
+            <dd className="text-ink-2">
               {last.series_created} / {last.series_merged}
             </dd>
           </div>
           <div>
-            <dt className="text-neutral-500">Yeni cilt</dt>
-            <dd className="text-neutral-200">{last.volumes_added}</dd>
+            <dt className="text-muted">Yeni cilt</dt>
+            <dd className="text-ink-2">{last.volumes_added}</dd>
           </div>
         </dl>
       ) : (
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-muted">
           Bu oturumda henüz senkron çalışmadı.
         </p>
       )}
 
       {last && last.errors.length > 0 && (
-        <p className="text-xs text-rose-400">
+        <p className="text-xs text-bad">
           Hatalar: {last.errors.slice(0, 3).join(" · ")}
         </p>
       )}
@@ -264,8 +264,8 @@ function ImportPanel() {
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
-      <h2 className="text-lg font-semibold text-neutral-100">
+    <section className="space-y-4 rounded-xl border border-line bg-surface p-5">
+      <h2 className="text-lg font-semibold text-ink">
         Mağaza içe aktarma
       </h2>
 
@@ -276,28 +276,28 @@ function ImportPanel() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Sorgu (örn. Berserk)"
           aria-label="İçe aktarma sorgusu"
-          className="min-w-0 flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+          className="min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-accent focus:outline-none"
         />
         <button
           type="submit"
           disabled={busy || query.trim() === ""}
-          className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? "İçe aktarılıyor…" : "İçe aktar"}
         </button>
       </form>
 
       {busy && (
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-muted">
           Mağazalar taranıyor — 1-2 dakika sürebilir. Bağlantı 30 saniyede
           kopsa bile işlem sunucuda devam eder; sonuç aşağıda belirir.
         </p>
       )}
-      {error && <p className="text-xs text-rose-400">{error}</p>}
+      {error && <p className="text-xs text-bad">{error}</p>}
 
       {recordResult && (
-        <div className="space-y-1 rounded-lg border border-neutral-800 bg-neutral-950/50 p-3">
-          <p className="text-sm text-neutral-300">
+        <div className="space-y-1 rounded-lg border border-line bg-paper/50 p-3">
+          <p className="text-sm text-ink-2">
             “{recordResult.record.last_query ?? recordResult.record.normalized_query}” —{" "}
             {STATUS_LABEL[recordResult.record.status]} · {recordResult.record.created}{" "}
             yeni, {recordResult.record.updated} güncellendi ·{" "}
@@ -306,20 +306,20 @@ function ImportPanel() {
             başarılı · süre ≈ {recordResult.seconds} sn
           </p>
           {recordResult.record.error && (
-            <p className="text-xs text-rose-400">{recordResult.record.error}</p>
+            <p className="text-xs text-bad">{recordResult.record.error}</p>
           )}
         </div>
       )}
 
       {report && (
         <div className="space-y-2">
-          <p className="text-sm text-neutral-300">
+          <p className="text-sm text-ink-2">
             “{report.query}” — {report.total_created} yeni, {report.total_updated}{" "}
             güncellendi · süre: {durationSeconds(report.started_at, report.finished_at)}
           </p>
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-neutral-500">
+              <tr className="text-xs uppercase tracking-wide text-muted">
                 <th className="py-1 pr-3">Mağaza</th>
                 <th className="py-1 pr-3">Buldu</th>
                 <th className="py-1 pr-3">Yeni</th>
@@ -329,12 +329,12 @@ function ImportPanel() {
             </thead>
             <tbody>
               {report.stores.map((s) => (
-                <tr key={s.store_code} className="border-t border-neutral-800/60">
-                  <td className="py-1.5 pr-3 text-neutral-200">{s.store_name}</td>
-                  <td className="py-1.5 pr-3 text-neutral-400">{s.results_found}</td>
-                  <td className="py-1.5 pr-3 text-neutral-400">{s.created}</td>
-                  <td className="py-1.5 pr-3 text-neutral-400">{s.updated}</td>
-                  <td className="py-1.5 text-xs text-rose-400">
+                <tr key={s.store_code} className="border-t border-line">
+                  <td className="py-1.5 pr-3 text-ink-2">{s.store_name}</td>
+                  <td className="py-1.5 pr-3 text-muted">{s.results_found}</td>
+                  <td className="py-1.5 pr-3 text-muted">{s.created}</td>
+                  <td className="py-1.5 pr-3 text-muted">{s.updated}</td>
+                  <td className="py-1.5 text-xs text-bad">
                     {s.error ?? ""}
                   </td>
                 </tr>
@@ -345,15 +345,15 @@ function ImportPanel() {
       )}
 
       <div className="space-y-2 pt-2">
-        <h3 className="text-sm font-semibold text-neutral-300">
+        <h3 className="text-sm font-semibold text-ink-2">
           Son içe aktarmalar
         </h3>
         {records.length === 0 ? (
-          <p className="text-sm text-neutral-500">Henüz kayıt yok.</p>
+          <p className="text-sm text-muted">Henüz kayıt yok.</p>
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-neutral-500">
+              <tr className="text-xs uppercase tracking-wide text-muted">
                 <th className="py-1 pr-3">Sorgu</th>
                 <th className="py-1 pr-3">Durum</th>
                 <th className="py-1 pr-3">Son deneme</th>
@@ -364,21 +364,21 @@ function ImportPanel() {
             </thead>
             <tbody>
               {records.map((r) => (
-                <tr key={r.normalized_query} className="border-t border-neutral-800/60">
-                  <td className="py-1.5 pr-3 text-neutral-200">
+                <tr key={r.normalized_query} className="border-t border-line">
+                  <td className="py-1.5 pr-3 text-ink-2">
                     {r.last_query ?? r.normalized_query}
                   </td>
-                  <td className="py-1.5 pr-3 text-neutral-400">
+                  <td className="py-1.5 pr-3 text-muted">
                     {STATUS_LABEL[r.status] ?? r.status}
                   </td>
-                  <td className="py-1.5 pr-3 text-neutral-500">
+                  <td className="py-1.5 pr-3 text-muted">
                     {formatDateTime(r.last_attempt_at)}
                   </td>
-                  <td className="py-1.5 pr-3 text-neutral-500">
+                  <td className="py-1.5 pr-3 text-muted">
                     {formatDateTime(r.last_success_at)}
                   </td>
-                  <td className="py-1.5 pr-3 text-neutral-400">{r.created}</td>
-                  <td className="py-1.5 text-neutral-400">{r.updated}</td>
+                  <td className="py-1.5 pr-3 text-muted">{r.created}</td>
+                  <td className="py-1.5 text-muted">{r.updated}</td>
                 </tr>
               ))}
             </tbody>
@@ -468,12 +468,12 @@ function CoveragePanel() {
       : 0;
 
   return (
-    <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
+    <section className="space-y-3 rounded-xl border border-line bg-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-neutral-100">
+        <h2 className="text-lg font-semibold text-ink">
           Raf kapsaması
           {cycleActive && (
-            <span className="ml-2 text-sm font-normal text-orange-400">
+            <span className="ml-2 text-sm font-normal text-accent">
               · {priceRefresh?.current_cycle_mode === "unpriced" ? "fiyatsızlar: " : ""}
               {running} iş çalışıyor…
             </span>
@@ -485,7 +485,7 @@ function CoveragePanel() {
             onClick={() => void triggerWarmup("unpriced")}
             disabled={warming !== null || !priceRefresh?.enabled || cycleActive}
             title="Sadece hiç fiyatı olmayan katalog serilerini mağazalarda yeniden arar"
-            className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg border border-line-strong bg-surface-2 px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:bg-line disabled:cursor-not-allowed disabled:opacity-50"
           >
             {warming === "unpriced" ? "Başlatılıyor…" : "Fiyatsızları yenile"}
           </button>
@@ -493,18 +493,18 @@ function CoveragePanel() {
             type="button"
             onClick={() => void triggerWarmup("full")}
             disabled={warming !== null || !priceRefresh?.enabled || cycleActive}
-            className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg border border-line-strong bg-surface-2 px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:bg-line disabled:cursor-not-allowed disabled:opacity-50"
           >
             {warming === "full" ? "Başlatılıyor…" : "Fiyatları yenile"}
           </button>
         </div>
       </div>
 
-      {error && <p className="text-xs text-rose-400">{error}</p>}
-      {warmupMsg && <p className="text-xs text-neutral-400">{warmupMsg}</p>}
+      {error && <p className="text-xs text-bad">{error}</p>}
+      {warmupMsg && <p className="text-xs text-muted">{warmupMsg}</p>}
 
       {priceRefresh && (
-        <div className="space-y-1 text-xs text-neutral-400">
+        <div className="space-y-1 text-xs text-muted">
           <p>
             Fiyat yenileme: {priceRefresh.enabled ? "açık" : "kapalı"} · her{" "}
             {priceRefresh.interval_hours} saatte bir · {priceRefresh.worker_concurrency} worker ·{" "}
@@ -526,7 +526,7 @@ function CoveragePanel() {
       {coverage && (
         <>
           <div
-            className="h-2 w-full overflow-hidden rounded-full bg-neutral-800"
+            className="h-2 w-full overflow-hidden rounded-full bg-surface-2"
             role="progressbar"
             aria-valuenow={pct}
             aria-valuemin={0}
@@ -534,33 +534,33 @@ function CoveragePanel() {
             aria-label="Katalog serilerinde fiyat verisi olan oranı"
           >
             <div
-              className="h-full rounded-full bg-emerald-500 transition-all"
+              className="h-full rounded-full bg-ok transition-all"
               style={{ width: `${pct}%` }}
             />
           </div>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-4">
             <div>
-              <dt className="text-neutral-500">Fiyatlı seri</dt>
-              <dd className="text-neutral-200">
+              <dt className="text-muted">Fiyatlı seri</dt>
+              <dd className="text-ink-2">
                 {coverage.series_with_listings}/{coverage.catalog_series}
-                <span className="text-neutral-500"> ({pct}%)</span>
+                <span className="text-muted"> ({pct}%)</span>
               </dd>
             </div>
             <div>
-              <dt className="text-neutral-500">Toplam listing</dt>
-              <dd className="text-neutral-200">{coverage.listings_total}</dd>
+              <dt className="text-muted">Toplam listing</dt>
+              <dd className="text-ink-2">{coverage.listings_total}</dd>
             </div>
             <div>
-              <dt className="text-neutral-500">
+              <dt className="text-muted">
                 Taze kayıt ({coverage.freshness_ttl_minutes} dk)
               </dt>
-              <dd className="text-neutral-200">
+              <dd className="text-ink-2">
                 {coverage.fresh_records}/{coverage.records_total}
               </dd>
             </div>
             <div>
-              <dt className="text-neutral-500">Kayıt durumu</dt>
-              <dd className="text-xs text-neutral-400">
+              <dt className="text-muted">Kayıt durumu</dt>
+              <dd className="text-xs text-muted">
                 {Object.entries(coverage.records_by_status).length === 0
                   ? "—"
                   : Object.entries(coverage.records_by_status)
@@ -620,28 +620,28 @@ function MissingCoveragePanel() {
   }, {});
 
   return (
-    <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
+    <section className="space-y-3 rounded-xl border border-line bg-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-neutral-100">
+        <h2 className="text-lg font-semibold text-ink">
           Fiyatsız seriler
           {rows && (
-            <span className="ml-2 text-sm font-normal text-neutral-400">· {rows.length}</span>
+            <span className="ml-2 text-sm font-normal text-muted">· {rows.length}</span>
           )}
         </h2>
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line-strong bg-surface-2 px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:bg-line disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? "Yükleniyor…" : rows ? "Yenile" : "Listele"}
         </button>
       </div>
 
-      {error && <p className="text-xs text-rose-400">{error}</p>}
+      {error && <p className="text-xs text-bad">{error}</p>}
 
       {counts && (
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs text-muted">
           {Object.entries(counts)
             .map(([k, v]) => `${OUTCOME_LABEL[k as MissingCoverage["outcome"]] ?? k}: ${v}`)
             .join(" · ")}
@@ -652,7 +652,7 @@ function MissingCoveragePanel() {
         <div className="max-h-[28rem] overflow-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-neutral-500">
+              <tr className="text-xs uppercase tracking-wide text-muted">
                 <th className="py-1 pr-3">Seri</th>
                 <th className="py-1 pr-3">Sonuç</th>
                 <th className="py-1 pr-3">Bulunan</th>
@@ -661,18 +661,18 @@ function MissingCoveragePanel() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.series_id} className="border-t border-neutral-800/60 align-top">
-                  <td className="py-1.5 pr-3 text-neutral-200">
+                <tr key={r.series_id} className="border-t border-line align-top">
+                  <td className="py-1.5 pr-3 text-ink-2">
                     {r.title}
-                    <span className="block text-xs text-neutral-500">
+                    <span className="block text-xs text-muted">
                       {r.publisher ?? "—"} · {r.volume_count} cilt
                     </span>
                   </td>
-                  <td className="py-1.5 pr-3 text-neutral-400">{OUTCOME_LABEL[r.outcome]}</td>
-                  <td className="py-1.5 pr-3 text-neutral-400">{r.results_found}</td>
-                  <td className="py-1.5 text-xs text-neutral-500">
+                  <td className="py-1.5 pr-3 text-muted">{OUTCOME_LABEL[r.outcome]}</td>
+                  <td className="py-1.5 pr-3 text-muted">{r.results_found}</td>
+                  <td className="py-1.5 text-xs text-muted">
                     {formatReasons(r.reasons)}
-                    {r.error && <span className="block text-rose-400">{r.error}</span>}
+                    {r.error && <span className="block text-bad">{r.error}</span>}
                   </td>
                 </tr>
               ))}
@@ -681,7 +681,7 @@ function MissingCoveragePanel() {
         </div>
       )}
       {rows && rows.length === 0 && (
-        <p className="text-sm text-neutral-500">Tüm katalog serilerinde en az bir fiyat var.</p>
+        <p className="text-sm text-muted">Tüm katalog serilerinde en az bir fiyat var.</p>
       )}
     </section>
   );

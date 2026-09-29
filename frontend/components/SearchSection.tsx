@@ -24,7 +24,7 @@ export function SearchSection() {
       />
 
       {status === "idle" && (
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-muted">
           Mağazalar arası fiyat karşılaştırmak için yazmaya başlayın.
         </p>
       )}
@@ -32,19 +32,19 @@ export function SearchSection() {
       {status === "loading" && <ResultsSkeleton />}
 
       {status === "error" && (
-        <div className="rounded-xl border border-red-900/50 bg-red-950/30 p-4 text-sm text-red-300">
+        <div className="rounded-xl border border-bad/30 bg-bad/5 p-4 text-sm text-bad">
           <p className="font-medium">Arama başarısız</p>
-          <p className="mt-1 text-red-400/80">{error}</p>
+          <p className="mt-1 text-bad/80">{error}</p>
         </div>
       )}
 
       {isEmpty && (
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center">
+        <div className="rounded-xl border border-line bg-surface p-8 text-center">
           <p className="text-3xl" aria-hidden>🔍</p>
-          <p className="mt-2 font-medium text-neutral-200">
+          <p className="mt-2 font-medium text-ink-2">
             “{query.trim()}” katalogda bulunamadı
           </p>
-          <p className="mt-1 text-sm text-neutral-500">
+          <p className="mt-1 text-sm text-muted">
             Katalog Mangakol’dan beslenir. Farklı bir başlık deneyin.
           </p>
         </div>

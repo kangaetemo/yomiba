@@ -17,17 +17,17 @@ const OPTIONS: { value: CollectionStatus; label: string; activeClass: string }[]
   {
     value: "owned",
     label: "Sahibim",
-    activeClass: "border-emerald-500 bg-emerald-500/10 text-emerald-400",
+    activeClass: "border-ok bg-ok/10 text-ok",
   },
   {
     value: "missing",
     label: "Eksik",
-    activeClass: "border-rose-500 bg-rose-500/10 text-rose-400",
+    activeClass: "border-bad bg-bad/10 text-bad",
   },
   {
     value: "wanted",
     label: "İstediğim",
-    activeClass: "border-orange-500 bg-orange-500/10 text-orange-400",
+    activeClass: "border-accent bg-accent/10 text-accent",
   },
 ];
 
@@ -73,7 +73,7 @@ export function CollectionStatusPicker({
               className={`rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${
                 active
                   ? opt.activeClass
-                  : "border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"
+                  : "border-line bg-surface text-muted hover:border-muted hover:text-ink"
               }`}
             >
               {opt.label}
@@ -85,14 +85,14 @@ export function CollectionStatusPicker({
             type="button"
             disabled={pending}
             onClick={() => pick(null)}
-            className="rounded-lg px-2 py-1.5 text-xs text-neutral-500 transition-colors hover:text-neutral-300 disabled:opacity-50"
+            className="rounded-lg px-2 py-1.5 text-xs text-muted transition-colors hover:text-ink disabled:opacity-50"
           >
             Temizle
           </button>
         )}
-        {pending && <span className="text-xs text-neutral-500">Kaydediliyor…</span>}
+        {pending && <span className="text-xs text-muted">Kaydediliyor…</span>}
       </div>
-      {error && <p className="text-xs text-rose-400">{error}</p>}
+      {error && <p className="text-xs text-bad">{error}</p>}
     </div>
   );
 }

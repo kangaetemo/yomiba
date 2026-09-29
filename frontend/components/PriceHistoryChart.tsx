@@ -114,7 +114,7 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
   const xTicks = Array.from({ length: 4 }, (_, i) => new Date(t0 + (tSpan * i) / 3));
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
+    <div className="rounded-xl border border-line bg-surface p-4">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
@@ -217,7 +217,7 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
       </svg>
 
       {/* Legend */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-neutral-400">
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted">
         {series.map((s) => (
           <span key={s.store} className="inline-flex items-center gap-2">
             <span
@@ -228,7 +228,7 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
             {s.store}
           </span>
         ))}
-        <span className="ml-auto text-xs text-neutral-600">
+        <span className="ml-auto text-xs text-faint">
           Kesin fiyat için noktaların üzerine gelin
         </span>
       </div>

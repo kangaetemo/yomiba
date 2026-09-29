@@ -81,16 +81,16 @@ export function PriceAlertForm({
   return (
     <div className="max-w-xl space-y-2">
       {alert && (
-        <p className="text-sm text-neutral-300">
+        <p className="text-sm text-ink-2">
           Mevcut alarm:{" "}
-          <span className="font-semibold text-neutral-100">
+          <span className="font-semibold text-ink">
             {formatPrice(alert.threshold_price / 100)}
           </span>{" "}
           <span
             className={
               alert.is_active
-                ? "text-emerald-400"
-                : "text-neutral-500"
+                ? "text-ok"
+                : "text-muted"
             }
           >
             {alert.is_active ? "(aktif)" : "(pasif)"}
@@ -116,13 +116,13 @@ export function PriceAlertForm({
           onKeyDown={(e) => {
             if (e.key === "Enter") saveThreshold();
           }}
-          className="w-32 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-orange-500 focus:outline-none disabled:opacity-50"
+          className="w-32 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-faint focus:border-accent focus:outline-none disabled:opacity-50"
         />
         <button
           type="button"
           disabled={pending}
           onClick={saveThreshold}
-          className="rounded-lg border border-orange-500/60 bg-orange-500/10 px-3 py-1.5 text-sm text-orange-400 transition-colors hover:bg-orange-500/20 disabled:opacity-50"
+          className="rounded-lg border border-accent/60 bg-accent/10 px-3 py-1.5 text-sm text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
         >
           {alert ? "Alarmı güncelle" : "Alarm kur"}
         </button>
@@ -135,7 +135,7 @@ export function PriceAlertForm({
               onClick={() =>
                 void call(() => setPriceAlert(volumeId, null, !alert.is_active))
               }
-              className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-200 disabled:opacity-50"
+              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-muted transition-colors hover:border-muted hover:text-ink disabled:opacity-50"
             >
               {alert.is_active ? "Pasifleştir" : "Etkinleştir"}
             </button>
@@ -143,17 +143,17 @@ export function PriceAlertForm({
               type="button"
               disabled={pending}
               onClick={() => void call(() => deletePriceAlert(volumeId))}
-              className="rounded-lg px-2 py-1.5 text-xs text-neutral-500 transition-colors hover:text-rose-400 disabled:opacity-50"
+              className="rounded-lg px-2 py-1.5 text-xs text-muted transition-colors hover:text-bad disabled:opacity-50"
             >
               Alarmı sil
             </button>
           </>
         )}
-        {pending && <span className="text-xs text-neutral-500">Kaydediliyor…</span>}
+        {pending && <span className="text-xs text-muted">Kaydediliyor…</span>}
       </div>
 
-      {error && <p className="text-xs text-rose-400">{error}</p>}
-      <p className="text-xs text-neutral-600">
+      {error && <p className="text-xs text-bad">{error}</p>}
+      <p className="text-xs text-faint">
         Bu fiyatın altına düşünce haber ver (kontrol ve bildirimler ilerideki
         bir aşamada etkinleşecek; şimdilik koşul kaydediliyor).
       </p>

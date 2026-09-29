@@ -26,8 +26,8 @@ export function PriceBadge({
 }) {
   const base =
     price === null
-      ? "text-neutral-500"
-      : "font-semibold tabular-nums text-neutral-50";
+      ? "text-muted"
+      : "font-semibold tabular-nums text-ink";
   const sizeClass = size === "lg" ? "text-2xl" : "text-base";
   return (
     <span className={`${base} ${sizeClass} ${className}`}>

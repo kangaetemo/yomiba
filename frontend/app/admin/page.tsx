@@ -14,10 +14,10 @@ export default async function AdminPage() {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-neutral-50">
+        <h1 className="text-2xl font-bold tracking-tight text-ink">
           İçe aktarma ve senkron
         </h1>
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-muted">
           Katalog senkronunu manuel çalıştırın, mağaza içe aktarın ve son
           denemeleri izleyin.
         </p>
