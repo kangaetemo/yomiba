@@ -195,3 +195,35 @@ def isbn_conflict_fix(apply: bool = False, session: Session = Depends(get_db)) -
         return isbn_fix.run(Path(url.database).resolve(), apply=apply)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/catalog/covers")
+def cover_status(request: Request, session: Session = Depends(get_db)) -> dict:
+    """Admin: self-hosted cover progress (see services/covers.py)."""
+    from sqlalchemy import func, select
+
+    from ..models import CatalogSeries, Volume
+
+    catalog = Volume.series_id.in_(select(CatalogSeries.series_id))
+    real = Volume.volume_number >= 0
+    total = session.scalar(select(func.count()).where(catalog, real)) or 0
+    stored = session.scalar(select(func.count()).where(catalog, real, Volume.cover_key.isnot(None))) or 0
+    worker = getattr(request.app.state, "cover_worker", None)
+    return {
+        "enabled": worker is not None,
+        "running": bool(worker and worker.running),
+        "total": total,
+        "stored": stored,
+        "last": worker.last if worker else None,
+    }
+
+
+@router.post("/catalog/covers/fetch", status_code=202)
+def start_cover_fetch(request: Request) -> dict:
+    """Admin: run a cover pass now instead of waiting for the next one."""
+    worker = getattr(request.app.state, "cover_worker", None)
+    if worker is None:
+        raise HTTPException(status_code=503, detail="Kapak indirici kapalı.")
+    if not worker.trigger():
+        raise HTTPException(status_code=409, detail="Kapak indirme zaten çalışıyor.")
+    return {"status": "started"}

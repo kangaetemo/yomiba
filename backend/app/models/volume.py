@@ -56,6 +56,13 @@ class Volume(Base):
     #: When the catalog volume page was last read (ISBN + details); None =
     #: never, so the sync knows what is still to fetch.
     details_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Self-hosted cover (services/covers.py): storage key of the WebP copy,
+    #: where it came from ("store:bkm", "catalog", "mangakol") and when the
+    #: sources were last tried. ``cover_url`` above stays the external
+    #: SOURCE candidate only — it is never sent to browsers.
+    cover_key: Mapped[str | None] = mapped_column(String(200))
+    cover_source: Mapped[str | None] = mapped_column(String(40))
+    cover_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     series: Mapped[Series] = relationship(back_populates="volumes")
     listings: Mapped[list[StoreListing]] = relationship(

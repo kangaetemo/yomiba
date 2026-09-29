@@ -12,6 +12,7 @@ from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.series import SeriesOut, SeriesVolumeOut
 from ..services import catalog_service, collections_service
 from ..utils import from_cents
+from ..services.covers import cover_url
 
 router = APIRouter(tags=["series"])
 
@@ -35,7 +36,7 @@ def get_series_detail(
             in_stock_count=detail.volume_stats[volume.id].in_stock_count,
             stale_count=detail.volume_stats[volume.id].stale_count,
             collection_status=collections_service.get_volume_status(session, user.id if user else None, volume.id),  # type: ignore[arg-type]
-            cover_url=volume.cover_url,
+            cover_url=cover_url(volume.cover_key),
             release_date=volume.release_date,
         )
         for volume in detail.volumes

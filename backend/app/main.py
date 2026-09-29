@@ -43,11 +43,13 @@ def create_app(auto_init: bool = True) -> FastAPI:
         from .seed import seed_stores
         from .services.background_import import BackgroundImportRunner
         from .services.catalog_scheduler import CatalogSyncScheduler
+        from .services.covers import CoverWorker
         from .services.price_refresh_scheduler import PriceRefreshScheduler
 
         runner = None
         price_refresh = None
         scheduler = None
+        covers = None
         try:
             logger.info("startup: begin")
             validate_runtime_settings(settings)
@@ -103,6 +105,11 @@ def create_app(auto_init: bool = True) -> FastAPI:
                 scheduler.start()
                 logger.info("startup: catalog scheduler started")
             app.state.catalog_scheduler = scheduler
+            if auto_init and settings.covers_enabled:
+                covers = CoverWorker(database.SessionLocal)
+                covers.start()
+                logger.info("startup: cover worker started")
+            app.state.cover_worker = covers
             app.state.ready = auto_init
             logger.info("startup: app ready")
             yield
@@ -111,6 +118,8 @@ def create_app(auto_init: bool = True) -> FastAPI:
             if price_refresh is not None:
                 price_refresh.stop(timeout=5)
                 logger.info("shutdown: price scheduler stopped=%s", not price_refresh.is_running)
+            if covers is not None:
+                covers.stop(timeout=5)
             if scheduler is not None:
                 scheduler.stop(timeout=10)
                 logger.info("shutdown: catalog scheduler stopped=%s", not scheduler.is_running)
@@ -142,6 +151,8 @@ def create_app(auto_init: bool = True) -> FastAPI:
     @app.middleware("http")
     async def prevent_personal_response_caching(request: Request, call_next):
         response = await call_next(request)
+        if request.url.path.startswith("/covers/"):
+            return response  # public, content-addressed files: cache forever
         # Public search/prices can use ordinary cache policy. Any response
         # tied to a session, and all auth/personal endpoints, must not be
         # stored by a shared intermediary.

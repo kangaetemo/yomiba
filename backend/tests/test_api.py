@@ -80,7 +80,8 @@ def test_search_returns_matching_series(seeded):
     berserk = next(s for s in data["results"] if s["title"] == "Berserk")
     assert berserk["publisher"] == "Athica Yayınları"
     assert berserk["volume_count"] == 2
-    assert berserk["cover_url"] == "https://cdn.example.com/b1.jpg"
+    # The store image is only a download source; no self-hosted copy yet.
+    assert berserk["cover_url"] is None
 
 
 def test_user_read_routes_never_enqueue_or_scrape(seeded, db_session, monkeypatch):
@@ -149,7 +150,7 @@ def test_series_detail(seeded):
     data = res.json()
     assert data["title"] == "Berserk"
     assert data["publisher"] == "Athica Yayınları"
-    assert data["cover_url"] == "https://cdn.example.com/b1.jpg"
+    assert data["cover_url"] is None  # never the store image URL (self-hosted only)
     assert [v["number"] for v in data["volumes"]] == [1, 2]
 
     vol1 = data["volumes"][0]
@@ -192,7 +193,7 @@ def test_volume_stores_sorted_cheapest_first(seeded):
     data = res.json()
     assert data["number"] == 1
     assert data["series"]["publisher"] == "Athica Yayınları"
-    assert data["cover_url"] == "https://cdn.example.com/b1.jpg"
+    assert data["cover_url"] is None  # never the store image URL (self-hosted only)
 
     stores = [(s["store"], s["price"]) for s in data["stores"]]
     # Cheapest first: Amazon 163.54 < BKM 169 < D&R 260.

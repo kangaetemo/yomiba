@@ -215,6 +215,15 @@ export interface CatalogSyncStatus {
   } | null;
 }
 
+/** GET /catalog/covers: self-hosted cover progress. */
+export interface CoverStatus {
+  enabled: boolean;
+  running: boolean;
+  total: number;
+  stored: number;
+  last: { volumes: number; downloads: number; stored: number; without_source: number; remaining: number; finished_at: string } | null;
+}
+
 /** POST /catalog/isbn-fix: known wrong-volume ISBNs, previewed or applied. */
 export interface IsbnFixResult {
   mode: "dry-run" | "apply";

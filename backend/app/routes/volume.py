@@ -24,6 +24,7 @@ from ..services import (
     price_alerts_service,
     wishlist_service,
 )
+from ..services.covers import cover_url
 from ..utils import from_cents
 
 router = APIRouter(tags=["volume"])
@@ -60,7 +61,7 @@ def _build_volume_out(session: Session, volume_id: int, user_id: int | None = No
     return VolumeOut(
         id=volume.id,
         number=None if volume.volume_number == UNNUMBERED_VOLUME else volume.volume_number,
-        cover_url=volume.cover_url,
+        cover_url=cover_url(volume.cover_key),
         series=SeriesRefOut(
             id=volume.series.id,
             title=volume.series.title,

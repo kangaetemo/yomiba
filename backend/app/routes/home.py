@@ -31,6 +31,7 @@ from ..models import (
     Volume,
     WishlistItem,
 )
+from ..services.covers import cover_url
 from ..utils import from_cents, utcnow
 
 router = APIRouter(tags=["home"])
@@ -44,13 +45,13 @@ def _series_covers(session: Session, series_ids: list[int]) -> dict[int, str]:
     """First numbered volume with a cover, per series."""
     covers: dict[int, str] = {}
     rows = session.execute(
-        select(Volume.series_id, Volume.cover_url)
-        .where(Volume.series_id.in_(series_ids), Volume.cover_url.isnot(None),
+        select(Volume.series_id, Volume.cover_key)
+        .where(Volume.series_id.in_(series_ids), Volume.cover_key.isnot(None),
                Volume.volume_number >= 0)
         .order_by(Volume.series_id, Volume.volume_number)
     )
-    for series_id, cover in rows:
-        covers.setdefault(series_id, cover)
+    for series_id, key in rows:
+        covers.setdefault(series_id, cover_url(key))
     return covers
 
 
@@ -159,7 +160,7 @@ def home(
             "number": v.volume_number,
             "covers_from": v.covers_from,
             "covers_to": v.covers_to,
-            "cover_url": v.cover_url or fallback_covers.get(v.series_id),
+            "cover_url": cover_url(v.cover_key) or fallback_covers.get(v.series_id),
             "release_date": v.release_date.isoformat(),
             "lowest_price": from_cents(min_price),
             "in_stock_offers": stores or 0,

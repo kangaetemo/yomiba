@@ -17,6 +17,7 @@ from ..config import get_settings
 from ..models import CatalogSeries, PriceHistory, Series, Store, StoreListing, Volume
 from ..normalization import normalize_text
 from ..normalization.volume import UNNUMBERED_VOLUME
+from .covers import cover_url
 
 
 def legacy_phantom_condition():
@@ -155,7 +156,7 @@ def search_series(session: Session, query: str) -> list[SeriesMatch]:
     matches: list[SeriesMatch] = []
     for series in series_rows:
         series_volumes = volumes_by_series.get(series.id, [])
-        cover = next((v.cover_url for v in series_volumes if v.cover_url), None)
+        cover = next((cover_url(v.cover_key) for v in series_volumes if v.cover_key), None)
         matches.append(
             SeriesMatch(series=series, volume_count=len(series_volumes), cover_url=cover)
         )
@@ -187,7 +188,7 @@ def get_series(session: Session, series_id: int) -> SeriesDetail | None:
                 listings_by_volume.get(volume.id, []), stale_ids
             )
 
-    cover = next((v.cover_url for v in volumes if v.cover_url), None)
+    cover = next((cover_url(v.cover_key) for v in volumes if v.cover_key), None)
     return SeriesDetail(series=series, volumes=volumes, volume_stats=stats, cover_url=cover)
 
 

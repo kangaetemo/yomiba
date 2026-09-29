@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from . import catalog as catalog_routes
+from . import covers as covers_routes
 from . import auth as auth_routes
 from . import drops as drops_routes
 from . import home as home_routes
@@ -22,5 +23,6 @@ api_router.include_router(volume_routes.router)
 api_router.include_router(import_routes.router)
 api_router.include_router(me_routes.router)
 api_router.include_router(catalog_routes.router)
+api_router.include_router(covers_routes.router)
 
 __all__ = ["api_router"]

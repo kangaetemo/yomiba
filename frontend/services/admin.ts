@@ -9,6 +9,7 @@ import type {
   ImportCoverage,
   ImportRecord,
   ImportReport,
+  CoverStatus,
   IsbnFixResult,
   MissingCoverage,
   PriceRefreshStatus,
@@ -20,6 +21,14 @@ export function getCatalogSyncStatus(): Promise<CatalogSyncStatus> {
 
 export function startCatalogSync(): Promise<{ status: string }> {
   return postJson<{ status: string }>("/catalog/sync");
+}
+
+export function getCoverStatus(): Promise<CoverStatus> {
+  return getJson<CoverStatus>("/catalog/covers");
+}
+
+export function startCoverFetch(): Promise<{ status: string }> {
+  return postJson<{ status: string }>("/catalog/covers/fetch", {});
 }
 
 /** Preview (apply=false) or apply the known ISBN conflict fixes. */

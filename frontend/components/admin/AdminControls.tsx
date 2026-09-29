@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getCatalogSyncStatus,
+  getCoverStatus,
   getImportCoverage,
   getImportRecords,
   getMissingCoverage,
@@ -22,11 +23,13 @@ import {
   runImport,
   runIsbnFix,
   startCatalogSync,
+  startCoverFetch,
   startMissingPriceRefresh,
   startPriceRefresh,
 } from "@/services/admin";
 import type {
   CatalogSyncStatus,
+  CoverStatus,
   ImportCoverage,
   ImportRecord,
   ImportReport,
@@ -169,6 +172,75 @@ function IsbnFixBox({ disabled }: { disabled: boolean }) {
   );
 }
 
+/** Self-hosted covers: progress + "run a pass now". */
+function CoverBox() {
+  const [status, setStatus] = useState<CoverStatus | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await getCoverStatus());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Kapak durumu alınamadı");
+    }
+  }, []);
+
+  useEffect(() => {
+    const id = setTimeout(() => void refresh(), 0);
+    return () => clearTimeout(id);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!status?.running) return;
+    const id = setInterval(() => void refresh(), SYNC_POLL_MS);
+    return () => clearInterval(id);
+  }, [status?.running, refresh]);
+
+  async function run() {
+    if (busy) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await startCoverFetch();
+      setMessage("Kapak indirme başladı.");
+      setTimeout(() => void refresh(), 1500);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Başlatılamadı");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pct = status && status.total > 0 ? Math.round((100 * status.stored) / status.total) : 0;
+  return (
+    <div className="space-y-2 rounded-lg border border-line p-3 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted">
+          Kapaklar kendi sunucumuzdan: {status ? `${status.stored} / ${status.total} cilt (%${pct})` : "…"}
+          {status?.running && <span className="ml-1 text-accent">· indiriliyor…</span>}
+        </p>
+        <button
+          type="button"
+          onClick={() => void run()}
+          disabled={busy || !status?.enabled || status.running}
+          title={status && !status.enabled ? "Kapak indirici kapalı (COVERS_ENABLED)" : undefined}
+          className="rounded-lg border border-line-strong bg-surface-2 px-3 py-1.5 font-semibold text-ink transition-colors hover:bg-line disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Şimdi indir
+        </button>
+      </div>
+      {status?.last && (
+        <p className="text-faint">
+          Son tur: {status.last.stored} kapak kaydedildi, {status.last.downloads} indirme,{" "}
+          {status.last.without_source} ciltte kaynak yok, {status.last.remaining} bekliyor.
+        </p>
+      )}
+      {message && <p className="text-muted">{message}</p>}
+    </div>
+  );
+}
+
 function CatalogSyncPanel() {
   const [status, setStatus] = useState<CatalogSyncStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -298,6 +370,7 @@ function CatalogSyncPanel() {
       )}
 
       <IsbnFixBox disabled={Boolean(status?.running)} />
+      <CoverBox />
     </section>
   );
 }

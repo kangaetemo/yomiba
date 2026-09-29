@@ -19,6 +19,7 @@ from ..database import get_db
 from ..models import PriceAlert, Publisher, Series, StoreListing, User, UserVolumeCollection, Volume, WishlistItem
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..utils import from_cents
+from ..services.covers import cover_url
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -72,7 +73,7 @@ def _volume_fields(session: Session, volume_ids: list[int]) -> dict[int, dict]:
             "series_id": volume.series_id,
             "series_title": series_title,
             "publisher": publisher,
-            "cover_url": volume.cover_url,
+            "cover_url": cover_url(volume.cover_key),
             # Legacy phantom prices are frozen; never present them as current.
             "best_price": None if phantom else from_cents(best.get(volume.id)),
         }

@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..services.covers import cover_url
 from ..utils import from_cents, utcnow
 
 router = APIRouter(tags=["drops"])
@@ -54,7 +55,7 @@ _DROP_SQL = text(
         sl.volume_id,
         sl.in_stock,
         sl.product_url,
-        sl.image_url,
+        v.cover_key,
         v.volume_number,
         s.id AS series_id,
         s.title AS series_title,
@@ -101,7 +102,8 @@ def price_drops(
                 "changed_at": _as_iso(r.checked_at),
                 "in_stock": bool(r.in_stock),
                 "product_url": r.product_url,
-                "image_url": r.image_url,
+                # Our own copy of the cover, never the store's image URL.
+                "image_url": cover_url(r.cover_key),
             }
         )
     return {

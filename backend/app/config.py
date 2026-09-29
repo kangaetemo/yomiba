@@ -105,6 +105,25 @@ class Settings:
     # over consecutive syncs.
     mangakol_max_isbn_requests: int = int(os.getenv("MANGAKOL_MAX_ISBN_REQUESTS", "600"))
 
+    # Self-hosted covers (see services/covers.py). Pages never hot-link an
+    # external image: covers are downloaded once, resized to WebP and served
+    # from our own storage.
+    covers_enabled: bool = os.getenv("COVERS_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}
+    #: "local" (a directory, e.g. on the Railway volume). An object store
+    #: (Cloudflare R2 / S3) plugs in as another CoverStore implementation.
+    cover_storage: str = os.getenv("COVER_STORAGE", "local").strip().lower()
+    #: Local storage directory; empty = "covers" next to the SQLite DB file.
+    covers_dir: str = os.getenv("COVERS_DIR", "").strip()
+    #: Public URL prefix of stored covers (the frontend proxies /api to us;
+    #: an object store would use its CDN domain here).
+    cover_public_base: str = os.getenv("COVER_PUBLIC_BASE", "/api/covers").strip().rstrip("/")
+    #: Mangakol's catalog cover as a source (owner's decision 2026-09-29:
+    #: on, and tried FIRST; store product images fill the gaps).
+    cover_allow_mangakol: bool = os.getenv("COVER_ALLOW_MANGAKOL", "1").strip().lower() in {"1", "true", "yes", "on"}
+    cover_prefer_mangakol: bool = os.getenv("COVER_PREFER_MANGAKOL", "1").strip().lower() in {"1", "true", "yes", "on"}
+    cover_fetch_budget: int = int(os.getenv("COVER_FETCH_BUDGET", "400"))
+    cover_fetch_interval_minutes: float = float(os.getenv("COVER_FETCH_INTERVAL_MINUTES", "60"))
+
     # Background price import policy. Search never schedules an import.
     import_freshness_ttl_minutes: int = int(
         os.getenv("IMPORT_FRESHNESS_TTL_MINUTES", "60")
