@@ -10,6 +10,7 @@ from .series import Series
 from .volume import Volume
 from .store import Store
 from .store_listing import StoreListing
+from .listing_exclusion import ListingExclusion
 from .price_history import PriceHistory
 from .import_record import ImportRecord
 from .wishlist_item import WishlistItem
@@ -26,6 +27,7 @@ __all__ = [
     "Volume",
     "Store",
     "StoreListing",
+    "ListingExclusion",
     "PriceHistory",
     "ImportRecord",
     "WishlistItem",

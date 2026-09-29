@@ -12,6 +12,8 @@ CollectionStatus = Literal["owned", "missing", "wanted"]
 
 
 class VolumeStoreOut(BaseModel):
+    #: Listing id (admins remove a wrongly matched listing by it).
+    id: int | None = None
     store: str
     price: float | None = None
     currency: str = "TRY"

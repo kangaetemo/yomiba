@@ -3,6 +3,7 @@
  * Server-Component safe (plain anchors, no client state).
  */
 
+import type { ReactNode } from "react";
 import { Badge, formatTL } from "@/components/ui";
 import type { VolumeStore } from "@/types";
 
@@ -11,9 +12,12 @@ const CHECKED = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short
 export function StoreListingCard({
   listing,
   isCheapest,
+  adminAction,
 }: {
   listing: VolumeStore;
   isCheapest: boolean;
+  /** Admin-only control (e.g. remove a wrongly matched listing). */
+  adminAction?: ReactNode;
 }) {
   // A stale listing's "in stock" flag is only the last known value: the
   // store stopped showing the product (often because it sold out).
@@ -49,7 +53,8 @@ export function StoreListingCard({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4 sm:justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-4 sm:justify-end">
+        {adminAction}
         <span
           className={`tabular text-xl font-semibold ${
             !listing.stock ? "text-faint line-through" : listing.stale ? "text-muted" : "text-ink"

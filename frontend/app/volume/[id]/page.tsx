@@ -6,6 +6,7 @@ import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { CollectionStatusPicker } from "@/components/CollectionStatusPicker";
 import { WishlistToggle } from "@/components/WishlistToggle";
 import { PriceAlertForm } from "@/components/PriceAlertForm";
+import { RemoveListingButton } from "@/components/admin/RemoveListingButton";
 import { Badge, Cover, formatDate, formatTL, volumeTitle } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { volumeLabel as labelFor } from "@/lib/volumeLabel";
@@ -260,6 +261,11 @@ export default async function VolumePage({ params }: VolumePageProps) {
                       listing.stock &&
                       !listing.stale &&
                       Number(listing.price) === best.price
+                    }
+                    adminAction={
+                      user?.role === "ADMIN" && listing.id ? (
+                        <RemoveListingButton volumeId={numId} listingId={listing.id} store={listing.store} />
+                      ) : undefined
                     }
                   />
                 ))}

@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..auth import optional_user, require_user
-from ..models import User
+from ..auth import optional_user, require_admin, require_user
+from ..models import ListingExclusion, StoreListing, User
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.price_alert import PriceAlertDetail, PriceAlertIn, PriceAlertOut
 from ..schemas.price_history import HistoryListingOut, HistoryPointOut, PriceHistoryOut
@@ -47,6 +47,7 @@ def _build_volume_out(session: Session, volume_id: int, user_id: int | None = No
     volume = detail.volume
     stores = [
         VolumeStoreOut(
+            id=listing.id,
             store=listing.store.name,
             price=from_cents(listing.price),
             currency="TRY",
@@ -240,3 +241,29 @@ def delete_price_alert(
     _require_catalog_volume(session, volume_id)
     price_alerts_service.delete_price_alert(session, volume_id, user.id)
     return PriceAlertOut(volume_id=volume_id, alert=None)
+
+
+@router.delete("/volume/{volume_id}/listings/{listing_id}")
+def remove_listing(
+    volume_id: int,
+    listing_id: int,
+    reason: str | None = None,
+    session: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> dict:
+    """Admin: remove a store listing wrongly matched to this volume (and its
+    price history) and exclude that store product from future imports."""
+    listing = session.get(StoreListing, listing_id)
+    if listing is None or listing.volume_id != volume_id:
+        raise HTTPException(status_code=404, detail="İlan bulunamadı.")
+    exists = session.query(ListingExclusion).filter_by(
+        store_id=listing.store_id, product_url=listing.product_url
+    ).first()
+    if exists is None:
+        session.add(ListingExclusion(
+            store_id=listing.store_id, product_url=listing.product_url,
+            volume_id=volume_id, reason=(reason or "")[:300] or None,
+        ))
+    session.delete(listing)
+    session.commit()
+    return {"removed": listing_id, "excluded": True}

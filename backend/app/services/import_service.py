@@ -41,6 +41,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import (
     CatalogSeries,
+    ListingExclusion,
     PriceHistory,
     Publisher,
     PublisherAlias,
@@ -177,6 +178,7 @@ class ImportService:
         self.last_reason: str | None = None
         #: Lazily built {publisher_family_key: {publisher ids}} (read-only).
         self._family_index: dict[str, set[int]] | None = None
+        self._exclusions: set[tuple[str, str]] | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -396,6 +398,10 @@ class ImportService:
         title = (result.title or "").strip()
         if not title or not result.product_url:
             return self._reject("invalid_result")
+        # An admin removed this product from a volume: never attach it again,
+        # not even through its ISBN (a store's wrong metadata is the usual cause).
+        if (result.store_id, result.product_url) in self._excluded_products():
+            return self._reject("excluded")
 
         if not check_manga_relevance(title=title, publisher=result.publisher, isbn=result.isbn,
                                      category=result.category).accept:
@@ -810,6 +816,18 @@ class ImportService:
         if holder.volume_number < 0 or volume_number is None:
             return True
         return holder.volume_number == volume_number
+
+    def _excluded_products(self) -> set[tuple[str, str]]:
+        """(store code, product URL) pairs admins removed; loaded once per
+        service instance (one import run)."""
+        if self._exclusions is None:
+            self._exclusions = {
+                (code, url) for code, url in self.session.execute(
+                    select(Store.code, ListingExclusion.product_url)
+                    .join(Store, Store.id == ListingExclusion.store_id)
+                )
+            }
+        return self._exclusions
 
     def _reject(self, reason: str):
         self.last_reason = reason

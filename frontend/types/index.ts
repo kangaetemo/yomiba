@@ -111,6 +111,8 @@ export interface SeriesDetail {
 }
 
 export interface VolumeStore {
+  /** Listing id (admin removal). */
+  id?: number | null;
   store: string;
   price: number | null;
   currency: string;
