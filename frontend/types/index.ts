@@ -137,6 +137,11 @@ export interface CatalogSyncStatus {
     publishers_merged: number;
     series_absorbed: number;
     volumes_merged: number;
+    /** Volume pages read for ISBNs / ISBNs stored / ISBNs held elsewhere. */
+    isbn_pages?: number | null;
+    isbns_added?: number | null;
+    isbn_conflicts?: number | null;
+    isbn_conflict_details?: string[];
     errors: string[];
   } | null;
 }

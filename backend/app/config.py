@@ -99,6 +99,11 @@ class Settings:
     # pages (445 manga / ~23 per page) and per-manga volume fragment pages.
     mangakol_max_list_pages: int = int(os.getenv("MANGAKOL_MAX_LIST_PAGES", "40"))
     mangakol_max_volume_pages: int = int(os.getenv("MANGAKOL_MAX_VOLUME_PAGES", "20"))
+    # Volume detail pages a catalog sync may open to read ISBNs (only for
+    # released volumes that have none yet). The sync holds the write gate,
+    # so this bounds how long price refresh waits; the backlog is spread
+    # over consecutive syncs.
+    mangakol_max_isbn_requests: int = int(os.getenv("MANGAKOL_MAX_ISBN_REQUESTS", "600"))
 
     # Background price import policy. Search never schedules an import.
     import_freshness_ttl_minutes: int = int(

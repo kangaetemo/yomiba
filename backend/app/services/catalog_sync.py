@@ -79,6 +79,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import (
     CatalogSeries,
     Publisher,
@@ -127,6 +128,12 @@ class CatalogSyncReport:
     series_absorbed: int = 0
     #: Volumes folded into an existing volume of the merged series.
     volumes_merged: int = 0
+    #: Volume pages opened for ISBNs / ISBNs stored / ISBNs already held by
+    #: another volume (never moved; see ``isbn_conflict_details``).
+    isbn_pages: int = 0
+    isbns_added: int = 0
+    isbn_conflicts: int = 0
+    isbn_conflict_details: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -151,6 +158,7 @@ class CatalogSyncService:
     # ------------------------------------------------------------------
     def sync(self) -> CatalogSyncReport:
         report = CatalogSyncReport()
+        self._isbn_budget = max(0, get_settings().mangakol_max_isbn_requests)
         try:
             refs = self.scraper.list_manga()
         except Exception:
@@ -188,7 +196,7 @@ class CatalogSyncService:
                 )
                 try:
                     with self.session.begin_nested():
-                        self._merge_manga(manga, report)
+                        series = self._merge_manga(manga, report)
                 except Exception as exc:  # noqa: BLE001 - isolation by design
                     (
                         report.series_created, report.series_merged,
@@ -203,6 +211,12 @@ class CatalogSyncService:
                     )
                     continue
                 self.session.commit()
+                if series is not None:
+                    try:
+                        self._backfill_isbns(series, manga, report)
+                    except Exception:  # noqa: BLE001 - ISBNs are best effort
+                        logger.exception("catalog sync: ISBN backfill failed for /manga/%s", ref.slug)
+                        self.session.rollback()
         finally:
             self.scraper.close()
         # A successful sync must represent exactly the live snapshot. Stale
@@ -297,6 +311,55 @@ class CatalogSyncService:
                 )
             )
             report.volumes_added += 1
+        return series
+
+    def _backfill_isbns(self, series: Series, manga: CatalogManga, report: CatalogSyncReport) -> None:
+        """Read the ISBN of released volumes that have none from their own
+        Mangakol page, within the per-sync request budget.
+
+        The ISBN is the importer's first matching key: a store product with
+        a known ISBN resolves to its volume whatever its title says. Never
+        moves an ISBN: one held by another volume (a wrong earlier match or
+        a legacy row) is only reported. Commits per volume.
+        """
+        fetch = getattr(self.scraper, "fetch_volume_isbn", None)
+        if fetch is None:
+            return
+        for cv in manga.volumes:
+            if self._isbn_budget <= 0:
+                return
+            if cv.number is None or not getattr(cv, "url", None) or not getattr(cv, "released", True):
+                continue
+            volume = self.session.scalar(
+                select(Volume).where(Volume.series_id == series.id, Volume.volume_number == cv.number)
+            )
+            if volume is None or volume.isbn:
+                continue
+            self._isbn_budget -= 1
+            report.isbn_pages += 1
+            try:
+                isbn = fetch(cv.url)
+            except Exception:  # noqa: BLE001 - one page must not stop the sync
+                logger.warning("catalog sync: ISBN page failed for %s", cv.url)
+                continue
+            if not isbn:
+                continue
+            holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
+            if holder is None:
+                volume.isbn = isbn
+                self.session.commit()
+                report.isbns_added += 1
+            elif holder.id != volume.id:
+                report.isbn_conflicts += 1
+                holder_series = self.session.get(Series, holder.series_id)
+                detail = (
+                    f"{series.title} Cilt {cv.number}: ISBN {isbn} zaten "
+                    f"{holder_series.title if holder_series else holder.series_id} "
+                    f"Cilt {holder.volume_number} üzerinde"
+                )
+                logger.warning("catalog sync: %s", detail)
+                if len(report.isbn_conflict_details) < 50:
+                    report.isbn_conflict_details.append(detail)
 
     @staticmethod
     def _original_title_key(raw: str) -> str:

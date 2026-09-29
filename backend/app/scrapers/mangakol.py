@@ -80,6 +80,10 @@ class CatalogVolume:
     #: Original-volume span of a 2-in-1 / 3-in-1 book ((9, 10) for
     #: "Dragon Ball 9&10"); None for single-volume books.
     covers: tuple[int, int] | None = None
+    #: Absolute URL of the volume's own page (carries the ISBN).
+    url: str | None = None
+    #: False for announced volumes ("Yakında"): no ISBN published yet.
+    released: bool = True
 
 
 @dataclass(frozen=True)
@@ -243,10 +247,30 @@ class MangakolCatalogScraper(BaseScraper):
             cover = img.get("src") if img is not None else None
             if cover and not cover.startswith(("http://", "https://")):
                 cover = urljoin(cls.base_url + "/", cover)
+            link = item.select_one("a.mk-vol-card-link")
+            href = (link.get("href") or "").strip() if link is not None else ""
+            released = "yakında" not in item.get_text(" ", strip=True).lower()
             volumes.append(CatalogVolume(
                 number=number, cover_url=cover or None, covers=cls._covers(item, img),
+                url=urljoin(cls.base_url + "/", href) if href else None,
+                released=released,
             ))
         return volumes
+
+    _ISBN_RE = re.compile(r"ISBN:\s*</strong>\s*([0-9Xx][0-9Xx\- ]{8,20})", re.I)
+
+    def fetch_volume_isbn(self, url: str) -> str | None:
+        """ISBN from a volume page's info row ("ISBN: 9786258237337").
+        None when the page has none; raises ScraperError when blocked."""
+        from ..normalization import normalize_isbn
+
+        response = self.get(url)
+        if looks_like_blocked_page(response.status_code, response.text):
+            raise ScraperError(f"mangakol: volume page blocked (HTTP {response.status_code}) {url}")
+        if response.status_code >= 400:
+            return None
+        match = self._ISBN_RE.search(response.text)
+        return normalize_isbn(match.group(1)) if match else None
 
     @staticmethod
     def _covers(item, img) -> tuple[int, int] | None:

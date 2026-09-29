@@ -50,6 +50,10 @@ def _last_summary() -> dict | None:
         "publishers_merged": _last.get("publishers_merged"),
         "series_absorbed": _last.get("series_absorbed"),
         "volumes_merged": _last.get("volumes_merged"),
+        "isbn_pages": _last.get("isbn_pages"),
+        "isbns_added": _last.get("isbns_added"),
+        "isbn_conflicts": _last.get("isbn_conflicts"),
+        "isbn_conflict_details": (_last.get("isbn_conflict_details") or [])[:10],
         "errors": (_last.get("errors") or [])[:10],
     }
 
@@ -72,15 +76,20 @@ def _run_sync(runner) -> None:
             "publishers_merged": report.publishers_merged,
             "series_absorbed": report.series_absorbed,
             "volumes_merged": report.volumes_merged,
+            "isbn_pages": report.isbn_pages,
+            "isbns_added": report.isbns_added,
+            "isbn_conflicts": report.isbn_conflicts,
+            "isbn_conflict_details": report.isbn_conflict_details,
             "errors": report.errors,
         }
         logger.info(
             "catalog sync finished: %s (scanned=%s failed=%s "
             "series + %s / merged %s, volumes +%s, pubs merged %s, "
-            "series absorbed %s)",
+            "series absorbed %s, isbn pages %s / added %s / conflicts %s)",
             _last["status"], report.manga_scanned, report.manga_failed,
             report.series_created, report.series_merged, report.volumes_added,
             report.publishers_merged, report.series_absorbed,
+            report.isbn_pages, report.isbns_added, report.isbn_conflicts,
         )
     except Exception as exc:  # noqa: BLE001 - never leave the flag stuck
         logger.exception("catalog sync crashed")
