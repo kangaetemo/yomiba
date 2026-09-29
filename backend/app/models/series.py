@@ -46,6 +46,9 @@ class Series(Base):
     original_title: Mapped[str | None] = mapped_column(
         String(300), nullable=True, index=True
     )
+    #: Credits from the catalog source ("Yazar" / "Çizer"); None when unknown.
+    author: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    illustrator: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     publisher: Mapped[Publisher] = relationship(back_populates="series")
     volumes: Mapped[list[Volume]] = relationship(

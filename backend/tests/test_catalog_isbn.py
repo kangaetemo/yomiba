@@ -180,7 +180,8 @@ def _look_back(isbn_map):
 def _phantom_with_listing(db_session, isbn):
     from app.models import PriceHistory, Store
 
-    CatalogSyncService(db_session, scraper=_look_back({})).sync()  # series + Cilt 1, no ISBN
+    # series + Cilt 1 exist before the ISBN work (a plain catalog sync)
+    CatalogSyncService(db_session, scraper=FakeMangakolScraper(_look_back({})._manga)).sync()
     series = db_session.scalar(select(Series).where(Series.title == "Look Back"))
     phantom = Volume(series_id=series.id, volume_number=-1, isbn=isbn)
     store = Store(code="bkm", name="BKM Kitap")
@@ -232,3 +233,81 @@ def test_legacy_row_with_personal_data_is_only_reported(db_session):
     assert report.isbn_phantoms_merged == 0
     assert report.isbn_conflicts == 1
     assert "elle birleştirilmeli" in report.isbn_conflict_details[0]
+
+
+# -- volume details: page count, local release date, credits -----------------------------
+
+def test_fetch_volume_details_reads_info_rows():
+    from datetime import date
+
+    url = f"{BASE}/manga/dragon-ball/cilt-5-2in1"
+    page = ('<span><strong class="text-secondary">Sayfa Sayısı:</strong> 388</span> '
+            '<span><strong class="text-secondary">ISBN:</strong> 9786258237337</span> '
+            '<span><strong class="text-secondary">Yayın Tarihi (Orijinal):</strong> 10 Eylül 1987</span> '
+            '<span><strong class="text-secondary">Yayın Tarihi (Yerel):</strong> 22 Haziran 2023</span>')
+    details = _mangakol({url: page}).fetch_volume_details(url)
+    assert (details.isbn, details.page_count, details.release_date) == (
+        "9786258237337", 388, date(2023, 6, 22))
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("22 Haziran 2023", (2023, 6, 22)), ("1 Şubat 2021", (2021, 2, 1)),
+    ("10 Ağustos 2024", (2024, 8, 10)), ("Yakında", None), ("", None), ("31 Şubat 2021", None),
+])
+def test_parse_tr_date(raw, expected):
+    from datetime import date
+
+    from app.scrapers.mangakol import parse_tr_date
+
+    assert parse_tr_date(raw) == (date(*expected) if expected else None)
+
+
+class _DetailsFake(FakeMangakolScraper):
+    def __init__(self, manga, details):
+        super().__init__(manga)
+        self.details = details
+        self.fetched: list[str] = []
+
+    def fetch_volume_details(self, url):
+        self.fetched.append(url)
+        return self.details.get(url)
+
+
+def test_sync_stores_details_and_reads_each_page_once(db_session):
+    from datetime import date
+
+    from app.scrapers.mangakol import CatalogVolumeDetails
+
+    manga = CatalogManga(slug="zom-100", title="Zom 100", local_publisher="Marmara Çizgi",
+                         volumes=[_vol(1)], author="Haro Aso", illustrator="Kotaro Takata")
+    url = f"{BASE}/manga/zom-100/cilt-1"
+    fake = _DetailsFake([manga], {url: CatalogVolumeDetails("9786257646628", 192, date(2021, 3, 1))})
+    CatalogSyncService(db_session, scraper=fake).sync()
+
+    vol = db_session.scalar(select(Volume))
+    assert (vol.isbn, vol.page_count, vol.release_date) == ("9786257646628", 192, date(2021, 3, 1))
+    assert vol.details_checked_at is not None
+    series = db_session.scalar(select(Series))
+    assert (series.author, series.illustrator) == ("Haro Aso", "Kotaro Takata")
+
+    fake.fetched.clear()
+    CatalogSyncService(db_session, scraper=fake).sync()
+    assert fake.fetched == []
+
+
+def test_volume_with_isbn_but_no_details_is_read_once_for_details(db_session):
+    """Rows that got their ISBN before details existed are read one more time."""
+    from datetime import date
+
+    from app.scrapers.mangakol import CatalogVolumeDetails
+
+    url = f"{BASE}/manga/zom-100/cilt-1"
+    fake = _DetailsFake([_zom([_vol(1)])], {url: CatalogVolumeDetails("9786257646628", 192, date(2021, 3, 1))})
+    CatalogSyncService(db_session, scraper=FakeMangakolScraper([_zom([_vol(1)])])).sync()
+    vol = db_session.scalar(select(Volume))
+    vol.isbn = "9786257646628"  # filled by the earlier ISBN-only sync
+    db_session.commit()
+
+    CatalogSyncService(db_session, scraper=fake).sync()
+    assert fake.fetched == [url]
+    assert (vol.page_count, vol.release_date) == (192, date(2021, 3, 1))

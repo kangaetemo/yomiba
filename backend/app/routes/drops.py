@@ -58,7 +58,8 @@ _DROP_SQL = text(
         v.volume_number,
         s.id AS series_id,
         s.title AS series_title,
-        st.name AS store_name
+        st.name AS store_name,
+        (SELECT MIN(p.price) FROM price_history p WHERE p.listing_id = d.listing_id) AS lowest_seen
     FROM deltas d
     JOIN store_listings sl ON sl.id = d.listing_id
     JOIN volumes v ON v.id = sl.volume_id
@@ -95,6 +96,8 @@ def price_drops(
                 "old_price": from_cents(r.prev_price),
                 "new_price": from_cents(r.price),
                 "drop_pct": round((r.prev_price - r.price) * 100.0 / r.prev_price),
+                # The lowest price this store listing has ever been seen at.
+                "lowest_ever": r.lowest_seen is not None and r.price <= r.lowest_seen,
                 "changed_at": _as_iso(r.checked_at),
                 "in_stock": bool(r.in_stock),
                 "product_url": r.product_url,

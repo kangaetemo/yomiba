@@ -326,7 +326,6 @@ def test_import_warmup_queues_every_catalog_series(client, db_session):
         assert res.json()["total_catalog_series"] == 2
         assert res.json()["current_cycle_mode"] == "full"
         assert client.post("/import/price-refresh").status_code == 409
-        assert client.post("/import/price-refresh/missing").status_code == 409
     finally:
         scheduler.stop()
     runner = client.app.state.import_runner

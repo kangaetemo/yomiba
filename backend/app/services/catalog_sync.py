@@ -74,7 +74,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -95,6 +95,7 @@ from ..normalization import normalize_publisher, normalize_text
 from ..normalization.text import slugify
 from ..scrapers.mangakol import (
     CatalogManga,
+    CatalogVolumeDetails,
     MangakolCatalogScraper,
 )
 from ..utils import utcnow
@@ -286,6 +287,11 @@ class CatalogSyncService:
             key = self._original_title_key(manga.original_title)
             if key and series.original_title != key:
                 series.original_title = key
+        # Credits follow the catalog source (a page without them never erases).
+        for attr in ("author", "illustrator"):
+            value = (getattr(manga, attr, None) or "").strip()[:200]
+            if value and getattr(series, attr) != value:
+                setattr(series, attr, value)
 
         for volume in manga.volumes:
             number = volume.number if volume.number is not None else -1
@@ -326,9 +332,11 @@ class CatalogSyncService:
         moves an ISBN: one held by another volume (a wrong earlier match or
         a legacy row) is only reported. Commits per volume.
         """
-        fetch = getattr(self.scraper, "fetch_volume_isbn", None)
-        if fetch is None:
+        fetch_details = getattr(self.scraper, "fetch_volume_details", None)
+        fetch_isbn = getattr(self.scraper, "fetch_volume_isbn", None)
+        if fetch_details is None and fetch_isbn is None:
             return
+        recheck = utcnow() - timedelta(days=7)
         for cv in manga.volumes:
             if self._isbn_budget <= 0:
                 return
@@ -337,16 +345,35 @@ class CatalogSyncService:
             volume = self.session.scalar(
                 select(Volume).where(Volume.series_id == series.id, Volume.volume_number == cv.number)
             )
-            if volume is None or volume.isbn:
+            if volume is None:
+                continue
+            checked = volume.details_checked_at
+            if checked is not None and checked.tzinfo is None:
+                checked = checked.replace(tzinfo=timezone.utc)
+            # Read once (ISBN + page count + release date); a page without
+            # an ISBN yet is re-read weekly. Pre-details rows that already
+            # have an ISBN are read once more for their details.
+            if checked is not None and (volume.isbn or checked > recheck):
                 continue
             self._isbn_budget -= 1
             report.isbn_pages += 1
             try:
-                isbn = fetch(cv.url)
+                if fetch_details is not None:
+                    details = fetch_details(cv.url)
+                else:
+                    details = CatalogVolumeDetails(isbn=fetch_isbn(cv.url))
             except Exception:  # noqa: BLE001 - one page must not stop the sync
-                logger.warning("catalog sync: ISBN page failed for %s", cv.url)
+                logger.warning("catalog sync: volume page failed for %s", cv.url)
                 continue
-            if not isbn:
+            volume.details_checked_at = utcnow()
+            if details is not None:
+                if details.page_count:
+                    volume.page_count = details.page_count
+                if details.release_date:
+                    volume.release_date = details.release_date
+            self.session.commit()
+            isbn = details.isbn if details is not None else None
+            if not isbn or volume.isbn:
                 continue
             holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
             if holder is None:

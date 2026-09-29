@@ -272,3 +272,25 @@ def test_hidden_store_flags():
     assert KitapsecScraper.verifies_unseen_listings
     assert KitapsepetiScraper.verifies_unseen_listings
     assert not BkmScraper.verifies_unseen_listings
+
+
+# -- neutral order for equally cheap stores ----------------------------------------------
+
+def test_equal_prices_are_ordered_neutrally(db_session):
+    """Same price: in stock first, then store name — never "whichever store
+    was imported first" (listing id), which reads like a paid placement."""
+    from app.services import catalog_service
+
+    series = seed_catalog_series(db_session, "Berserk", "Athica")
+    vol = db_session.scalar(select(Volume).where(Volume.series_id == series.id))
+    stores = {code: Store(code=code, name=name) for code, name in
+              (("z", "Zeta Kitap"), ("a", "Alfa Kitap"), ("m", "Mega Kitap"), ("c", "Cheap"))}
+    db_session.add_all(stores.values())
+    db_session.flush()
+    for code, price, stock in (("z", 15000, True), ("a", 15000, True), ("m", 15000, False), ("c", 14000, False)):
+        db_session.add(StoreListing(volume_id=vol.id, store_id=stores[code].id,
+                                    product_url=f"https://{code}.example/b1", price=price, in_stock=stock))
+    db_session.commit()
+
+    order = [l.store.name for l in catalog_service.get_volume(db_session, vol.id).listings]
+    assert order == ["Cheap", "Alfa Kitap", "Zeta Kitap", "Mega Kitap"]

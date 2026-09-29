@@ -35,6 +35,8 @@ def get_series_detail(
             in_stock_count=detail.volume_stats[volume.id].in_stock_count,
             stale_count=detail.volume_stats[volume.id].stale_count,
             collection_status=collections_service.get_volume_status(session, user.id if user else None, volume.id),  # type: ignore[arg-type]
+            cover_url=volume.cover_url,
+            release_date=volume.release_date,
         )
         for volume in detail.volumes
     ]

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 
-from ..models import CatalogSeries, PriceHistory, Series, StoreListing, Volume
+from ..models import CatalogSeries, PriceHistory, Series, Store, StoreListing, Volume
 from ..normalization import normalize_text
 from ..normalization.volume import UNNUMBERED_VOLUME
 
@@ -264,12 +264,16 @@ def get_volume(session: Session, volume_id: int) -> VolumeDetail | None:
     if is_legacy_phantom(session, volume):
         return VolumeDetail(volume=volume, listings=[], unverified=True)
 
-    # Cheapest first; listings without a price go last.
+    # Cheapest first; listings without a price go last. Equal prices: in
+    # stock first, then store name — a neutral tie-break (listing id would
+    # always favour whichever store was imported first).
     nulls_last = case((StoreListing.price.is_(None), 1), else_=0)
     listings = session.scalars(
         select(StoreListing)
+        .join(Store, Store.id == StoreListing.store_id)
         .where(StoreListing.volume_id == volume_id)
-        .order_by(nulls_last, StoreListing.price, StoreListing.id)
+        .order_by(nulls_last, StoreListing.price, StoreListing.in_stock.desc(),
+                  Store.name, StoreListing.id)
     ).all()
     return VolumeDetail(
         volume=volume, listings=listings, stale_ids=stale_listing_ids(session, listings)

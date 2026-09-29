@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel
@@ -28,6 +28,8 @@ class SeriesRefOut(BaseModel):
     id: int
     title: str
     publisher: str
+    author: str | None = None
+    illustrator: str | None = None
 
 
 class VolumeOut(BaseModel):
@@ -43,6 +45,13 @@ class VolumeOut(BaseModel):
     #: True for a legacy store-created phantom (unresolved ``-1`` row). Its
     #: frozen store listings are withheld until an approved cleanup.
     unverified: bool = False
+    #: Catalog details (None when unknown).
+    isbn: str | None = None
+    page_count: int | None = None
+    release_date: date | None = None
+    #: Original volumes an omnibus book collects (2-in-1: 9-10), else None.
+    covers_from: int | None = None
+    covers_to: int | None = None
 
 
 class VolumeCollectionStatusIn(BaseModel):

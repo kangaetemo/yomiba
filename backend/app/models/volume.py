@@ -11,9 +11,10 @@ constraint effective for them as well.
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -48,6 +49,13 @@ class Volume(Base):
     #: ("Dragon Ball 9&10"); NULL for single-volume books.
     covers_from: Mapped[int | None] = mapped_column(Integer)
     covers_to: Mapped[int | None] = mapped_column(Integer)
+    #: Catalog volume-page details (Mangakol "Sayfa Sayısı", "Yayın Tarihi
+    #: (Yerel)"); None when the source has none.
+    page_count: Mapped[int | None] = mapped_column(Integer)
+    release_date: Mapped[date | None] = mapped_column(Date)
+    #: When the catalog volume page was last read (ISBN + details); None =
+    #: never, so the sync knows what is still to fetch.
+    details_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     series: Mapped[Series] = relationship(back_populates="volumes")
     listings: Mapped[list[StoreListing]] = relationship(

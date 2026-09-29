@@ -45,6 +45,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from datetime import date
 from urllib.parse import urljoin
 
 from .base import BaseScraper, ScraperError
@@ -97,6 +98,40 @@ class CatalogManga:
     #: Raw original (foreign) title line from the detail page, e.g.
     #: "Tokyo Ghoul | 東京喰種トーキョーグール" — None when the page has none.
     original_title: str | None = None
+    #: "Yazar" / "Çizer" info rows; None when the page has none.
+    author: str | None = None
+    illustrator: str | None = None
+
+
+@dataclass(frozen=True)
+class CatalogVolumeDetails:
+    """A volume page's info rows (each None when the page lacks it)."""
+
+    isbn: str | None = None
+    page_count: int | None = None
+    release_date: date | None = None
+
+
+_TR_MONTHS = {
+    "ocak": 1, "subat": 2, "mart": 3, "nisan": 4, "mayis": 5, "haziran": 6,
+    "temmuz": 7, "agustos": 8, "eylul": 9, "ekim": 10, "kasim": 11, "aralik": 12,
+}
+
+
+def parse_tr_date(value: str | None) -> date | None:
+    """"22 Haziran 2023" -> date(2023, 6, 22); None when not a full date."""
+    from ..normalization import normalize_text
+
+    parts = normalize_text(value).split()
+    if len(parts) != 3 or not parts[0].isdigit() or not parts[2].isdigit():
+        return None
+    month = _TR_MONTHS.get(parts[1])
+    if month is None:
+        return None
+    try:
+        return date(int(parts[2]), month, int(parts[0]))
+    except ValueError:
+        return None
 
 
 class MangakolCatalogScraper(BaseScraper):
@@ -197,6 +232,8 @@ class MangakolCatalogScraper(BaseScraper):
             local_publisher=local_publisher,
             volumes=volumes,
             original_title=original_title,
+            author=info.get("yazar") or None,
+            illustrator=info.get("cizer") or None,
         )
 
     #: The SSR detail grid shows at most this many volumes per page.
@@ -259,9 +296,11 @@ class MangakolCatalogScraper(BaseScraper):
 
     _ISBN_RE = re.compile(r"ISBN:\s*</strong>\s*([0-9Xx][0-9Xx\- ]{8,20})", re.I)
 
-    def fetch_volume_isbn(self, url: str) -> str | None:
-        """ISBN from a volume page's info row ("ISBN: 9786258237337").
-        None when the page has none; raises ScraperError when blocked."""
+    def fetch_volume_details(self, url: str) -> CatalogVolumeDetails | None:
+        """ISBN, page count and local release date from a volume page's info
+        rows ("ISBN: 9786258237337", "Sayfa Sayısı: 388", "Yayın Tarihi
+        (Yerel): 22 Haziran 2023"). None when the page is missing; raises
+        ScraperError when blocked."""
         from ..normalization import normalize_isbn
 
         response = self.get(url)
@@ -270,7 +309,18 @@ class MangakolCatalogScraper(BaseScraper):
         if response.status_code >= 400:
             return None
         match = self._ISBN_RE.search(response.text)
-        return normalize_isbn(match.group(1)) if match else None
+        info = self._info_rows(self.soup(response.text))
+        pages = re.sub(r"\D", "", info.get("sayfa sayisi", ""))
+        return CatalogVolumeDetails(
+            isbn=normalize_isbn(match.group(1)) if match else None,
+            page_count=int(pages) if pages and 0 < int(pages) < 10000 else None,
+            release_date=parse_tr_date(info.get("yayin tarihi yerel")),
+        )
+
+    def fetch_volume_isbn(self, url: str) -> str | None:
+        """ISBN from a volume page ("ISBN: 9786258237337"); None when absent."""
+        details = self.fetch_volume_details(url)
+        return details.isbn if details else None
 
     @staticmethod
     def _covers(item, img) -> tuple[int, int] | None:

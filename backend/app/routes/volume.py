@@ -65,10 +65,17 @@ def _build_volume_out(session: Session, volume_id: int, user_id: int | None = No
             id=volume.series.id,
             title=volume.series.title,
             publisher=volume.series.publisher.name,
+            author=volume.series.author,
+            illustrator=volume.series.illustrator,
         ),
         stores=stores,
         collection_status=collections_service.get_volume_status(session, user_id, volume_id),  # type: ignore[arg-type]
         unverified=detail.unverified,
+        isbn=volume.isbn,
+        page_count=volume.page_count,
+        release_date=volume.release_date,
+        covers_from=volume.covers_from,
+        covers_to=volume.covers_to,
     )
 
 

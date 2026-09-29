@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel
@@ -23,6 +24,9 @@ class SeriesVolumeOut(BaseModel):
     stale_count: int = 0
     #: Collection status; ``None`` when the volume is not tracked.
     collection_status: CollectionStatus | None = None
+    cover_url: str | None = None
+    #: Local release date from the catalog source; ``None`` when unknown.
+    release_date: date | None = None
 
 
 class SeriesOut(BaseModel):
