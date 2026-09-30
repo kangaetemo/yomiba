@@ -141,6 +141,7 @@ def search_series(session: Session, query: str) -> list[SeriesMatch]:
     ).all()
     if not series_rows:
         return []
+    series_rows = _rank_matches(session, query_key, series_rows)
 
     series_ids = [s.id for s in series_rows]
     volumes = session.scalars(
@@ -161,6 +162,45 @@ def search_series(session: Session, query: str) -> list[SeriesMatch]:
             SeriesMatch(series=series, volume_count=len(series_volumes), cover_url=cover)
         )
     return matches
+
+
+def _match_tier(query_key: str, title: str) -> int:
+    """How well a normalized ``title`` matches the query; lower is better.
+
+    0 exact, 1 the title starts with the query, 2 every query word starts
+    a title word ("piece" -> "one piece"), 3 the query only occurs inside
+    a word ("one" in "dr stone", "monotone blue").
+    """
+    if title == query_key:
+        return 0
+    if title.startswith(query_key):
+        return 1
+    words = title.split()
+    if all(any(w.startswith(q) for w in words) for q in query_key.split()):
+        return 2
+    return 3
+
+
+def _rank_matches(session: Session, query_key: str, series_rows: list[Series]) -> list[Series]:
+    """Best match first: typing "one" must show One Piece before Dr. Stone
+    or Monotone Blue, which merely contain the letters. The Turkish title
+    counts over the original title; within a tier the series with more
+    in-stock listings (the popular one) comes first."""
+    ids = [s.id for s in series_rows]
+    offers = dict(session.execute(
+        select(Volume.series_id, func.count(StoreListing.id))
+        .join(StoreListing, StoreListing.volume_id == Volume.id)
+        .where(Volume.series_id.in_(ids), StoreListing.in_stock.is_(True))
+        .group_by(Volume.series_id)
+    ).all())
+
+    def key(series: Series):
+        tier: float = _match_tier(query_key, series.normalized_title or normalize_text(series.title))
+        if tier and series.original_title:
+            tier = min(tier, _match_tier(query_key, normalize_text(series.original_title)) + 0.5)
+        return (tier, -offers.get(series.id, 0), series.title, series.id)
+
+    return sorted(series_rows, key=key)
 
 
 def get_series(session: Session, series_id: int) -> SeriesDetail | None:

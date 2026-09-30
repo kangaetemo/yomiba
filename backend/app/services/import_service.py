@@ -50,7 +50,7 @@ from ..models import (
     StoreListing,
     Volume,
 )
-from ..normalization.isbn import is_foreign_isbn, is_foreign_language
+from ..normalization.isbn import book_isbn, is_foreign_isbn, is_foreign_language
 from ..normalization import (
     normalize_isbn,
     normalize_publisher,
@@ -96,6 +96,17 @@ _SUBTITLE_SEPARATOR_RE = re.compile(_DASH_SEPARATOR_RE.pattern + r"|\s*:\s+")
 _REMAINDER_COLLECTION_RE = re.compile(
     r"\b(?:box|set|seti|kutu|bundle|toplu|koleksiyon|collection|complete|deluxe)\b|\b\d{1,3}\s+\d{1,3}\b"
 )
+
+
+#: Publishers of English (and other non-Turkish) manga editions.
+_FOREIGN_PUBLISHER_RE = re.compile(
+    r"\b(viz\s*media|viz|kodansha(\s*(usa|comics))?|yen\s*press|seven\s*seas|dark\s*horse|"
+    r"vertical\s*(inc|comics)?|tokyopop|square\s*enix\s*manga|ghost\s*ship|one\s*peace\s*books|"
+    r"udon\s*entertainment|denpa|j-novel)\b",
+    re.IGNORECASE,
+)
+#: English volume wording: "Vol. 5", "Vol 5", "Volume 3".
+_ENGLISH_VOLUME_RE = re.compile(r"\bvol(?:ume|\.)?\s*\d", re.IGNORECASE)
 
 
 def _aware(value: datetime) -> datetime:
@@ -266,6 +277,20 @@ class ImportService:
                     (to_cents(result.price), result)
                 )
 
+            # ISBN-proven products leave the volume a title match once put
+            # them on, before any group is written (so that volume's own
+            # product can take the freed slot in this same run).
+            for (volume_id, store_id), items in groups.items():
+                volume = self.session.get(Volume, volume_id)
+                store = self.session.get(Store, store_id)
+                try:
+                    for _, result in items:
+                        self._release_misplaced_listings(volume, store, result)
+                    self.session.commit()
+                except Exception:  # noqa: BLE001 - best effort
+                    logger.exception("import: could not release misplaced listings for volume %s", volume_id)
+                    self.session.rollback()
+
             # Phase 2: import one representative per (volume, store) group —
             # prefer available products, then the cheapest priced printing.
             for (volume_id, store_id), items in groups.items():
@@ -431,10 +456,26 @@ class ImportService:
         # edition — e.g. VIZ's "Naruto 11" must never become Naruto Cilt 11.
         if is_foreign_isbn(result.isbn) or is_foreign_language(result.language):
             return self._reject("foreign_edition")
+        # Neither an ISBN nor a publisher to tell the edition (Kitapseç gives
+        # no publisher but appends it to the title: "... VIZ Media"): a
+        # foreign manga publisher or English volume wording ("Naruto, Vol.
+        # 11") in the title marks another edition. With an ISBN or a named
+        # publisher the regular identity rules decide (ISBN wins).
+        if not book_isbn(result.isbn) and not (result.publisher or "").strip():
+            if _FOREIGN_PUBLISHER_RE.search(title) or _ENGLISH_VOLUME_RE.search(title):
+                return self._reject("foreign_edition")
 
         if not check_manga_relevance(title=title, publisher=result.publisher, isbn=result.isbn,
                                      category=result.category).accept:
             return self._reject("non_book_product")
+
+        # The ISBN of a catalog volume is proof that beats title wording: a
+        # binding variant's own book ("Soichi (Bez Cilt)", a deluxe or
+        # hardcover edition the catalog lists) carries edition words.
+        proven = self._isbn_catalog_volume(book_isbn(result.isbn))
+        if proven is not None:
+            self._backfill_cover(proven, result)
+            return (proven, self._resolve_store(result.store_id, result.store_name))
 
         parsed = parse_volume_title(title)
         if re.search(_EDITION_CONFLICT_RE, normalize_text(title)):
@@ -458,7 +499,7 @@ class ImportService:
             volume_number = None
 
         store = self._resolve_store(result.store_id, result.store_name)
-        isbn = normalize_isbn(result.isbn)
+        isbn = book_isbn(result.isbn)
 
         # ISBN is the strongest identity: when it already resolves to a
         # volume, that volume's Series/Publisher identity wins and the
@@ -607,7 +648,7 @@ class ImportService:
                 if remainder_number is None:
                     return self._reject(reason)
         store = self._resolve_store(result.store_id, result.store_name)
-        isbn = normalize_isbn(result.isbn)
+        isbn = book_isbn(result.isbn)
         if isbn:
             holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
             if holder is not None and not self._series_is_catalog(holder.series_id):
@@ -1135,6 +1176,37 @@ class ImportService:
     # ------------------------------------------------------------------
     # Listing upsert + price history
     # ------------------------------------------------------------------
+    def _isbn_catalog_volume(self, isbn: str | None) -> Volume | None:
+        """The numbered catalog volume holding ``isbn``, if any."""
+        if not isbn:
+            return None
+        volume = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
+        if volume is None or volume.volume_number < 0 or not self._series_is_catalog(volume.series_id):
+            return None
+        return volume
+
+    def _release_misplaced_listings(self, volume: Volume, store: Store, result: SearchResult) -> None:
+        """Drop this product's listing from ANOTHER volume when the ISBN
+        proves it belongs to ``volume``: stores often title both bindings
+        plainly "Soichi", so before the catalog knew the Bez Cilt edition a
+        title match put its price on the regular volume."""
+        isbn = book_isbn(result.isbn)
+        if not isbn or volume.isbn != isbn:
+            return
+        for listing in self.session.scalars(
+            select(StoreListing).where(
+                StoreListing.store_id == store.id,
+                StoreListing.product_url == result.product_url,
+                StoreListing.volume_id != volume.id,
+            )
+        ):
+            logger.info(
+                "import: ISBN %s proves %s belongs to volume %s; removing its listing %s from volume %s",
+                isbn, result.product_url, volume.id, listing.id, listing.volume_id,
+            )
+            self.session.delete(listing)
+        self.session.flush()
+
     def _upsert_listing(
         self, volume: Volume, store: Store, result: SearchResult
     ) -> ImportAction:

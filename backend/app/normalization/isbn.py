@@ -36,15 +36,28 @@ _TURKISH_ISBN13 = ("978975", "978605", "978625", "9789944")
 _TURKISH_ISBN10 = ("975", "605", "9944")
 
 
+def book_isbn(value: str | None) -> str | None:
+    """A normalized ISBN that is really a book's: ISBN-10, or ISBN-13 with
+    the 978/979 book prefix. Other 13-digit codes are store barcodes
+    (Kitapseç lists one "Trace 3" with 9693110002326) and must never act as
+    an identity. ``normalize_isbn`` keeps them because the merchandise
+    filter reads toy barcodes (45/49…)."""
+    isbn = normalize_isbn(value)
+    if isbn is None or (len(isbn) == 13 and not isbn.startswith(("978", "979"))):
+        return None
+    return isbn
+
+
 def is_foreign_isbn(isbn: str | None) -> bool:
-    """True when ``isbn`` is valid but not registered in Turkey.
+    """True when ``isbn`` is a book ISBN not registered in Turkey (a
+    non-ISBN barcode is unknown, not foreign).
 
     >>> is_foreign_isbn("9786257590549"), is_foreign_isbn("9781421502410")
     (False, True)
-    >>> is_foreign_isbn(None)
-    False
+    >>> is_foreign_isbn("9693110002326"), is_foreign_isbn(None)
+    (False, False)
     """
-    isbn = normalize_isbn(isbn)
+    isbn = book_isbn(isbn)
     if isbn is None:
         return False
     prefixes = _TURKISH_ISBN13 if len(isbn) == 13 else _TURKISH_ISBN10

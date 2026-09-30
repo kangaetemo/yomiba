@@ -26,6 +26,7 @@ Scraper failures never delete catalog data: jobs only upsert through
 from __future__ import annotations
 
 import logging
+import re
 import queue
 import threading
 import time
@@ -71,6 +72,11 @@ def fallback_queries(session: Session, query: str) -> list[str]:
     volumes.
     """
     candidates: list[str] = []
+    # A binding variant "Soichi (Bez Cilt)": stores title both bindings
+    # "Soichi"; the ISBN then tells which catalog volume a product is.
+    bare = re.sub(r"\s*\([^()]*\)\s*$", "", query).strip()
+    if bare != query.strip() and len(bare) >= 3:
+        candidates.append(bare)
     # "Kamisama Kiss -Tanrılık Görevine Başladım" -> "Kamisama Kiss",
     # "Zom 100: Ölülerin Yapılacaklar Listesi" -> "Zom 100": the same
     # separators the importer's title-without-subtitle match uses.

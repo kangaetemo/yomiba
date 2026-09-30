@@ -198,3 +198,48 @@ def test_exactly_one_page_series_stops_on_empty_fragment(scraper):
     assert len(manga.volumes) == 24
     load_more_hits = [p for p in requests_seen if p == "/manga/117/volumes/load-more"]
     assert load_more_hits == ["/manga/117/volumes/load-more"]  # one probe, then stop
+
+
+SOICHI_TABS = (
+    "<html><body><h1><span>Soichi</span></h1>"
+    '<ul class="nav nav-tabs">'
+    '<li><button class="nav-link active fw-bold" data-bs-target="#pane-SingleVolume">Tekli Cilt · 1</button></li>'
+    '<li><button class="nav-link fw-bold" data-bs-target="#pane-Clothbound">Bez Cilt · 1</button></li>'
+    "</ul>"
+    '<div class="tab-content">'
+    f'<div class="tab-pane fade show active" id="pane-SingleVolume">{_vol_item(1)}</div>'
+    '<div class="tab-pane fade" id="pane-Clothbound" data-loaded="false" '
+    'data-manga-id="455" data-format="Clothbound"></div>'
+    "</div></body></html>"
+)
+
+
+def test_detail_reads_other_binding_tabs():
+    """Soichi has a "Bez Cilt" (Clothbound) tab next to "Tekli Cilt": its
+    lazily loaded volumes come back as a variant, not mixed into the main
+    volume list."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        if request.url.path == "/manga/soichi":
+            return httpx.Response(200, text=SOICHI_TABS)
+        if request.url.path == "/manga/455/volumes/load-more":
+            assert request.url.params["format"] == "Clothbound"
+            if request.url.params["pageIndex"] == "1":
+                return httpx.Response(200, text=_vol_item(1).replace("cilt-1", "cilt-1-clothbound"))
+            return httpx.Response(200, text="")
+        return httpx.Response(404, text="not found")
+
+    manga = make_scraper(handler).fetch_manga("soichi")
+    assert [v.number for v in manga.volumes] == [1]
+    assert manga.volumes[0].url.endswith("/cilt-1")
+    assert len(manga.variants) == 1
+    variant = manga.variants[0]
+    assert (variant.format, variant.label) == ("Clothbound", "Bez Cilt")
+    assert [v.url.rsplit("/", 1)[1] for v in variant.volumes] == ["cilt-1-clothbound"]
+    assert sum("load-more" in u for u in seen) == 1  # short page: no second request
+
+
+def test_single_format_page_has_no_variants(scraper):
+    assert scraper.fetch_manga("onepiece").variants == ()

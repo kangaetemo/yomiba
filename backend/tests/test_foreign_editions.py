@@ -163,3 +163,49 @@ def test_import_deletes_listing_of_a_removed_product(db_session):
     report = ImportService(db_session, scrapers=[GoneScraper(store_id="bkm")]).run_import("One Piece")
     assert db_session.get(StoreListing, ghost.id) is None
     assert report.stores[0].reasons["gone"] == 1
+
+
+# -- follow-ups: store barcodes, English wording, "Box"/"Kutu" in titles ------------
+
+def test_store_barcode_is_not_an_isbn():
+    from app.normalization.isbn import book_isbn, is_foreign_isbn
+
+    assert book_isbn("9693110002326") is None          # Kitapseç "Trace 3" stock code
+    assert is_foreign_isbn("9693110002326") is False    # unknown, not foreign
+    assert book_isbn("9786259400532") == "9786259400532"
+
+
+def test_barcode_never_becomes_a_volume_isbn(db_session, import_service):
+    series = seed_catalog_series(db_session, "Trace", "Athica", volumes=(3,))
+    r = make_result("bkm", "Trace 3", "100", isbn="9693110002326", publisher="Athica Yayınları")
+    assert import_service.import_result(r) == ImportAction.CREATED
+    db_session.commit()
+    assert db_session.scalar(select(Volume.isbn).where(Volume.series_id == series.id)) is None
+
+
+def test_english_wording_and_publishers_are_rejected(db_session, import_service):
+    seed_catalog_series(db_session, "Boruto", "Gerekli Şeyler", volumes=(5,))
+    viz = make_result("bkm", "Boruto 5 Viz Media", "300")
+    assert import_service.import_result(viz) == ImportAction.SKIPPED
+    assert import_service.last_reason == "foreign_edition"
+    no_pub = make_result("bkm", "Boruto, Vol. 5", "300")
+    assert import_service.import_result(no_pub) == ImportAction.SKIPPED
+    assert import_service.last_reason == "foreign_edition"
+    # a named publisher or a Turkish ISBN keeps the regular rules
+    tr = make_result("bkm", "Boruto Vol 5", "150", publisher="Gerekli Şeyler Yayıncılık")
+    assert import_service.import_result(tr) == ImportAction.CREATED
+
+
+def test_blue_box_mavi_kutu_is_a_volume_not_a_box(db_session, import_service):
+    """Every store dropped "Blue Box – Mavi Kutu N" as a box set ("Box",
+    "Kutu"); the series never got a price."""
+    from app.normalization import parse_volume_title
+
+    assert parse_volume_title("Blue Box – Mavi Kutu 4").is_collection is False
+    assert parse_volume_title("Berserk Box").is_collection is True
+    assert parse_volume_title("One Piece Kutu Seti").is_collection is True
+    series = seed_catalog_series(db_session, "Mavi Kutu", "Akılçelen", volumes=range(1, 6))
+    r = make_result("bkm", "Blue Box – Mavi Kutu 4", "150", publisher="Akıl Çelen Kitaplar")
+    assert import_service.import_result(r) == ImportAction.CREATED
+    db_session.commit()
+    assert db_session.scalar(select(StoreListing)).volume.volume_number == 4

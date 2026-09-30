@@ -104,6 +104,8 @@ from .phantom_review import has_personal_rows, merge_volume_rows
 
 logger = logging.getLogger("yomiba.catalog")
 
+#: Manifest slug of a binding variant: "<slug>~clothbound".
+VARIANT_SEP = "~"
 #: Fallback publisher for mangas without a "Yerel Yayıncı" value.
 _UNKNOWN_PUBLISHER = "Bilinmiyor"
 #: Minimum normalized-name length for prefix/containment publisher matching.
@@ -184,11 +186,13 @@ class CatalogSyncService:
             self.scraper.close()
             raise
 
+        variant_slugs: set[str] = set()
+        fetched_slugs: set[str] = set()
         try:
             for ref in refs:
                 report.manga_scanned += 1
                 try:
-                    manga = self.scraper.fetch_manga(ref.slug)
+                    fetched = self.scraper.fetch_manga(ref.slug)
                 except Exception as exc:  # noqa: BLE001 - isolation by design
                     logger.exception(
                         "catalog sync: failed to fetch /manga/%s", ref.slug
@@ -196,42 +200,24 @@ class CatalogSyncService:
                     report.manga_failed += 1
                     report.errors.append(f"{ref.slug}: {type(exc).__name__}: {exc}")
                     continue
-                counts_before = (
-                    report.series_created, report.series_merged,
-                    report.volumes_added, report.covers_backfilled,
-                )
-                try:
-                    with self.session.begin_nested():
-                        series = self._merge_manga(manga, report)
-                except Exception as exc:  # noqa: BLE001 - isolation by design
-                    (
-                        report.series_created, report.series_merged,
-                        report.volumes_added, report.covers_backfilled,
-                    ) = counts_before
-                    logger.exception(
-                        "catalog sync: failed to merge /manga/%s", ref.slug
-                    )
-                    report.manga_failed += 1
-                    report.errors.append(
-                        f"{ref.slug}: {type(exc).__name__}: {exc}"
-                    )
-                    continue
-                self.session.commit()
-                if series is not None:
-                    try:
-                        self._backfill_isbns(series, manga, report)
-                    except Exception:  # noqa: BLE001 - ISBNs are best effort
-                        logger.exception("catalog sync: ISBN backfill failed for /manga/%s", ref.slug)
-                        self.session.rollback()
+                fetched_slugs.add(ref.slug)
+                entries = [fetched, *self._variant_entries(fetched)]
+                variant_slugs.update(e.slug for e in entries[1:])
+                for manga in entries:
+                    self._sync_entry(manga, report)
         finally:
             self.scraper.close()
         # A successful sync must represent exactly the live snapshot. Stale
         # slug identity changes require reconciliation; do not delete a
         # Series or guess an edition match during an ordinary sync.
         manifest_slugs = list(self.session.scalars(select(CatalogSeries.mangakol_slug)))
-        live_slugs = {ref.slug for ref in refs}
+        live_slugs = {ref.slug for ref in refs} | variant_slugs
         missing = live_slugs - set(manifest_slugs)
-        stale = set(manifest_slugs) - live_slugs
+        # A variant of a manga whose page failed this run is not stale.
+        stale = {
+            slug for slug in set(manifest_slugs) - live_slugs
+            if VARIANT_SEP not in slug or slug.split(VARIANT_SEP)[0] in fetched_slugs
+        }
         if missing:
             report.errors.append(f"live slugs missing from manifest: {sorted(missing)}")
         if stale:
@@ -239,6 +225,56 @@ class CatalogSyncService:
         if len(manifest_slugs) != len(set(manifest_slugs)):
             report.errors.append("duplicate Mangakol slugs in catalog manifest")
         return report
+
+    def _variant_entries(self, manga: CatalogManga) -> list[CatalogManga]:
+        """Each extra binding ("Bez Cilt") as its own catalog entry: a
+        separate series "Soichi (Bez Cilt)" under the same publisher, with
+        the manifest slug "<slug>~clothbound". Its books have their own
+        ISBNs, so store listings reach them ISBN-first. No original title:
+        that key bridges foreign-titled store products to the main series."""
+        base = self._clean_title(manga.title, manga.local_publisher) or manga.title.strip()
+        return [
+            CatalogManga(
+                slug=f"{manga.slug}{VARIANT_SEP}{variant.format.lower()}",
+                title=f"{base} ({variant.label})",
+                local_publisher=manga.local_publisher,
+                volumes=variant.volumes,
+                author=manga.author,
+                illustrator=manga.illustrator,
+            )
+            for variant in getattr(manga, "variants", ()) or ()
+            if variant.volumes
+        ]
+
+    def _sync_entry(self, manga: CatalogManga, report: CatalogSyncReport) -> None:
+        """Merge one catalog entry and backfill its ISBNs (isolated)."""
+        counts_before = (
+            report.series_created, report.series_merged,
+            report.volumes_added, report.covers_backfilled,
+        )
+        try:
+            with self.session.begin_nested():
+                series = self._merge_manga(manga, report)
+        except Exception as exc:  # noqa: BLE001 - isolation by design
+            (
+                report.series_created, report.series_merged,
+                report.volumes_added, report.covers_backfilled,
+            ) = counts_before
+            logger.exception(
+                "catalog sync: failed to merge /manga/%s", manga.slug
+            )
+            report.manga_failed += 1
+            report.errors.append(
+                f"{manga.slug}: {type(exc).__name__}: {exc}"
+            )
+            return
+        self.session.commit()
+        if series is not None:
+            try:
+                self._backfill_isbns(series, manga, report)
+            except Exception:  # noqa: BLE001 - ISBNs are best effort
+                logger.exception("catalog sync: ISBN backfill failed for /manga/%s", manga.slug)
+                self.session.rollback()
 
     # ------------------------------------------------------------------
     # Merge logic

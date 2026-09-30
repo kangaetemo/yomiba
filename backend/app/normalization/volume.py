@@ -49,8 +49,13 @@ _MID_DASH_NUMBER_RE = re.compile(r"\b(\d{1,3})\s+[-\u2013]\s+(?=[^\W\d])")
 # A range such as "1-5" / "1 – 12" -> collection.
 _RANGE_RE = re.compile(r"\b(\d{1,4})\s*[-–]\s*(\d{1,4})\b")
 # Words that strongly indicate a collection / boxed set / separate edition.
+#: "Box" / "Kutu" alone only at the END of a title ("Berserk Box",
+#: "Berserk 1-5 (Kutu)"): inside a title they are words of the title itself
+#: — "Blue Box – Mavi Kutu 4" is a single volume, and every store's box-set
+#: filter used to drop the whole series.
 _COLLECTION_WORD_RE = re.compile(
-    r"\b(box|set|seti|kutu|bundle|toplu|koleksiyon|collection|complete|deluxe|box\s*set|seri\s*set)\b",
+    r"\b(set|seti|bundle|toplu|koleksiyon|collection|complete|deluxe|box\s*set|seri\s*set|kutu\s*set[i]?)\b"
+    r"|\b(box|kutu)\b\s*\)?\s*$",
     re.IGNORECASE,
 )
 

@@ -186,3 +186,22 @@ def test_search_original_title_still_catalog_only(db_session):
 
     titles = {m.series.title for m in catalog_service.search_series(db_session, "ghoul")}
     assert titles == {"Tokyo Gül"}  # the Viz edition is not in the catalog
+
+
+def test_search_ranks_word_start_matches_first(db_session):
+    """Typing "one" shows One Piece (and One Punch Man) before series that
+    merely contain the letters ("Dr. Stone", "Monotone Blue")."""
+    mangas = [
+        _manga("dr-stone", "Dr. Stone", pub="Gerekli Şeyler Yayıncılık", volumes=(1,)),
+        _manga("monotone-blue", "Monotone Blue", pub="Athica", volumes=(1,)),
+        _manga("joker", "Joker: Tek Kişilik Operasyon", pub="JBC", volumes=(1,),
+               original="One Operation Joker"),
+        _manga("one-punch-man", "One Punch Man", pub="Gerekli Şeyler Yayıncılık", volumes=(1,)),
+        _manga("one-piece", "One Piece", pub="Gerekli Şeyler Yayıncılık", volumes=(1,)),
+    ]
+    CatalogSyncService(db_session, scraper=FakeMangakolScraper(mangas)).sync()
+
+    titles = [m.series.title for m in catalog_service.search_series(db_session, "one")]
+    assert titles[:2] == ["One Piece", "One Punch Man"]
+    assert set(titles[2:]) == {"Dr. Stone", "Monotone Blue", "Joker: Tek Kişilik Operasyon"}
+    assert [m.series.title for m in catalog_service.search_series(db_session, "piece")][0] == "One Piece"

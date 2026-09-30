@@ -88,6 +88,17 @@ class CatalogVolume:
 
 
 @dataclass(frozen=True)
+class CatalogVariant:
+    """Another binding of the same manga, shown in its own detail-page tab
+    ("Bez Cilt" = Clothbound next to "Tekli Cilt"). Its volumes are
+    separate books with their own ISBNs and prices."""
+
+    format: str  # Mangakol's format key, e.g. "Clothbound"
+    label: str  # tab label, e.g. "Bez Cilt"
+    volumes: list[CatalogVolume]
+
+
+@dataclass(frozen=True)
 class CatalogManga:
     """A manga's detail-page data (catalog sync input)."""
 
@@ -101,6 +112,9 @@ class CatalogManga:
     #: "Yazar" / "Çizer" info rows; None when the page has none.
     author: str | None = None
     illustrator: str | None = None
+    #: Other bindings from the detail page's format tabs (the active tab is
+    #: ``volumes``); empty for the usual single-format manga.
+    variants: tuple[CatalogVariant, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -219,13 +233,23 @@ class MangakolCatalogScraper(BaseScraper):
         info = self._info_rows(soup)
         local_publisher = info.get("yerel yayıncı") or info.get("yerel yayinci")
 
-        volumes = self._volume_items(soup)
-        if len(volumes) >= self._SSR_VOLUME_PAGE_SIZE:
+        tabs = self._format_tabs(soup)
+        main_format = tabs[0][0] if tabs else "SingleVolume"
+        active = soup.select_one(f"#pane-{main_format}") if tabs else None
+        volumes = self._volume_items(active if active is not None else soup)
+        manga_id = self._manga_id(soup)
+        if len(volumes) >= self._SSR_VOLUME_PAGE_SIZE and manga_id:
             # Possibly truncated: follow the public load-more fragment
             # endpoint (pageIndex starts at 2; 0/1 repeat the first page).
-            manga_id = self._manga_id(soup)
-            if manga_id:
-                volumes = self._load_more_volumes(manga_id, volumes)
+            volumes = self._load_more_volumes(manga_id, volumes, main_format)
+        variants = []
+        for fmt, label in tabs[1:]:
+            if not manga_id:
+                break
+            # Lazy tabs: the fragment's page 1 is the tab's first page.
+            fetched = self._load_more_volumes(manga_id, [], fmt, first_page=1)
+            if fetched:
+                variants.append(CatalogVariant(format=fmt, label=label, volumes=fetched))
         return CatalogManga(
             slug=slug,
             title=title,
@@ -234,7 +258,27 @@ class MangakolCatalogScraper(BaseScraper):
             original_title=original_title,
             author=info.get("yazar") or None,
             illustrator=info.get("cizer") or None,
+            variants=tuple(variants),
         )
+
+    _FORMAT_RE = re.compile(r"^#pane-([A-Za-z0-9]+)$")
+
+    @classmethod
+    def _format_tabs(cls, soup) -> list[tuple[str, str]]:
+        """[(format, label)] of the volume format tabs, the active (rendered)
+        tab first: [("SingleVolume", "Tekli Cilt"), ("Clothbound", "Bez Cilt")].
+        The label drops the "· N" volume count."""
+        tabs: list[tuple[str, str, bool]] = []
+        for button in soup.select('button[data-bs-target^="#pane-"]'):
+            match = cls._FORMAT_RE.match(button.get("data-bs-target") or "")
+            if match is None:
+                continue
+            label = re.split(r"[·•|]",button.get_text(" ", strip=True))[0].strip()
+            active = "active" in (button.get("class") or [])
+            tabs.append((match.group(1), label or match.group(1), active))
+        if not any(active for *_, active in tabs):
+            return [(f, l) for f, l, _ in tabs]
+        return [(f, l) for f, l, a in tabs if a] + [(f, l) for f, l, a in tabs if not a]
 
     #: The SSR detail grid shows at most this many volumes per page.
     _SSR_VOLUME_PAGE_SIZE = 24
@@ -339,16 +383,17 @@ class MangakolCatalogScraper(BaseScraper):
         return (span.first, span.last) if span else None
 
     def _load_more_volumes(
-        self, manga_id: str, volumes: list[CatalogVolume]
+        self, manga_id: str, volumes: list[CatalogVolume],
+        fmt: str = "SingleVolume", first_page: int = 2,
     ) -> list[CatalogVolume]:
         """Follow the volume fragment pages until the grid is exhausted."""
         max_pages = max(1, self.settings.mangakol_max_volume_pages)
         known_numbers: set[int] = {v.number for v in volumes if v.number is not None}
-        page = 2
-        while page <= max_pages + 1:
+        page = first_page
+        while page <= max_pages + first_page - 1:
             url = (
                 f"{self.base_url}/manga/{manga_id}/volumes/load-more"
-                f"?format=SingleVolume&pageIndex={page}&sortDesc=false"
+                f"?format={fmt}&pageIndex={page}&sortDesc=false"
             )
             try:
                 response = self.get(url)
