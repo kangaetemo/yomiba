@@ -16,6 +16,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getCatalogSyncStatus,
   getCoverStatus,
+  getForeignEditions,
+  applyForeignEditions,
+  scanForeignEditions,
   getImportCoverage,
   getImportRecords,
   getMissingCoverage,
@@ -30,6 +33,7 @@ import {
 import type {
   CatalogSyncStatus,
   CoverStatus,
+  ForeignEditionStatus,
   ImportCoverage,
   ImportRecord,
   ImportReport,
@@ -167,6 +171,115 @@ function IsbnFixBox({ disabled }: { disabled: boolean }) {
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+/** Foreign-edition clean-up: scan (background), review, apply. */
+function ForeignEditionsBox() {
+  const [status, setStatus] = useState<ForeignEditionStatus | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await getForeignEditions());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Durum alınamadı");
+    }
+  }, []);
+
+  useEffect(() => {
+    const id = setTimeout(() => void refresh(), 0);
+    return () => clearTimeout(id);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (status?.state !== "scanning") return;
+    const id = setInterval(() => void refresh(), 3000);
+    return () => clearInterval(id);
+  }, [status?.state, refresh]);
+
+  async function scan() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await scanForeignEditions();
+      await refresh();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Tarama başlatılamadı");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function apply() {
+    if (!window.confirm("Yabancı baskı ilanları kaldırılsın ve engellensin mi? Önce veritabanı yedeği alınır.")) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await applyForeignEditions();
+      setMessage(`Uygulandı: ${result?.removed_listings ?? 0} ilan kaldırıldı, ${result?.cleared_isbns ?? 0} cildin yabancı ISBN'i temizlendi.`);
+      await refresh();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Uygulanamadı");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const plan = status?.plan;
+  const remove = plan?.listings.filter((l) => l.action === "remove") ?? [];
+  const scanning = status?.state === "scanning";
+  return (
+    <div className="space-y-2 rounded-lg border border-line p-3 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted">
+          Yabancı baskı taraması: İngilizce vb. baskıların ilanlarını ürün sayfasıyla kanıtlayıp kaldırır.
+          {scanning && <span className="ml-1 text-accent">· taranıyor…</span>}
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void scan()}
+            disabled={busy || scanning || status?.state === "applying"}
+            className="rounded-lg border border-line-strong bg-surface-2 px-3 py-1.5 font-semibold text-ink hover:bg-line disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Tara
+          </button>
+          <button
+            type="button"
+            onClick={() => void apply()}
+            disabled={busy || status?.state !== "ready" || remove.length + (plan?.foreign_isbn_volumes.length ?? 0) === 0}
+            className="rounded-lg bg-accent px-3 py-1.5 font-semibold text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Uygula
+          </button>
+        </div>
+      </div>
+      {status?.error && <p className="text-bad">{status.error}</p>}
+      {message && <p className="text-muted">{message}</p>}
+      {plan && status?.state === "ready" && (
+        <div className="space-y-1.5">
+          <p className="text-ink-2">
+            {plan.scanned}/{plan.total_candidates} ilan tarandı · {remove.length} ilan kaldırılacak ·{" "}
+            {plan.foreign_isbn_volumes.length} cildin yabancı ISBN&apos;i temizlenecek
+          </p>
+          {remove.length > 0 && (
+            <ul className="max-h-72 list-disc space-y-0.5 overflow-y-auto pl-5 text-muted">
+              {remove.map((l) => (
+                <li key={l.listing_id}>
+                  {l.series} Cilt {l.volume_number} · {l.store} · {l.page_isbn ?? "ISBN yok"}
+                  {l.page_language ? ` · ${l.page_language}` : ""}{" "}
+                  <a href={l.product_url} target="_blank" rel="noopener noreferrer" className="underline">
+                    ürün
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );
@@ -371,6 +484,7 @@ function CatalogSyncPanel() {
 
       <IsbnFixBox disabled={Boolean(status?.running)} />
       <CoverBox />
+      <ForeignEditionsBox />
     </section>
   );
 }

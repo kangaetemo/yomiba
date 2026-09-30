@@ -227,3 +227,43 @@ def start_cover_fetch(request: Request) -> dict:
     if not worker.trigger():
         raise HTTPException(status_code=409, detail="Kapak indirme zaten çalışıyor.")
     return {"status": "started"}
+
+
+def _foreign_job(request: Request, session: Session):
+    from sqlalchemy.orm import sessionmaker
+
+    from ..services.foreign_editions import ForeignEditionJob
+
+    job = getattr(request.app.state, "foreign_job", None)
+    if job is None:
+        job = ForeignEditionJob(sessionmaker(bind=session.get_bind(), autoflush=False, expire_on_commit=False))
+        request.app.state.foreign_job = job
+    return job
+
+
+@router.get("/catalog/foreign-editions")
+def foreign_editions_status(request: Request, session: Session = Depends(get_db)) -> dict:
+    """Admin: state + reviewed plan of the foreign-edition clean-up."""
+    return _foreign_job(request, session).status()
+
+
+@router.post("/catalog/foreign-editions/scan", status_code=202)
+def foreign_editions_scan(request: Request, session: Session = Depends(get_db)) -> dict:
+    """Admin: start the background scan (product pages are read)."""
+    if not _foreign_job(request, session).start_scan():
+        raise HTTPException(status_code=409, detail="Tarama ya da uygulama zaten çalışıyor.")
+    return {"status": "scanning"}
+
+
+@router.post("/catalog/foreign-editions/apply")
+def foreign_editions_apply(request: Request, session: Session = Depends(get_db)) -> dict:
+    """Admin: remove the proven foreign-edition listings of the last scan."""
+    job = _foreign_job(request, session)
+    url = session.get_bind().url
+    db_path = (Path(url.database).resolve()
+               if url.get_backend_name() == "sqlite" and url.database and url.database != ":memory:" else None)
+    session.close()
+    try:
+        return job.apply(db_path)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

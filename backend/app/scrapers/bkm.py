@@ -117,7 +117,10 @@ class BkmScraper(BaseScraper):
                 continue
             results.append(result)
 
+        self.gone_urls = set()
+        self._page_checked: set[str] = set()
         results = self._enrich_with_details(results)
+        results = self._drop_gone(results)
         results = filter_manga_results(results, stats=self.stats)
         self.stats["accepted"] = len(results)
         results.sort(key=lambda r: r.relevance, reverse=True)
@@ -366,8 +369,41 @@ class BkmScraper(BaseScraper):
             results[index] = enriched
         return results
 
+    #: Out-of-stock results whose page is checked for a removed product.
+    MAX_GONE_CHECKS = 25
+
+    def _drop_gone(self, results: list[SearchResult]) -> list[SearchResult]:
+        """Drop products BKM removed but its search index still lists with a
+        years-old price (e.g. "One Piece 48. Cilt" at 127,50 TL, product page
+        404). Only out-of-stock results are checked (bounded); in-stock ones
+        have a live page by definition. ``gone_urls`` tells the importer to
+        delete their old listings."""
+        checks = 0
+        for result in results:
+            if result.in_stock or result.product_url in self._page_checked:
+                continue
+            if checks >= self.MAX_GONE_CHECKS:
+                break
+            checks += 1
+            self._page_checked.add(result.product_url)
+            try:
+                response = self.get(result.product_url)
+            except ScraperError:
+                continue
+            if response.status_code in (404, 410):
+                self.gone_urls.add(result.product_url)
+        if self.gone_urls:
+            self.stats["rejected"]["gone"] = len(self.gone_urls)
+        return [r for r in results if r.product_url not in self.gone_urls]
+
     def _enrich_one(self, result: SearchResult) -> SearchResult:
         response = self.get(result.product_url)
+        self._page_checked.add(result.product_url)
+        if response.status_code in (404, 410) and not result.in_stock:
+            # Removed product still in BKM's search index (an in-stock result
+            # with a missing page is contradictory: not proof, keep it).
+            self.gone_urls.add(result.product_url)
+            return result
         if response.status_code >= 400:
             raise ScraperError(
                 f"bkm: detail page HTTP {response.status_code} for {result.product_url}"

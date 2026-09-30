@@ -94,7 +94,13 @@ export default async function VolumePage({ params }: VolumePageProps) {
 
   const historyListings = (history?.listings ?? []).filter((l) => l.points.length > 0);
   const best = detail.unverified ? null : cheapest(detail.stores);
-  const inStock = detail.stores.filter((s) => s.stock && !s.stale).length;
+  const buyable = detail.stores.filter((s) => s.stock && !s.stale);
+  const unavailable = detail.stores.filter((s) => !s.stock || s.stale);
+  const inStock = buyable.length;
+  const adminRemove = (listing: VolumeStore) =>
+    user?.role === "ADMIN" && listing.id ? (
+      <RemoveListingButton volumeId={numId} listingId={listing.id} store={listing.store} />
+    ) : undefined;
   const title = volumeTitle(detail.number);
   const isNew = detail.release_date ? daysSince(detail.release_date) <= NEW_DAYS && daysSince(detail.release_date) >= 0 : false;
   const siblings = (series?.volumes ?? []).filter((v) => v.number !== null && v.number >= 0);
@@ -179,9 +185,9 @@ export default async function VolumePage({ params }: VolumePageProps) {
                 </Badge>
               )}
               {isNew && <Badge tone="new">Yeni</Badge>}
-              {!detail.unverified && detail.stores.length > 0 && (
-                <Badge tone={inStock > 0 ? "stock" : "soldout"} dot>
-                  {inStock > 0 ? `${inStock} mağazada stokta` : "Hiçbir mağazada stokta değil"}
+              {!detail.unverified && inStock > 0 && (
+                <Badge tone="stock" dot>
+                  {inStock} mağazada stokta
                 </Badge>
               )}
             </div>
@@ -201,6 +207,22 @@ export default async function VolumePage({ params }: VolumePageProps) {
                 Mağazaları karşılaştır <span aria-hidden>↓</span>
               </span>
             </a>
+          )}
+          {!best && !detail.unverified && detail.stores.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface px-5 py-4">
+              <div>
+                <p className="font-display text-xl text-ink">Şu an hiçbir mağazada stokta yok</p>
+                <p className="mt-1 text-sm text-muted">
+                  {detail.stores.some((s) => s.stale)
+                    ? "Bazı mağazaların stok bilgisi güncel değil. "
+                    : ""}
+                  Hedef fiyatını kaydet; stoğa girip fiyatı düştüğünde görebilirsin.
+                </p>
+              </div>
+              <a href="#alarm-title" className="inline-flex min-h-11 items-center gap-1 font-semibold text-ink-2 hover:text-accent">
+                Fiyat alarmı kur <span aria-hidden>↓</span>
+              </a>
+            </div>
           )}
 
           <section aria-labelledby="kunye-title" className="space-y-2">
@@ -237,7 +259,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
               <h2 id="magazalar-title" className="text-2xl font-semibold text-ink">
                 Mağaza fiyatları
               </h2>
-              <p className="text-xs text-faint">Ucuzdan pahalıya · eşit fiyatlarda stokta olan önce</p>
+              <p className="text-xs text-faint">Stokta olanlar, ucuzdan pahalıya</p>
             </div>
             {detail.unverified ? (
               <p className="rounded-2xl border border-warn/30 bg-warn-soft p-6 text-sm text-warn">
@@ -250,26 +272,38 @@ export default async function VolumePage({ params }: VolumePageProps) {
                 ilk teklif burada görünür.
               </p>
             ) : (
-              <div className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
-                {detail.stores.map((listing) => (
-                  <StoreListingCard
-                    key={listing.product_url + listing.store}
-                    listing={listing}
-                    isCheapest={
-                      best !== null &&
-                      listing.price !== null &&
-                      listing.stock &&
-                      !listing.stale &&
-                      Number(listing.price) === best.price
-                    }
-                    adminAction={
-                      user?.role === "ADMIN" && listing.id ? (
-                        <RemoveListingButton volumeId={numId} listingId={listing.id} store={listing.store} />
-                      ) : undefined
-                    }
-                  />
-                ))}
-              </div>
+              <>
+                {buyable.length > 0 && (
+                  <div className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+                    {buyable.map((listing) => (
+                      <StoreListingCard
+                        key={listing.product_url + listing.store}
+                        listing={listing}
+                        isCheapest={best !== null && listing.price !== null && Number(listing.price) === best.price}
+                        adminAction={adminRemove(listing)}
+                      />
+                    ))}
+                  </div>
+                )}
+                {unavailable.length > 0 && (
+                  <details open={buyable.length === 0} className="group rounded-2xl border border-line bg-surface/60">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-semibold text-muted hover:text-ink">
+                      <span>Stokta olmayan mağazalar ({unavailable.length})</span>
+                      <span aria-hidden className="transition-transform group-open:rotate-180">⌄</span>
+                    </summary>
+                    <div className="divide-y divide-line border-t border-line">
+                      {unavailable.map((listing) => (
+                        <StoreListingCard
+                          key={listing.product_url + listing.store}
+                          listing={listing}
+                          isCheapest={false}
+                          adminAction={adminRemove(listing)}
+                        />
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </>
             )}
           </section>
 

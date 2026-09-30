@@ -55,13 +55,15 @@ export function StoreListingCard({
 
       <div className="flex flex-wrap items-center justify-between gap-4 sm:justify-end">
         {adminAction}
-        <span
-          className={`tabular text-xl font-semibold ${
-            !listing.stock ? "text-faint line-through" : listing.stale ? "text-muted" : "text-ink"
-          }`}
-        >
-          {formatTL(listing.price)}
-        </span>
+        {buyable ? (
+          <span className="tabular text-xl font-semibold text-ink">{formatTL(listing.price)}</span>
+        ) : (
+          // Not buyable now: the price is history, not an offer.
+          <span className="text-right text-xs text-faint">
+            son görülen fiyat
+            <span className="tabular block text-sm text-muted">{formatTL(listing.price)}</span>
+          </span>
+        )}
         <a
           href={listing.product_url}
           target="_blank"
@@ -69,10 +71,10 @@ export function StoreListingCard({
           className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold transition-colors ${
             buyable
               ? "bg-ink text-paper hover:bg-accent"
-              : "border border-line-strong text-muted hover:bg-surface-2 hover:text-ink"
+              : "text-muted underline decoration-line-strong underline-offset-4 hover:text-ink"
           }`}
         >
-          Mağazaya git
+          {buyable ? "Mağazaya git" : "Mağazada gör"}
           <span aria-hidden>↗</span>
           <span className="sr-only">({listing.store}, yeni sekmede açılır)</span>
         </a>

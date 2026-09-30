@@ -51,6 +51,9 @@ class BaseScraper:
     #: Kitap Sepeti), so a listing missing from a successful search is
     #: re-checked on its product page instead of keeping "in stock".
     verifies_unseen_listings: bool = False
+    #: Product URLs the last search found REMOVED from the store (e.g. a
+    #: 404 product page); the importer deletes their listings.
+    gone_urls: set[str] = set()
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         settings = get_settings()

@@ -76,10 +76,8 @@ export function VolumeCard({ volume }: { volume: SeriesVolume }) {
         {!noStock && volume.in_stock_count > 1 && (
           <span className="text-xs text-muted">başlangıç</span>
         )}
-        <PriceBadge
-          price={volume.best_price}
-          className={soldOut ? "line-through opacity-50" : stockUnknown ? "opacity-50" : ""}
-        />
+        {/* A price nobody can buy right now is not shown as a price. */}
+        {!noStock && <PriceBadge price={volume.best_price} />}
         <span
           aria-hidden
           className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"

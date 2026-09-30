@@ -10,6 +10,7 @@ import type {
   ImportRecord,
   ImportReport,
   CoverStatus,
+  ForeignEditionStatus,
   IsbnFixResult,
   MissingCoverage,
   PriceRefreshStatus,
@@ -21,6 +22,18 @@ export function getCatalogSyncStatus(): Promise<CatalogSyncStatus> {
 
 export function startCatalogSync(): Promise<{ status: string }> {
   return postJson<{ status: string }>("/catalog/sync");
+}
+
+export function getForeignEditions(): Promise<ForeignEditionStatus> {
+  return getJson<ForeignEditionStatus>("/catalog/foreign-editions");
+}
+
+export function scanForeignEditions(): Promise<{ status: string }> {
+  return postJson<{ status: string }>("/catalog/foreign-editions/scan", {});
+}
+
+export function applyForeignEditions(): Promise<ForeignEditionStatus["result"]> {
+  return postJson<ForeignEditionStatus["result"]>("/catalog/foreign-editions/apply", {});
 }
 
 export function getCoverStatus(): Promise<CoverStatus> {

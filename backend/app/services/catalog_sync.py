@@ -92,6 +92,7 @@ from ..models import (
     Volume,
 )
 from ..normalization import normalize_publisher, normalize_text
+from ..normalization.isbn import is_foreign_isbn
 from ..normalization.text import slugify
 from ..scrapers.mangakol import (
     CatalogManga,
@@ -353,7 +354,10 @@ class CatalogSyncService:
             # Read once (ISBN + page count + release date); a page without
             # an ISBN yet is re-read weekly. Pre-details rows that already
             # have an ISBN are read once more for their details.
-            if checked is not None and (volume.isbn or checked > recheck):
+            # A foreign ISBN (an old title match stored e.g. VIZ's English
+            # Naruto 11 on Cilt 11) does not count: the catalog's replaces it.
+            trusted_isbn = volume.isbn and not is_foreign_isbn(volume.isbn)
+            if checked is not None and (trusted_isbn or checked > recheck):
                 continue
             self._isbn_budget -= 1
             report.isbn_pages += 1
@@ -373,8 +377,13 @@ class CatalogSyncService:
                     volume.release_date = details.release_date
             self.session.commit()
             isbn = details.isbn if details is not None else None
-            if not isbn or volume.isbn:
+            if not isbn or trusted_isbn or is_foreign_isbn(isbn):
                 continue
+            if volume.isbn:  # foreign ISBN from an old match: drop it
+                logger.info("catalog sync: replacing foreign ISBN %s on %s Cilt %s with %s",
+                            volume.isbn, series.title, cv.number, isbn)
+                volume.isbn = None
+                self.session.flush()
             holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
             if holder is None:
                 volume.isbn = isbn

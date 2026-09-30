@@ -27,6 +27,9 @@ BERSERK_PAGE = "bkm_searchv2_berserk.json"
 FALLBACK_PAGE = "bkm_search.json"
 
 DETAIL_HTML = fixture_text("bkm_detail.html")
+#: Any other product page: exists, carries no JSON-LD. (A 404 product page
+#: now means "removed from the store"; see test_foreign_editions.)
+PRODUCT_PAGE = "<html></html>"
 
 
 def _page_from_request(request: httpx.Request) -> int:
@@ -52,7 +55,7 @@ def default_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=fixture_json(fixture))
     if request.url.path.startswith("/berserk-"):
         return httpx.Response(200, text=DETAIL_HTML)
-    return httpx.Response(404)
+    return httpx.Response(200, text=PRODUCT_PAGE)
 
 
 @pytest.fixture()
@@ -118,7 +121,7 @@ def test_no_new_items_stops_pagination():
         if "search_v2" in request.url.path:
             page = _page_from_request(request)
             return httpx.Response(200, json=p1 if page == 1 else p2)
-        return httpx.Response(404)
+        return httpx.Response(200, text=PRODUCT_PAGE)
 
     s = make_scraper(handler, bkm_search_page_size=3)
     results = s.search("one piece")
@@ -135,7 +138,7 @@ def test_empty_page_stops_pagination():
         if "search_v2" in request.url.path:
             page = _page_from_request(request)
             return httpx.Response(200, json=p1 if page == 1 else p2)
-        return httpx.Response(404)
+        return httpx.Response(200, text=PRODUCT_PAGE)
 
     s = make_scraper(handler, bkm_search_page_size=3)
     results = s.search("one piece")
@@ -172,7 +175,7 @@ def test_mid_page_failure_keeps_collected_pages():
             if calls["n"] >= 2:
                 return httpx.Response(500, text="boom")
             return httpx.Response(200, json=fixture_json(PAGE1))
-        return httpx.Response(404)
+        return httpx.Response(200, text=PRODUCT_PAGE)
 
     s = make_scraper(handler, bkm_search_page_size=3)
     results = s.search("one piece")
@@ -206,7 +209,7 @@ def test_falls_back_to_searchall_when_v2_unavailable():
             return httpx.Response(200, json=fallback_payload)
         if request.url.path.startswith("/berserk-"):
             return httpx.Response(200, text=DETAIL_HTML)
-        return httpx.Response(404)
+        return httpx.Response(200, text=PRODUCT_PAGE)
 
     s = make_scraper(handler)
     results = s.search("berserk")
@@ -232,7 +235,9 @@ def test_fallback_out_of_stock():
             return httpx.Response(503, text="waw down")
         if "searchAll" in request.url.path:
             return httpx.Response(200, json=fallback_payload)
-        return httpx.Response(404)
+        # The product page exists (sold out, not removed): see test_foreign_editions
+        # for removed products (404 page) being dropped.
+        return httpx.Response(200, text="<html></html>")
 
     s = make_scraper(handler)
     results = s.search("berserk")
@@ -248,7 +253,7 @@ def test_searchv2_fields_and_enrichment():
             return httpx.Response(200, json=fixture_json(BERSERK_PAGE))
         if request.url.path.startswith("/berserk-"):
             return httpx.Response(200, text=DETAIL_HTML)
-        return httpx.Response(404)
+        return httpx.Response(200, text=PRODUCT_PAGE)
 
     s = make_scraper(handler, bkm_search_page_size=3)
     results = s.search("berserk")
@@ -305,7 +310,7 @@ def test_common_filter_rejects_merchandise_from_search():
             return httpx.Response(200, json=data)
         if request.url.path.startswith("/berserk-"):
             return httpx.Response(200, text=DETAIL_HTML)
-        return httpx.Response(404)
+        return httpx.Response(200, text=PRODUCT_PAGE)
 
     scraper = make_scraper(handler, bkm_search_page_size=3,
                            bkm_max_search_pages=5, bkm_max_search_results=100)

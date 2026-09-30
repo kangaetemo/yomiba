@@ -50,6 +50,7 @@ from ..models import (
     StoreListing,
     Volume,
 )
+from ..normalization.isbn import is_foreign_isbn, is_foreign_language
 from ..normalization import (
     normalize_isbn,
     normalize_publisher,
@@ -207,6 +208,7 @@ class ImportService:
                 store_code=scraper.store_id, store_name=scraper.store_name
             )
             report.stores.append(store_report)
+            scraper.gone_urls = set()
 
             try:
                 with scraper:
@@ -225,6 +227,10 @@ class ImportService:
                 )
                 store_report.error = f"{type(exc).__name__}: {exc}"
                 continue
+
+            gone = self._remove_gone_listings(scraper)
+            if gone:
+                store_report.reasons["gone"] = store_report.reasons.get("gone", 0) + gone
 
             # Phase 1: resolve every result to its (volume, store) target.
             groups: dict[tuple[int, int], list[tuple[int | None, SearchResult]]] = {}
@@ -309,6 +315,24 @@ class ImportService:
                             store_report.store_code, query, top)
         report.finished_at = utcnow()
         return report
+
+    def _remove_gone_listings(self, scraper: BaseScraper) -> int:
+        """Delete listings of products the store removed (``gone_urls``):
+        their link is dead and their price years old."""
+        urls = set(getattr(scraper, "gone_urls", None) or ())
+        if not urls:
+            return 0
+        store = self.session.scalar(select(Store).where(Store.code == scraper.store_id))
+        if store is None:
+            return 0
+        listings = self.session.scalars(
+            select(StoreListing).where(StoreListing.store_id == store.id, StoreListing.product_url.in_(urls))
+        ).all()
+        for listing in listings:
+            logger.info("import: %s removed %s; deleting listing %s", scraper.store_id, listing.product_url, listing.id)
+            self.session.delete(listing)
+        self.session.commit()
+        return len(listings)
 
     def verify_unseen_listings(
         self, scraper: BaseScraper, series_ids: set[int], since: datetime
@@ -402,6 +426,11 @@ class ImportService:
         # not even through its ISBN (a store's wrong metadata is the usual cause).
         if (result.store_id, result.product_url) in self._excluded_products():
             return self._reject("excluded")
+        # The catalog lists Turkish editions only: an English (978-0/978-1),
+        # Japanese, ... ISBN or a non-Turkish language tag is another
+        # edition — e.g. VIZ's "Naruto 11" must never become Naruto Cilt 11.
+        if is_foreign_isbn(result.isbn) or is_foreign_language(result.language):
+            return self._reject("foreign_edition")
 
         if not check_manga_relevance(title=title, publisher=result.publisher, isbn=result.isbn,
                                      category=result.category).accept:

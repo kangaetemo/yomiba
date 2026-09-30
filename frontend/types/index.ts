@@ -217,6 +217,30 @@ export interface CatalogSyncStatus {
   } | null;
 }
 
+/** GET /catalog/foreign-editions: foreign-edition clean-up job. */
+export interface ForeignEditionStatus {
+  state: "idle" | "scanning" | "ready" | "applying" | "done" | "failed";
+  error: string | null;
+  result: { removed_listings: number; cleared_isbns: number; backup: string | null } | null;
+  plan: {
+    scanned: number;
+    total_candidates: number;
+    foreign_isbn_volumes: { volume_id: number; isbn: string; volume_number: number; series: string }[];
+    listings: {
+      listing_id: number;
+      volume_id: number;
+      series: string;
+      volume_number: number;
+      store: string;
+      product_url: string;
+      page_isbn: string | null;
+      page_language: string | null;
+      action: "remove" | "keep";
+      why: string | null;
+    }[];
+  } | null;
+}
+
 /** GET /catalog/covers: self-hosted cover progress. */
 export interface CoverStatus {
   enabled: boolean;
