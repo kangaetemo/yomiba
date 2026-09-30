@@ -66,6 +66,10 @@ export interface SeriesSummary {
   publisher: string;
   cover_url: string | null;
   volume_count: number;
+  /** In-stock priced store offers across the series' volumes. */
+  in_stock_offers?: number;
+  /** Lowest current in-stock price of any volume; null when none. */
+  lowest_price?: number | null;
 }
 
 /** Legacy response envelope: DB search found matches or found none. */
@@ -97,6 +101,8 @@ export interface SeriesVolume {
   in_stock_count: number;
   /** Stores whose stock flag is stale (not seen lately): stock unknown. */
   stale_count: number;
+  /** Store offering best_price (e.g. "Edessa Kitabevi"). */
+  best_store?: string | null;
   /** Collection status; null when the volume is not tracked. */
   collection_status: CollectionStatus | null;
   cover_url?: string | null;
@@ -109,6 +115,7 @@ export interface SeriesDetail {
   title: string;
   publisher: string;
   slug: string;
+  author?: string | null;
   cover_url: string | null;
   volumes: SeriesVolume[];
 }

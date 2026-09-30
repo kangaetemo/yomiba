@@ -15,6 +15,10 @@ class SeriesSummary(BaseModel):
     publisher: str
     cover_url: str | None = None
     volume_count: int
+    #: In-stock priced store offers across the series' volumes.
+    in_stock_offers: int = 0
+    #: Lowest current in-stock price of any volume; ``None`` when none.
+    lowest_price: float | None = None
 
 
 class ImportStatusOut(BaseModel):

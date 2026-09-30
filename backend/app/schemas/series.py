@@ -22,6 +22,8 @@ class SeriesVolumeOut(BaseModel):
     in_stock_count: int = 0
     #: Stores whose stock flag is stale (not seen lately): stock unknown.
     stale_count: int = 0
+    #: Store offering ``best_price`` (e.g. "Edessa Kitabevi").
+    best_store: str | None = None
     #: Collection status; ``None`` when the volume is not tracked.
     collection_status: CollectionStatus | None = None
     cover_url: str | None = None
@@ -34,5 +36,6 @@ class SeriesOut(BaseModel):
     title: str
     publisher: str
     slug: str
+    author: str | None = None
     cover_url: str | None = None
     volumes: list[SeriesVolumeOut] = []

@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CoverImage } from "@/components/SeriesCard";
+import { FollowMissingButton } from "@/components/FollowMissingButton";
+import { Cover, formatTL, volumeTitle } from "@/components/ui";
 import { VolumeCard } from "@/components/VolumeCard";
+import { VolumeTile } from "@/components/VolumeTile";
 import { ApiError } from "@/lib/api";
+import { currentUserOrNull } from "@/services/auth";
 import { getSeries } from "@/services/catalog";
 import type { CollectionStatus, SeriesVolume } from "@/types";
 
@@ -11,45 +14,34 @@ export const dynamic = "force-dynamic";
 
 interface SeriesPageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ status?: string; all?: string }>;
+  searchParams: Promise<{ status?: string; all?: string; sort?: string; view?: string }>;
 }
 
-const FILTERS: { value: CollectionStatus | "all"; label: string }[] = [
+type Filter = CollectionStatus | "all";
+
+const FILTERS: { value: Filter; label: string }[] = [
   { value: "all", label: "Tümü" },
   { value: "owned", label: "Sahibim" },
   { value: "missing", label: "Eksik" },
-  { value: "wanted", label: "İstediğim" },
+  { value: "wanted", label: "Takipte" },
 ];
 
 /** Default view shows the first N volumes; the rest sit behind the
  * "+N cilt daha göster" toggle (server-rendered via ?all=1). With an
  * active status filter the list is never capped — it is a drill-down. */
-const SHOW_FIRST = 12;
+const SHOW_FIRST = 15;
 
-/** Compact header line: "19 cilt" plus the best-price span, e.g.
- * "19 cilt · ₺182–₺260". Compact (no decimals unless needed) so it fits.
- * Only volumes in stock somewhere count toward the span: a sold-out
- * volume's price is not a price anyone can pay today. */
-function seriesOverview(volumes: SeriesVolume[]): string {
-  const count = volumes.length;
-  const base = `${count} cilt`;
-  const prices = volumes
-    .filter((v) => v.in_stock_count > 0)
-    .map((v) => v.best_price)
-    .filter((p): p is number => p !== null);
-  if (prices.length === 0) return base;
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const fmt = (v: number) =>
-    Number.isInteger(v) ? String(v) : v.toFixed(2);
-  return min === max
-    ? `${base} · ₺${fmt(min)}`
-    : `${base} · ₺${fmt(min)}–₺${fmt(max)}`;
+/** The cheapest volume anyone can buy today (in stock somewhere). */
+function cheapestInStock(volumes: SeriesVolume[]): SeriesVolume | null {
+  let best: SeriesVolume | null = null;
+  for (const v of volumes) {
+    if (v.in_stock_count === 0 || v.best_price === null) continue;
+    if (best === null || v.best_price < (best.best_price as number)) best = v;
+  }
+  return best;
 }
 
-export async function generateMetadata({
-  params,
-}: SeriesPageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: SeriesPageProps): Promise<Metadata> {
   const { id } = await params;
   const numId = Number(id);
   if (!Number.isInteger(numId) || numId <= 0) return { title: "Seri bulunamadı" };
@@ -61,10 +53,7 @@ export async function generateMetadata({
   }
 }
 
-export default async function SeriesPage({
-  params,
-  searchParams,
-}: SeriesPageProps) {
+export default async function SeriesPage({ params, searchParams }: SeriesPageProps) {
   const { id } = await params;
   const numId = Number(id);
   if (!Number.isInteger(numId) || numId <= 0) notFound();
@@ -76,82 +65,155 @@ export default async function SeriesPage({
     if (e instanceof ApiError && e.status === 404) notFound();
     throw e;
   }
+  const user = await currentUserOrNull();
+  const signedIn = Boolean(user);
 
-  // Collection filter: only the three known statuses; anything else
-  // (absent or typo'd) means "all".
-  const { status: rawStatus, all } = await searchParams;
-  const activeFilter: CollectionStatus | "all" =
-    rawStatus === "owned" || rawStatus === "missing" || rawStatus === "wanted"
+  const { status: rawStatus, all, sort, view } = await searchParams;
+  const activeFilter: Filter =
+    signedIn && (rawStatus === "owned" || rawStatus === "missing" || rawStatus === "wanted")
       ? rawStatus
       : "all";
-  const volumes =
+  const descending = sort === "desc";
+  const listView = view === "list";
+
+  const filtered =
     activeFilter === "all"
       ? detail.volumes
       : detail.volumes.filter((v) => v.collection_status === activeFilter);
-  const activeLabel =
-    FILTERS.find((f) => f.value === activeFilter)?.label ?? "Tümü";
+  const volumes = descending ? [...filtered].reverse() : filtered;
+  const activeLabel = FILTERS.find((f) => f.value === activeFilter)?.label ?? "Tümü";
 
-  // Volume cap: only in the unfiltered view; ?all=1 lifts it.
   const expanded = activeFilter !== "all" || all === "1";
   const visibleVolumes = expanded ? volumes : volumes.slice(0, SHOW_FIRST);
   const hiddenCount = volumes.length - visibleVolumes.length;
-  const statusSuffix = activeFilter === "all" ? "" : `?status=${activeFilter}`;
-  const showAllHref = `/series/${numId}${
-    statusSuffix ? `${statusSuffix}&all=1` : "?all=1"
-  }`;
-  const toggleClasses =
-    "rounded-lg border border-line bg-surface px-4 py-2 text-sm text-ink-2 transition-colors hover:border-accent hover:text-accent";
+
+  /** Link to this page with some query params changed (others kept). */
+  const hrefWith = (changes: Record<string, string | null>) => {
+    const next = new URLSearchParams();
+    const current = { status: activeFilter === "all" ? null : activeFilter, all: all ?? null, sort: sort ?? null, view: view ?? null };
+    for (const [k, v] of Object.entries({ ...current, ...changes })) if (v) next.set(k, v);
+    const qs = next.toString();
+    return `/series/${numId}${qs ? `?${qs}` : ""}`;
+  };
+
+  // Header facts.
+  const cheapest = cheapestInStock(detail.volumes);
+  const priced = detail.volumes.filter((v) => v.store_count > 0);
+  const inStock = detail.volumes.filter((v) => v.in_stock_count > 0);
+  const owned = detail.volumes.filter((v) => v.collection_status === "owned").length;
+  const tracked = detail.volumes.filter((v) => v.collection_status === "wanted").length;
+  const untrackedIds = detail.volumes
+    .filter((v) => v.collection_status !== "owned" && v.collection_status !== "wanted")
+    .map((v) => v.id);
+
+  const chip = "inline-flex min-h-9 items-center rounded-lg border px-3 text-sm transition-colors";
 
   return (
-    <div className="space-y-8">
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1 text-sm text-muted hover:text-accent"
-      >
-        ← Aramaya dön
-      </Link>
+    <div className="space-y-10">
+      <nav aria-label="Konum" className="text-sm text-muted">
+        <Link href="/" className="hover:text-accent">
+          ← Ana sayfa
+        </Link>
+      </nav>
 
-      <section className="flex gap-6">
-        <CoverImage
-          url={detail.cover_url}
-          alt={detail.title}
-          className="h-44 w-32 sm:h-52 sm:w-36"
-        />
-        <div className="flex flex-col justify-center gap-2">
-          <h1 className="text-3xl font-bold tracking-tight text-ink">
-            {detail.title}
-          </h1>
-          <p className="text-base text-muted">{detail.publisher}</p>
-          <p className="text-sm text-muted">{seriesOverview(detail.volumes)}</p>
+      {/* -- series header ------------------------------------------------ */}
+      <section className="grid gap-6 sm:grid-cols-[auto_1fr] sm:gap-8">
+        <Cover url={detail.cover_url} alt={`${detail.title} kapağı`} className="w-32 sm:w-44" eager />
+        <div className="flex min-w-0 flex-col gap-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 space-y-1.5">
+              <p className="eyebrow">Seri</p>
+              <h1 className="text-3xl leading-tight font-semibold text-ink sm:text-[2.6rem]">{detail.title}</h1>
+              <p className="text-sm text-muted">
+                {[detail.author, detail.publisher, `${detail.volumes.length} cilt`].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+            <FollowMissingButton signedIn={signedIn} untrackedIds={untrackedIds} trackedCount={tracked} />
+          </div>
+
+          <dl className="grid max-w-xl grid-cols-2 gap-x-8 gap-y-3 border-t border-line pt-4">
+            <div>
+              <dt className="text-xs text-faint">Başlangıç fiyatı</dt>
+              <dd className="tabular text-3xl leading-tight font-bold text-ink">
+                {cheapest ? formatTL(cheapest.best_price) : "—"}
+              </dd>
+              <dd className="text-xs text-muted">
+                {cheapest
+                  ? `${volumeTitle(cheapest.number)}${cheapest.best_store ? ` · ${cheapest.best_store}` : ""}`
+                  : priced.length > 0
+                    ? "Şu an stokta cilt yok"
+                    : "Henüz fiyat yok"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-faint">Stokta</dt>
+              <dd className="tabular text-3xl leading-tight font-bold text-ink">
+                {inStock.length}
+                <span className="text-lg font-semibold text-faint">/{detail.volumes.length}</span>
+              </dd>
+              <dd className="text-xs text-muted">
+                {signedIn && owned > 0 ? `${owned} cilt sende` : "en az bir mağazada"}
+              </dd>
+            </div>
+          </dl>
         </div>
       </section>
 
-      <section className="space-y-3">
+      {/* -- volumes ------------------------------------------------------ */}
+      <section aria-labelledby="ciltler" className="space-y-4">
+        <div className="rule" aria-hidden />
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-ink">
-            Ciltler
-            {activeFilter !== "all" && (
-              <span className="ml-2 text-sm font-normal text-muted">
-                · {activeLabel}
-              </span>
-            )}
+          <h2 id="ciltler" className="text-2xl font-semibold text-ink">
+            Ciltler{" "}
+            <span className="font-sans text-sm font-normal text-muted">
+              {activeFilter === "all" ? `${detail.volumes.length} cilt` : `${activeLabel} · ${volumes.length}`}
+            </span>
           </h2>
-          <nav aria-label="Ciltleri koleksiyon durumuna göre filtrele" className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={hrefWith({ sort: descending ? null : "desc" })}
+              className={`${chip} border-line bg-surface text-ink-2 hover:border-line-strong`}
+              aria-label={descending ? "Cilt numarasına göre artan sırala" : "Cilt numarasına göre azalan sırala"}
+            >
+              Cilt numarası {descending ? "↓" : "↑"}
+            </Link>
+            <div role="group" aria-label="Görünüm" className="flex overflow-hidden rounded-lg border border-line">
+              {[
+                { key: null, label: "Izgara", icon: "▦" },
+                { key: "list", label: "Liste", icon: "☰" },
+              ].map((opt) => {
+                const active = (opt.key === "list") === listView;
+                return (
+                  <Link
+                    key={opt.label}
+                    href={hrefWith({ view: opt.key })}
+                    aria-label={`${opt.label} görünümü`}
+                    aria-current={active ? "true" : undefined}
+                    className={`grid min-h-9 w-10 place-items-center text-base transition-colors ${
+                      active ? "bg-accent text-on-accent" : "bg-surface text-muted hover:text-ink"
+                    }`}
+                  >
+                    <span aria-hidden>{opt.icon}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {signedIn && (
+          <nav aria-label="Ciltleri koleksiyon durumuna göre filtrele" className="flex flex-wrap gap-2">
             {FILTERS.map((f) => {
               const active = f.value === activeFilter;
-              const href =
-                f.value === "all"
-                  ? `/series/${numId}`
-                  : `/series/${numId}?status=${f.value}`;
               return (
                 <Link
                   key={f.value}
-                  href={href}
+                  href={hrefWith({ status: f.value === "all" ? null : f.value, all: null })}
                   aria-current={active ? "page" : undefined}
-                  className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${
+                  className={`${chip} ${
                     active
-                      ? "border-accent bg-accent/10 text-accent"
-                      : "border-line bg-surface text-muted hover:border-muted hover:text-ink"
+                      ? "border-accent bg-accent font-semibold text-on-accent"
+                      : "border-line bg-surface text-ink-2 hover:border-line-strong"
                   }`}
                 >
                   {f.label}
@@ -159,41 +221,69 @@ export default async function SeriesPage({
               );
             })}
           </nav>
-        </div>
+        )}
 
         {volumes.length === 0 ? (
-          <div className="rounded-xl border border-line bg-surface p-8 text-center text-sm text-muted">
+          <div className="rounded-xl border border-dashed border-line-strong bg-surface/70 p-8 text-center text-sm text-muted">
             {activeFilter === "all"
-              ? "Bu seri için henüz cilt içe aktarılmadı."
-              : `“${activeLabel}” olarak işaretlenmiş cilt yok — bir cildi açıp işaretleyin.`}
+              ? "Bu seri için henüz cilt yok."
+              : activeFilter === "wanted"
+                ? "Takip ettiğin cilt yok. Kartlardaki zil simgesiyle takibe alabilirsin."
+                : `“${activeLabel}” olarak işaretlenmiş cilt yok.`}
+          </div>
+        ) : listView ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {visibleVolumes.map((volume) => (
+              <VolumeCard key={volume.id} volume={volume} />
+            ))}
           </div>
         ) : (
-          <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {visibleVolumes.map((volume) => (
-                <VolumeCard key={volume.id} volume={volume} />
-              ))}
-            </div>
-            {hiddenCount > 0 && (
-              <div className="flex justify-center pt-1">
-                <Link
-                  href={showAllHref}
-                  className={toggleClasses}
-                >
-                  +{hiddenCount} cilt daha göster
-                </Link>
-              </div>
-            )}
-            {activeFilter === "all" && all === "1" && volumes.length > SHOW_FIRST && (
-              <div className="flex justify-center pt-1">
-                <Link href={`/series/${numId}`} className={toggleClasses}>
-                  Daha az göster
-                </Link>
-              </div>
-            )}
-          </>
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
+            {visibleVolumes.map((volume) => (
+              <VolumeTile key={volume.id} volume={volume} seriesTitle={detail.title} signedIn={signedIn} />
+            ))}
+          </ul>
+        )}
+
+        {hiddenCount > 0 && (
+          <div className="flex justify-center pt-1">
+            <Link href={hrefWith({ all: "1" })} className={`${chip} border-line bg-surface text-ink-2 hover:border-accent hover:text-accent`}>
+              +{hiddenCount} cilt daha göster
+            </Link>
+          </div>
         )}
       </section>
+
+      {/* -- collection nudge (collection is the second act) -------------- */}
+      {!(signedIn && owned > 0) && (
+        <section className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-5 shadow-card sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <span aria-hidden className="screentone grid size-12 shrink-0 place-items-center rounded-lg border border-line font-display text-xl text-ink-2">
+              棚
+            </span>
+            <div>
+              <p className="font-display text-lg font-semibold text-ink">Hangi ciltler sende var?</p>
+              <p className="text-sm text-muted">
+                {signedIn
+                  ? "Sahip olduklarını ✓ ile işaretle; eksiklerini tek tıkla takibe al."
+                  : "Koleksiyonunu oluştur, eksik ciltlerini tek bakışta gör."}
+              </p>
+            </div>
+          </div>
+          {!signedIn && (
+            <Link
+              href="/register"
+              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-accent px-4 text-sm font-semibold text-accent transition-colors hover:bg-accent hover:text-on-accent"
+            >
+              Koleksiyonumu oluştur
+            </Link>
+          )}
+        </section>
+      )}
+
+      <p className="text-xs text-faint">
+        Fiyatlar mağazaların son kontrol edilen verilerini gösterir; stok bilgisi gecikmeli olabilir.
+      </p>
     </div>
   );
 }

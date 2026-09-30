@@ -35,6 +35,7 @@ def get_series_detail(
             store_count=detail.volume_stats[volume.id].store_count,
             in_stock_count=detail.volume_stats[volume.id].in_stock_count,
             stale_count=detail.volume_stats[volume.id].stale_count,
+            best_store=detail.volume_stats[volume.id].best_store,
             collection_status=collections_service.get_volume_status(session, user.id if user else None, volume.id),  # type: ignore[arg-type]
             cover_url=cover_url(volume.cover_key),
             release_date=volume.release_date,
@@ -47,6 +48,7 @@ def get_series_detail(
         title=detail.series.title,
         publisher=detail.series.publisher.name,
         slug=detail.series.slug,
+        author=detail.series.author,
         cover_url=detail.cover_url,
         volumes=volumes,
     )

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..schemas.search import ImportStatusOut, SearchResponse, SeriesSummary
 from ..services import catalog_service
+from ..utils import from_cents
 
 router = APIRouter(tags=["search"])
 
@@ -22,6 +23,7 @@ def search_series(
         raise HTTPException(status_code=400, detail="Sorgu 'q' boş olamaz.")
 
     matches = catalog_service.search_series(session, query)
+    offers = catalog_service.series_offer_summary(session, [m.series.id for m in matches])
     return SearchResponse(
         results=[
             SeriesSummary(
@@ -30,6 +32,8 @@ def search_series(
                 publisher=match.series.publisher.name,
                 cover_url=match.cover_url,
                 volume_count=match.volume_count,
+                in_stock_offers=offers.get(match.series.id, (0, None))[0],
+                lowest_price=from_cents(offers.get(match.series.id, (0, None))[1]),
             )
             for match in matches
         ],

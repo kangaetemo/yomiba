@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, case, exists, func, not_, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
 
@@ -76,6 +76,9 @@ class VolumeStats:
     #: Listings not refreshed for ``listing_stale_hours`` while their store
     #: kept being scraped: stock unknown (probably dropped from search).
     stale_count: int = 0
+    #: Name of the store offering ``best_price_cents`` (cheapest-price tie:
+    #: store name, so the choice never depends on import order).
+    best_store: str | None = None
 
 
 @dataclass
@@ -107,6 +110,29 @@ class HistoryEntry:
 class PriceHistoryDetail:
     volume: Volume
     entries: list[HistoryEntry]
+
+
+def series_offer_summary(
+    session: Session, series_ids: list[int]
+) -> dict[int, tuple[int, int | None]]:
+    """series id -> (in-stock priced offers, lowest in-stock price in cents)
+    across the series' numbered catalog volumes."""
+    if not series_ids:
+        return {}
+    rows = session.execute(
+        select(Volume.series_id, func.count(StoreListing.id), func.min(StoreListing.price))
+        .join(StoreListing, StoreListing.volume_id == Volume.id)
+        .where(
+            Volume.series_id.in_(series_ids),
+            # Numbered volumes only: an unnumbered row that has listings is
+            # by definition a legacy phantom (see legacy_phantom_condition).
+            Volume.volume_number >= 0,
+            StoreListing.in_stock.is_(True),
+            StoreListing.price.isnot(None),
+        )
+        .group_by(Volume.series_id)
+    ).all()
+    return {sid: (count, price) for sid, count, price in rows}
 
 
 def search_series(session: Session, query: str) -> list[SeriesMatch]:
@@ -217,7 +243,9 @@ def get_series(session: Session, series_id: int) -> SeriesDetail | None:
     stats: dict[int, VolumeStats] = {}
     if volumes:
         listings = session.scalars(
-            select(StoreListing).where(StoreListing.volume_id.in_([v.id for v in volumes]))
+            select(StoreListing)
+            .options(selectinload(StoreListing.store))
+            .where(StoreListing.volume_id.in_([v.id for v in volumes]))
         ).all()
         stale_ids = stale_listing_ids(session, listings)
         listings_by_volume: dict[int, list[StoreListing]] = {}
@@ -284,14 +312,18 @@ def _volume_stats(
     fresh_in_stock = [l for l in listings if l.in_stock and l.id not in stale_ids]
     in_stock_count = len(fresh_in_stock)
     stale_count = sum(1 for l in listings if l.id in stale_ids)
-    in_stock = [l.price for l in fresh_in_stock if l.price is not None]
-    if in_stock:
-        best = min(in_stock)
-    else:
-        all_prices = [l.price for l in listings if l.price is not None]
-        best = min(all_prices) if all_prices else None
+    candidates = [l for l in fresh_in_stock if l.price is not None] or [
+        l for l in listings if l.price is not None
+    ]
+    best_listing = (
+        min(candidates, key=lambda l: (l.price, l.store.name if l.store else ""))
+        if candidates
+        else None
+    )
+    best = best_listing.price if best_listing else None
     return VolumeStats(
         best_price_cents=best,
+        best_store=best_listing.store.name if best_listing and best_listing.store else None,
         store_count=len(listings),
         in_stock_count=in_stock_count,
         stale_count=stale_count,

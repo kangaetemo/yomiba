@@ -157,6 +157,13 @@ def test_series_detail(seeded):
     assert vol1["best_price"] == 163.54  # Amazon is cheapest
     assert vol1["store_count"] == 3
     assert vol1["in_stock_count"] == 3
+    assert vol1["best_store"] == "Amazon"
+
+    # Search results carry the series' lowest in-stock price.
+    hit = next(r for r in seeded.get("/search", params={"q": "Berserk"}).json()["results"]
+               if r["id"] == series_id)
+    assert hit["lowest_price"] == 163.54
+    assert hit["in_stock_offers"] == 5
 
     vol2 = data["volumes"][1]
     assert vol2["best_price"] == 199.0
@@ -356,11 +363,14 @@ def test_volume_stats_counts_in_stock_listings():
 
     ids = iter(range(1, 100))
 
-    def listing(price, in_stock):
-        return SimpleNamespace(id=next(ids), price=price, in_stock=in_stock)
+    def listing(price, in_stock, store="BKM Kitap"):
+        return SimpleNamespace(id=next(ids), price=price, in_stock=in_stock,
+                               store=SimpleNamespace(name=store))
 
-    mixed = _volume_stats([listing(10000, False), listing(12000, True)])
+    mixed = _volume_stats([listing(10000, False, "Edessa"), listing(12000, True, "Kitapsec")])
     assert (mixed.best_price_cents, mixed.store_count, mixed.in_stock_count) == (12000, 2, 1)
+    # The store named is the one behind best_price: the in-stock one.
+    assert mixed.best_store == "Kitapsec"
     # Sold out everywhere: the cheapest known price stays visible, and
     # in_stock_count == 0 tells the UI it is an out-of-stock price.
     sold_out = _volume_stats([listing(10000, False), listing(9000, False)])

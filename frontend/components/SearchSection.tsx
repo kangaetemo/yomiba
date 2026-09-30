@@ -43,7 +43,7 @@ export function SearchSection() {
         )}
 
         {status === "success" && results.length > 0 && (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3">
             {results.map((series) => (
               <SeriesCard key={series.id} series={series} />
             ))}
