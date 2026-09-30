@@ -241,6 +241,8 @@ class CatalogSyncService:
                 volumes=variant.volumes,
                 author=manga.author,
                 illustrator=manga.illustrator,
+                jp_status=manga.jp_status,
+                tr_status=manga.tr_status,
             )
             for variant in getattr(manga, "variants", ()) or ()
             if variant.volumes
@@ -324,8 +326,9 @@ class CatalogSyncService:
             key = self._original_title_key(manga.original_title)
             if key and series.original_title != key:
                 series.original_title = key
-        # Credits follow the catalog source (a page without them never erases).
-        for attr in ("author", "illustrator"):
+        # Credits and status follow the catalog source (a page without
+        # them never erases).
+        for attr in ("author", "illustrator", "jp_status", "tr_status"):
             value = (getattr(manga, attr, None) or "").strip()[:200]
             if value and getattr(series, attr) != value:
                 setattr(series, attr, value)
@@ -393,7 +396,10 @@ class CatalogSyncService:
             # A foreign ISBN (an old title match stored e.g. VIZ's English
             # Naruto 11 on Cilt 11) does not count: the catalog's replaces it.
             trusted_isbn = volume.isbn and not is_foreign_isbn(volume.isbn)
-            if checked is not None and (trusted_isbn or checked > recheck):
+            # A variant without its ISBN is re-read every sync (only a few
+            # books; until then its store products land on the base series).
+            variant = VARIANT_SEP in manga.slug
+            if checked is not None and (trusted_isbn or (checked > recheck and not variant)):
                 continue
             self._isbn_budget -= 1
             report.isbn_pages += 1
@@ -443,6 +449,23 @@ class CatalogSyncService:
                                 holder.id, series.title, cv.number, isbn)
                     continue
                 note = " (kullanıcı verisi var, elle birleştirilmeli)"
+            elif holder.series_id == self._base_series_id(manga.slug):
+                # A binding variant's own ISBN on its base series: stores
+                # title both bindings plainly "Soichi", so before the
+                # variant existed a title match stored the Bez Cilt ISBN on
+                # the regular volume. The variant's Mangakol page proves
+                # whose it is: move it, and let the regular volume read its
+                # own ISBN again on the next sync. Its misplaced listings
+                # move on the next store import (ISBN-first).
+                holder.isbn = None
+                holder.details_checked_at = None
+                self.session.flush()
+                volume.isbn = isbn
+                self.session.commit()
+                report.isbns_added += 1
+                logger.info("catalog sync: ISBN %s moved from %s volume %s to its variant %s Cilt %s",
+                            isbn, holder.series_id, holder.id, series.title, cv.number)
+                continue
             report.isbn_conflicts += 1
             holder_series = self.session.get(Series, holder.series_id)
             detail = (
@@ -453,6 +476,16 @@ class CatalogSyncService:
             logger.warning("catalog sync: %s", detail)
             if len(report.isbn_conflict_details) < 500:
                 report.isbn_conflict_details.append(detail)
+
+    def _base_series_id(self, slug: str) -> int | None:
+        """Series of a variant's base manga ("soichi~clothbound" -> the
+        "soichi" series); None for a slug that is not a variant."""
+        if VARIANT_SEP not in slug:
+            return None
+        return self.session.scalar(
+            select(CatalogSeries.series_id)
+            .where(CatalogSeries.mangakol_slug == slug.split(VARIANT_SEP)[0])
+        )
 
     @staticmethod
     def _original_title_key(raw: str) -> str:

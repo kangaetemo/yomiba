@@ -170,3 +170,26 @@ def test_missing_failed_outcome(client, db_session):
 def test_missing_requires_admin(client):
     client.cookies.clear()
     assert client.get("/import/coverage/missing").status_code == 401
+
+
+def test_missing_variant_outcomes(client, db_session):
+    """Binding variants say what is missing: their own ISBN, or a store
+    selling that ISBN — not "matched another series"."""
+    from app.services.background_import import normalized_query_key
+
+    publisher = Publisher(name="Kayıp Kıta", normalized_name="kayip kita")
+    db_session.add(publisher)
+    db_session.flush()
+    for title, slug, isbn in [("Soichi (Bez Cilt)", "soichi~clothbound", None),
+                              ("Tomie (Bez Cilt)", "tomie~clothbound", "9786259031200")]:
+        s = Series(publisher_id=publisher.id, title=title, slug=slug.replace("~", "-"),
+                   normalized_title=title.lower())
+        db_session.add(s)
+        db_session.flush()
+        db_session.add(CatalogSeries(series_id=s.id, mangakol_slug=slug))
+        db_session.add(Volume(series_id=s.id, volume_number=1, isbn=isbn))
+        _record(db_session, normalized_query_key(title), results_found=6, created=2)
+    db_session.commit()
+
+    by_title = {m["title"]: m["outcome"] for m in client.get("/import/coverage/missing").json()}
+    assert by_title == {"Soichi (Bez Cilt)": "variant_no_isbn", "Tomie (Bez Cilt)": "variant_unsold"}

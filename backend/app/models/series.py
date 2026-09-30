@@ -49,6 +49,10 @@ class Series(Base):
     #: Credits from the catalog source ("Yazar" / "Çizer"); None when unknown.
     author: Mapped[str | None] = mapped_column(String(200), nullable=True)
     illustrator: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    #: Publication status in Japan / Turkey from the catalog source
+    #: ("completed", "ongoing", ...); None when unknown.
+    jp_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    tr_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     publisher: Mapped[Publisher] = relationship(back_populates="series")
     volumes: Mapped[list[Volume]] = relationship(

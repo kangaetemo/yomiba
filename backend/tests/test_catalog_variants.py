@@ -127,3 +127,48 @@ def test_isbn_beats_edition_words_in_title(db_session, import_service):
 def test_fallback_query_drops_variant_label(db_session):
     assert fallback_queries(db_session, "Soichi (Bez Cilt)")[0] == "Soichi"
     assert fallback_queries(db_session, "Soichi") == []
+
+
+def test_sync_stores_publication_status(db_session):
+    from dataclasses import replace
+
+    manga = replace(_soichi(), jp_status="completed", tr_status="completed")
+    CatalogSyncService(db_session, scraper=_Fake([manga])).sync()
+    for title in ("Soichi", "Soichi (Bez Cilt)"):
+        series = db_session.scalar(select(Series).where(Series.title == title))
+        assert (series.jp_status, series.tr_status) == ("completed", "completed")
+
+
+def test_variant_reclaims_its_isbn_from_the_base_series(db_session):
+    """Production case: before the variant existed a store's clothbound
+    "Soichi" (ISBN ...118) was title-matched and its ISBN stored on the
+    regular volume. The Bez Cilt page proves whose ISBN it is: it moves to
+    the variant and the regular volume reads its own ISBN again."""
+    from app.scrapers.mangakol import CatalogVolumeDetails
+
+    CatalogSyncService(db_session, scraper=FakeMangakolScraper([_soichi(with_variant=False)])).sync()
+    regular = _volume(db_session, "Soichi")
+    regular.isbn = CLOTH  # the wrong store ISBN, page never read
+    db_session.commit()
+
+    report = CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
+    assert _volume(db_session, "Soichi (Bez Cilt)").isbn == CLOTH
+    assert report.isbn_conflicts == 0
+    regular = _volume(db_session, "Soichi")
+    # The regular page was read before the variant in this sync (it kept
+    # CLOTH then); cleared now, the next sync stores the regular ISBN.
+    assert regular.isbn is None and regular.details_checked_at is None
+    CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
+    assert _volume(db_session, "Soichi").isbn == REGULAR
+
+
+def test_isbn_of_an_unrelated_series_is_still_only_reported(db_session):
+    from tests.test_import_service import seed_catalog_series
+
+    other = seed_catalog_series(db_session, "Tomie", "Kayıp Kıta", volumes=(1,))
+    held = db_session.scalar(select(Volume).where(Volume.series_id == other.id))
+    held.isbn = CLOTH
+    db_session.commit()
+    report = CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
+    assert held.isbn == CLOTH and _volume(db_session, "Soichi (Bez Cilt)").isbn is None
+    assert report.isbn_conflicts == 1

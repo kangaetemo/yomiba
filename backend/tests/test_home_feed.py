@@ -127,3 +127,35 @@ def test_popular_recent_interest_weighs_more(client, db_session):
 
     titles = [s["title"] for s in client.get("/home").json()["popular_series"]]
     assert titles == ["Yeni İlgi", "Eski İlgi"]
+
+
+def test_home_one_shots(client, db_session):
+    """Single-volume series completed in Japan AND Turkey; in stock first.
+    Ongoing, multi-volume and binding-variant series stay out."""
+    from app.models import CatalogSeries
+
+    bkm = Store(code="bkm", name="BKM")
+    db_session.add(bkm)
+
+    def seed(title, volumes=(1,), jp="completed", tr="completed"):
+        series = seed_catalog_series(db_session, title, "Gerekli Şeyler", volumes=volumes)
+        series.jp_status, series.tr_status = jp, tr
+        return series
+
+    look_back = seed("Look Back")
+    sold_out = seed("Tükenmiş Tek")
+    seed("Dragon Ball", jp="completed", tr="ongoing")
+    seed("Vagabond", volumes=(1, 2))
+    seed("Chainsaw Man", jp="ongoing", tr="ongoing")
+    seed("Bilinmez", jp=None, tr=None)
+    cloth = seed("Soichi (Bez Cilt)")
+    row = db_session.scalar(select(CatalogSeries).where(CatalogSeries.series_id == cloth.id))
+    row.mangakol_slug = "souichi~clothbound"
+    _offer(db_session, _vol(db_session, look_back, 1), bkm, 19900)
+    _offer(db_session, _vol(db_session, sold_out, 1), bkm, 9900, in_stock=False)
+    db_session.commit()
+
+    shots = client.get("/home").json()["one_shots"]
+    assert [s["title"] for s in shots] == ["Look Back", "Tükenmiş Tek"]
+    assert shots[0]["lowest_price"] == 199.0 and shots[0]["in_stock_offers"] == 1
+    assert shots[1]["lowest_price"] is None

@@ -115,6 +115,10 @@ class CatalogManga:
     #: Other bindings from the detail page's format tabs (the active tab is
     #: ``volumes``); empty for the usual single-format manga.
     variants: tuple[CatalogVariant, ...] = ()
+    #: Status strip "JP Tamamlandı · TR Devam Ediyor" -> "completed" /
+    #: "ongoing" (Mangakol's own status key); None when absent.
+    jp_status: str | None = None
+    tr_status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -259,7 +263,27 @@ class MangakolCatalogScraper(BaseScraper):
             author=info.get("yazar") or None,
             illustrator=info.get("cizer") or None,
             variants=tuple(variants),
+            **self._statuses(soup),
         )
+
+    _STATUS_DOT_RE = re.compile(r"^mk-status-dot--([a-z-]+)$")
+
+    @classmethod
+    def _statuses(cls, soup) -> dict[str, str]:
+        """{"jp_status": "completed", "tr_status": "ongoing"} from the
+        status strip (flag "JP"/"TR" + a ``mk-status-dot--<key>`` dot)."""
+        out: dict[str, str] = {}
+        for item in soup.select(".mk-status-strip__item"):
+            flag = item.select_one(".mk-status-strip__flag")
+            country = flag.get_text(strip=True).lower() if flag is not None else ""
+            if country not in ("jp", "tr"):
+                continue
+            dot = item.select_one(".mk-status-dot")
+            for cls_name in (dot.get("class") or []) if dot is not None else []:
+                match = cls._STATUS_DOT_RE.match(cls_name)
+                if match:
+                    out[f"{country}_status"] = match.group(1)[:20]
+        return out
 
     _FORMAT_RE = re.compile(r"^#pane-([A-Za-z0-9]+)$")
 

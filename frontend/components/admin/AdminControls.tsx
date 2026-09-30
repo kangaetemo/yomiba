@@ -892,6 +892,8 @@ const OUTCOME_LABEL: Record<MissingCoverage["outcome"], string> = {
   unmatched: "ürün bulundu, eşleşmedi",
   empty: "mağazalar sonuç döndürmedi",
   other_series: "başka seriyle eşleşti",
+  variant_no_isbn: "özel baskı: ISBN'i henüz okunmadı (sonraki katalog senkronu)",
+  variant_unsold: "özel baskı: mağazalarda bu ISBN yok",
   failed: "mağazalar hata verdi",
   never: "henüz denenmedi",
 };

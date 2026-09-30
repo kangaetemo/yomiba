@@ -243,3 +243,19 @@ def test_detail_reads_other_binding_tabs():
 
 def test_single_format_page_has_no_variants(scraper):
     assert scraper.fetch_manga("onepiece").variants == ()
+
+
+def test_detail_reads_jp_and_tr_status():
+    page = (
+        "<html><body><h1><span>Dragon Ball</span></h1>"
+        '<div class="mk-status-strip">'
+        '<span class="mk-status-strip__item"><span class="mk-status-strip__flag">JP</span>'
+        '<span class="mk-status-dot mk-status-dot--completed"></span>'
+        '<span class="mk-status-strip__label">Tamamlandı</span></span>'
+        '<span class="mk-status-strip__item"><span class="mk-status-strip__flag">TR</span>'
+        '<span class="mk-status-dot mk-status-dot--ongoing"></span>'
+        '<span class="mk-status-strip__label">Devam Ediyor</span></span>'
+        "</div></body></html>"
+    )
+    manga = make_scraper(lambda r: httpx.Response(200, text=page)).fetch_manga("dragon-ball")
+    assert (manga.jp_status, manga.tr_status) == ("completed", "ongoing")

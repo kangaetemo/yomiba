@@ -25,7 +25,7 @@ export default async function HomePage() {
   return (
     <div className="space-y-16 sm:space-y-20">
       <HomeHero feed={feed} signedIn={Boolean(user)} />
-      {feed && <PopularSeries series={feed.popular_series} />}
+      {feed && <PopularSeries series={feed.popular_series} oneShots={feed.one_shots ?? []} />}
       <HotDeals drops={drops} windowDays={DEAL_WINDOW_DAYS} />
       {feed && <NewVolumes volumes={feed.new_volumes} />}
       <HowItWorks signedIn={Boolean(user)} />

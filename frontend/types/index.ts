@@ -35,6 +35,9 @@ export interface NewVolume {
 
 export interface HomeFeed {
   popular_series: PopularSeries[];
+  /** Single-volume series completed in Japan and Turkey (same card shape);
+   * optional so an older backend without it still renders. */
+  one_shots?: PopularSeries[];
   new_volumes: NewVolume[];
   stats: { series: number; stores: number; offers: number };
 }
@@ -320,7 +323,7 @@ export interface MissingCoverage {
   publisher: string | null;
   volume_count: number;
   query: string;
-  outcome: "never" | "failed" | "empty" | "unmatched" | "other_series";
+  outcome: "never" | "failed" | "empty" | "unmatched" | "other_series" | "variant_no_isbn" | "variant_unsold";
   status: string | null;
   last_attempt_at: string | null;
   results_found: number;

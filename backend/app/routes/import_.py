@@ -175,11 +175,25 @@ def import_coverage_missing(
     records = {
         r.normalized_query: r for r in session.scalars(select(ImportRecord)).all()
     }
-    order = {"unmatched": 0, "empty": 1, "other_series": 2, "failed": 3, "never": 4}
+    # Binding variants ("Soichi (Bez Cilt)"): stores title both bindings
+    # "Soichi", so their search always matches the base series; only the
+    # ISBN can place a product. Say which side is missing instead of the
+    # misleading "other series".
+    variant_ids = set(session.scalars(
+        select(CatalogSeries.series_id).where(CatalogSeries.mangakol_slug.contains("~"))
+    ))
+    isbn_less = set(session.scalars(
+        select(Volume.series_id).where(Volume.series_id.in_(variant_ids), Volume.isbn.is_(None))
+    ))
+    order = {"unmatched": 0, "empty": 1, "variant_no_isbn": 2, "other_series": 3,
+             "variant_unsold": 4, "failed": 5, "never": 6}
     out: list[MissingCoverageOut] = []
     for series, count in rows:
         key = normalized_query_key(series.title)
         record = records.get(key)
+        outcome = _missing_outcome(record)
+        if series.id in variant_ids and outcome in ("unmatched", "other_series"):
+            outcome = "variant_no_isbn" if series.id in isbn_less else "variant_unsold"
         out.append(
             MissingCoverageOut(
                 series_id=series.id,
@@ -187,7 +201,7 @@ def import_coverage_missing(
                 publisher=series.publisher.name if series.publisher else None,
                 volume_count=count or 0,
                 query=series.title,
-                outcome=_missing_outcome(record),
+                outcome=outcome,
                 status=record.status if record else None,
                 last_attempt_at=record.last_attempt_at if record else None,
                 results_found=record.results_found if record else 0,

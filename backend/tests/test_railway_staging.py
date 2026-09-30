@@ -74,7 +74,7 @@ def test_staging_first_start_restart_and_backup_use_temporary_db(monkeypatch, tm
             assert "Secure" in response.headers["set-cookie"]
         assert target.is_file()
         with sqlite3.connect(target) as connection:
-            assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0011_listing_exclusions",)
+            assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0012_series_status",)
             assert connection.execute("SELECT COUNT(*) FROM stores").fetchone()[0] > 0
         backup = tmp_path / "staging-backup.db"
         assert backup_database(target, backup) == inspect_database(backup)
