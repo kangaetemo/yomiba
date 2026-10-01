@@ -80,6 +80,19 @@ Son güncelleme: 1 Ekim 2026. Son push: bu günkü "Slug URLs, search dialog" co
    - Normal Soichi sayfasında Kitapseç'in 385 TL'lik bez cilt fiyatı gitmiş olmalı; Soichi (Bez Cilt) fiyat almalı.
    - Fiyatsız seriler panelinde varyantlar yeni açıklamalarla görünmeli.
 
+## Veri kaynakları araştırması (1 Ekim)
+
+Ayrıntılar `docs/veri-kaynaklari-arastirmasi-2026-10-01.md` dosyasında.
+
+- **En büyük yeni adaylar:**
+  - **Kitapyurdu:** artık açık; arama sunucu tarafında oluşuyor ve ürün sayfasında tam JSON-LD var.
+  - **idefix:** manga kategorisi taranabiliyor ve satıcılar arasında D&R ile BKM var.
+- **Ucuz eklemeler:** Büyülü Dükkan (IdeaSoft), İstanbul Kitapçısı (T-Soft), Ucuzkitapal.
+- **Metadata:**
+  - **AniList:** tür, etiket ve ONE_SHOT bilgisi.
+  - **1000Kitap:** Türkçe özet ve okur puanı.
+- Testler bu ağdan yapıldı. Önce Railway'den erişim doğrulanmalı (Cizman örneği).
+
 ## Açık fikirler / belki sonra
 
 - Seri sayfalarında "diğer baskılar" bağlantısı (Soichi ↔ Soichi (Bez Cilt)).

@@ -420,3 +420,37 @@ export interface MyPriceAlert extends MyVolume {
   is_active: boolean;
   updated_at: string;
 }
+
+/** GET /catalog/store-probe: can the server reach each store? */
+export interface StoreProbeFetch {
+  url: string;
+  status: number | null;
+  bytes: number;
+  ms: number;
+  final_host: string | null;
+  wall: boolean;
+  error: string | null;
+}
+
+export interface StoreProbeResult {
+  code: string;
+  name: string;
+  group: "aktif" | "kapalı" | "aday" | "metadata";
+  note: string;
+  search: StoreProbeFetch;
+  hits: number;
+  product: StoreProbeFetch | null;
+  isbn_found: boolean | null;
+  verdict: string;
+  detail: string;
+}
+
+export interface StoreProbeStatus {
+  state: "idle" | "running" | "done" | "failed";
+  total: number;
+  done: number;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+  results: StoreProbeResult[];
+}

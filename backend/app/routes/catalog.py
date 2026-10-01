@@ -267,3 +267,27 @@ def foreign_editions_apply(request: Request, session: Session = Depends(get_db))
         return job.apply(db_path)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _probe_job(request: Request):
+    from ..services.store_probe import StoreProbeJob
+
+    job = getattr(request.app.state, "store_probe_job", None)
+    if job is None:
+        job = StoreProbeJob()
+        request.app.state.store_probe_job = job
+    return job
+
+
+@router.get("/catalog/store-probe")
+def store_probe_status(request: Request) -> dict:
+    """Admin: last store access test (from this server) and its progress."""
+    return _probe_job(request).status()
+
+
+@router.post("/catalog/store-probe/run", status_code=202)
+def store_probe_run(request: Request) -> dict:
+    """Admin: fetch every store / candidate once from this server."""
+    if not _probe_job(request).start():
+        raise HTTPException(status_code=409, detail="Erişim testi zaten çalışıyor.")
+    return {"status": "running"}

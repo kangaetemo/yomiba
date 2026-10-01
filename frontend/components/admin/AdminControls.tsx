@@ -25,6 +25,8 @@ import {
   getPriceRefreshStatus,
   runImport,
   runIsbnFix,
+  getStoreProbe,
+  runStoreProbe,
   startCatalogSync,
   startCoverFetch,
   startMissingPriceRefresh,
@@ -40,6 +42,8 @@ import type {
   IsbnFixResult,
   MissingCoverage,
   PriceRefreshStatus,
+  StoreProbeResult,
+  StoreProbeStatus,
 } from "@/types";
 
 const SYNC_POLL_MS = 5000;
@@ -696,7 +700,146 @@ function ImportPanel() {
           </table>
         )}
       </div>
+
+      <StoreProbeBox />
     </section>
+  );
+}
+
+const PROBE_GROUPS: { group: StoreProbeResult["group"]; label: string }[] = [
+  { group: "aktif", label: "Kullanılan mağazalar" },
+  { group: "kapalı", label: "Kapatılan mağazalar" },
+  { group: "aday", label: "Aday mağazalar" },
+  { group: "metadata", label: "Seri bilgisi kaynakları" },
+];
+
+function verdictClass(verdict: string): string {
+  if (verdict === "erişilebilir") return "text-ok";
+  if (verdict === "engelli") return "text-bad";
+  return "text-warn";
+}
+
+function fetchLabel(f: StoreProbeResult["search"] | null): string {
+  if (!f) return "—";
+  if (f.error) return "bağlantı hatası";
+  return `${f.status} · ${Math.round(f.bytes / 1024)} KB · ${(f.ms / 1000).toFixed(1)} sn${f.wall ? " · duvar" : ""}`;
+}
+
+/** Store access test: fetches every store / candidate once FROM THE SERVER
+ * (a store that opens on a home connection can still wall the server). */
+function StoreProbeBox() {
+  const [status, setStatus] = useState<StoreProbeStatus | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await getStoreProbe());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Durum alınamadı");
+    }
+  }, []);
+
+  useEffect(() => {
+    const id = setTimeout(() => void refresh(), 0);
+    return () => clearTimeout(id);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (status?.state !== "running") return;
+    const id = setInterval(() => void refresh(), 2000);
+    return () => clearInterval(id);
+  }, [status?.state, refresh]);
+
+  async function run() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await runStoreProbe();
+      await refresh();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Test başlatılamadı");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const running = status?.state === "running";
+  const results = status?.results ?? [];
+  return (
+    <div className="space-y-3 rounded-lg border border-line p-3 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="max-w-xl text-muted">
+          Mağaza erişim testi: her mağazanın arama ve ürün sayfasını bu sunucudan bir kez çeker (bot korumasını aşmaya
+          çalışmaz). Yeni mağaza eklemeden önce çalıştır.
+          {running && (
+            <span className="ml-1 text-accent">
+              · test ediliyor ({status?.done}/{status?.total})
+            </span>
+          )}
+          {status?.state === "done" && status.finished_at && (
+            <span className="ml-1">· son test {formatDateTime(status.finished_at)}</span>
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={() => void run()}
+          disabled={busy || running}
+          className="rounded-lg border border-line-strong bg-surface-2 px-3 py-1.5 font-semibold text-ink hover:bg-line disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Testi çalıştır
+        </button>
+      </div>
+      {status?.error && <p className="text-bad">{status.error}</p>}
+      {message && <p className="text-muted">{message}</p>}
+      {results.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left">
+            <thead className="text-muted">
+              <tr>
+                <th className="py-1 pr-3 font-medium">Kaynak</th>
+                <th className="py-1 pr-3 font-medium">Sonuç</th>
+                <th className="py-1 pr-3 font-medium">Arama</th>
+                <th className="py-1 font-medium">Ürün sayfası</th>
+              </tr>
+            </thead>
+            {PROBE_GROUPS.map(({ group, label }) => {
+              const rows = results.filter((r) => r.group === group);
+              if (rows.length === 0) return null;
+              return (
+                <tbody key={group} className="border-t border-line">
+                  <tr>
+                    <th colSpan={4} className="pt-2 pb-1 font-semibold text-ink-2">
+                      {label}
+                    </th>
+                  </tr>
+                  {rows.map((r) => (
+                    <tr key={r.code} className="align-top">
+                      <td className="py-1 pr-3 text-ink">
+                        <a href={r.search.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                          {r.name}
+                        </a>
+                        {r.note && <span className="block text-faint">{r.note}</span>}
+                      </td>
+                      <td className="py-1 pr-3">
+                        <span className={`font-semibold ${verdictClass(r.verdict)}`}>{r.verdict}</span>
+                        {r.detail && <span className="block text-muted">{r.detail}</span>}
+                      </td>
+                      <td className="tabular py-1 pr-3 text-muted" title={r.search.error ?? undefined}>
+                        {fetchLabel(r.search)}
+                      </td>
+                      <td className="tabular py-1 text-muted" title={r.product?.error ?? undefined}>
+                        {fetchLabel(r.product)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              );
+            })}
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 

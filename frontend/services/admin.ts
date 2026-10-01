@@ -14,6 +14,7 @@ import type {
   IsbnFixResult,
   MissingCoverage,
   PriceRefreshStatus,
+  StoreProbeStatus,
 } from "@/types";
 
 export function getCatalogSyncStatus(): Promise<CatalogSyncStatus> {
@@ -76,4 +77,12 @@ export function startPriceRefresh(): Promise<PriceRefreshStatus> {
 /** Refresh only the catalog series that have no price yet. */
 export function startMissingPriceRefresh(): Promise<PriceRefreshStatus> {
   return postJson<PriceRefreshStatus>("/import/price-refresh/missing", {});
+}
+
+export function getStoreProbe(): Promise<StoreProbeStatus> {
+  return getJson<StoreProbeStatus>("/catalog/store-probe");
+}
+
+export function runStoreProbe(): Promise<{ status: string }> {
+  return postJson<{ status: string }>("/catalog/store-probe/run", {});
 }
