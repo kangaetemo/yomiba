@@ -229,6 +229,10 @@ def _one_shots(session: Session, interest: dict[int, float], limit: int) -> list
         return (count == 0, -interest.get(sid, 0.0), -count, row[0].title)
 
     picked = sorted(rows, key=rank)[:limit]
+    released = dict(session.execute(
+        select(Volume.series_id, Volume.release_date)
+        .where(Volume.series_id.in_([s.id for s, _ in picked]), real)
+    ).all())
     covers = _series_covers(session, [s.id for s, _ in picked])
     shot_slugs = series_slugs.slugs_for(session, [s.id for s, _ in picked])
     return [
@@ -240,6 +244,7 @@ def _one_shots(session: Session, interest: dict[int, float], limit: int) -> list
             "author": series.author,
             "cover_url": covers.get(series.id),
             "volume_count": 1,
+            "release_date": released[series.id].isoformat() if released.get(series.id) else None,
             "in_stock_offers": offers.get(series.id, (0, None))[0],
             "lowest_price": from_cents(offers.get(series.id, (0, None))[1]),
         }

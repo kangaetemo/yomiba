@@ -17,6 +17,8 @@ export interface PopularSeries {
   in_stock_offers: number;
   /** Lowest current in-stock price of any volume. */
   lowest_price: number | null;
+  /** One shots only: release date of the single volume (YYYY-MM-DD). */
+  release_date?: string | null;
 }
 
 export interface NewVolume {

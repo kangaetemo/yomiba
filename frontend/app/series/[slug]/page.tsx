@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { FollowMissingButton } from "@/components/FollowMissingButton";
 import { Cover, formatTL, volumeTitle } from "@/components/ui";
+import { SortBar } from "@/components/SortBar";
 import { VolumeCard } from "@/components/VolumeCard";
 import { VolumeTile } from "@/components/VolumeTile";
 import { ApiError } from "@/lib/api";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 interface SeriesPageProps {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ status?: string; all?: string; sort?: string; view?: string }>;
+  searchParams: Promise<{ status?: string; all?: string; sort?: string; view?: string; stock?: string }>;
 }
 
 type Filter = CollectionStatus | "all";
@@ -31,6 +32,24 @@ const FILTERS: { value: Filter; label: string }[] = [
  * "+N cilt daha göster" toggle (server-rendered via ?all=1). With an
  * active status filter the list is never capped — it is a drill-down. */
 const SHOW_FIRST = 15;
+
+/** The first entry is the default (volume number, ascending). */
+const SORTS = [
+  { key: "no", label: "Cilt no ↑" },
+  { key: "desc", label: "Cilt no ↓" },
+  { key: "fiyat", label: "Fiyat ↑" },
+  { key: "fiyat-azalan", label: "Fiyat ↓" },
+];
+
+/** Price order: volumes buyable today by price; the rest keep volume order
+ * after them (an out-of-stock price is not a price). */
+function byPrice(volumes: SeriesVolume[], dir: 1 | -1): SeriesVolume[] {
+  const buyable = (v: SeriesVolume) => v.in_stock_count > 0 && v.best_price !== null;
+  return [
+    ...volumes.filter(buyable).sort((a, b) => dir * ((a.best_price as number) - (b.best_price as number))),
+    ...volumes.filter((v) => !buyable(v)),
+  ];
+}
 
 /** The cheapest volume anyone can buy today (in stock somewhere). */
 function cheapestInStock(volumes: SeriesVolume[]): SeriesVolume | null {
@@ -67,29 +86,38 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
   const user = await currentUserOrNull();
   const signedIn = Boolean(user);
 
-  const { status: rawStatus, all, sort, view } = await searchParams;
+  const { status: rawStatus, all, sort, view, stock } = await searchParams;
   const activeFilter: Filter =
     signedIn && (rawStatus === "owned" || rawStatus === "missing" || rawStatus === "wanted")
       ? rawStatus
       : "all";
-  const descending = sort === "desc";
+  const activeSort = SORTS.find((o) => o.key === sort)?.key ?? "no";
+  const stockOnly = stock === "1";
   const listView = view === "list";
 
-  const filtered =
+  const byStatus =
     activeFilter === "all"
       ? detail.volumes
       : detail.volumes.filter((v) => v.collection_status === activeFilter);
-  const volumes = descending ? [...filtered].reverse() : filtered;
+  const filtered = stockOnly ? byStatus.filter((v) => v.in_stock_count > 0) : byStatus;
+  const volumes =
+    activeSort === "desc"
+      ? [...filtered].reverse()
+      : activeSort === "fiyat"
+        ? byPrice(filtered, 1)
+        : activeSort === "fiyat-azalan"
+          ? byPrice(filtered, -1)
+          : filtered;
   const activeLabel = FILTERS.find((f) => f.value === activeFilter)?.label ?? "Tümü";
 
-  const expanded = activeFilter !== "all" || all === "1";
+  const expanded = activeFilter !== "all" || stockOnly || all === "1";
   const visibleVolumes = expanded ? volumes : volumes.slice(0, SHOW_FIRST);
   const hiddenCount = volumes.length - visibleVolumes.length;
 
   /** Link to this page with some query params changed (others kept). */
   const hrefWith = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams();
-    const current = { status: activeFilter === "all" ? null : activeFilter, all: all ?? null, sort: sort ?? null, view: view ?? null };
+    const current = { status: activeFilter === "all" ? null : activeFilter, all: all ?? null, sort: activeSort === "no" ? null : activeSort, view: view ?? null, stock: stockOnly ? "1" : null };
     for (const [k, v] of Object.entries({ ...current, ...changes })) if (v) next.set(k, v);
     const qs = next.toString();
     return `${seriesPath(detail.slug)}${qs ? `?${qs}` : ""}`;
@@ -239,17 +267,10 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
           <h2 id="ciltler" className="text-2xl font-semibold text-ink">
             Ciltler{" "}
             <span className="font-sans text-sm font-normal text-muted">
-              {activeFilter === "all" ? `${detail.volumes.length} cilt` : `${activeLabel} · ${volumes.length}`}
+              {activeFilter === "all" && !stockOnly ? `${detail.volumes.length} cilt` : `${stockOnly ? "Stokta" : activeLabel} · ${volumes.length}`}
             </span>
           </h2>
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={hrefWith({ sort: descending ? null : "desc" })}
-              className={`${chip} border-line bg-surface text-ink-2 hover:border-line-strong`}
-              aria-label={descending ? "Cilt numarasına göre artan sırala" : "Cilt numarasına göre azalan sırala"}
-            >
-              Cilt numarası {descending ? "↓" : "↑"}
-            </Link>
             <div role="group" aria-label="Görünüm" className="flex overflow-hidden rounded-lg border border-line">
               {[
                 { key: null, label: "Izgara", icon: "▦" },
@@ -273,6 +294,13 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
             </div>
           </div>
         </div>
+
+        <SortBar
+          sorts={SORTS}
+          active={activeSort}
+          stockOnly={stockOnly}
+          hrefFor={(c) => hrefWith({ ...c, all: null })}
+        />
 
         {signedIn && (
           <nav aria-label="Ciltleri koleksiyon durumuna göre filtrele" className="flex flex-wrap gap-2">
@@ -298,7 +326,9 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
 
         {volumes.length === 0 ? (
           <div className="rounded-xl border border-dashed border-line-strong bg-surface/70 p-8 text-center text-sm text-muted">
-            {activeFilter === "all"
+            {stockOnly
+              ? "Şu an stokta cilt yok."
+              : activeFilter === "all"
               ? "Bu seri için henüz cilt yok."
               : activeFilter === "wanted"
                 ? "Takip ettiğin cilt yok. Kartlardaki zil simgesiyle takibe alabilirsin."

@@ -55,3 +55,18 @@ def test_all_one_shots_lists_beyond_the_home_shelf(client, db_session):
     db_session.commit()
     assert len(client.get("/home").json()["one_shots"]) == 8
     assert len(client.get("/one-shots").json()["one_shots"]) == 12
+
+
+def test_one_shots_carry_the_release_date(client, db_session):
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from app.models import Volume
+
+    s = seed_catalog_series(db_session, "Tek Tarihli", "Gerekli Şeyler", volumes=(1,))
+    s.jp_status = s.tr_status = "completed"
+    db_session.scalar(select(Volume).where(Volume.series_id == s.id)).release_date = date(2026, 3, 5)
+    db_session.commit()
+    shots = client.get("/one-shots").json()["one_shots"]
+    assert shots[0]["release_date"] == "2026-03-05"
