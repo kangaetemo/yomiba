@@ -40,24 +40,31 @@ export function HeroShelf({ series }: { series: PopularSeries[] }) {
         aria-hidden
         className="screentone absolute inset-6 rounded-[2rem] opacity-70 [mask-image:radial-gradient(closest-side,black,transparent)]"
       />
-      {/* Stable keys per series, so a swap animates instead of re-mounting. */}
+      {/* The positioned element is always the same <div> per series (never
+          swapped between <a> and <button>), so React keeps it mounted and
+          the move between slots animates. */}
       {series.map((s, i) => {
         const slot = order.indexOf(i);
-        const cls = `absolute transition-all duration-500 ease-out ${SLOTS[slot]}`;
-        return slot === 0 ? (
-          <Link key={s.id} href={seriesPath(s.slug)} aria-label={`${s.title} serisine git`} className={cls}>
-            <Cover url={s.cover_url} alt="" eager className="w-full" />
-          </Link>
-        ) : (
-          <button
+        return (
+          <div
             key={s.id}
-            type="button"
-            onClick={() => bring(slot)}
-            aria-label={`${s.title}: fiyat ve cilt bilgisini göster`}
-            className={`${cls} cursor-pointer`}
+            className={`absolute transition-all duration-500 ease-out ${SLOTS[slot]}`}
           >
-            <Cover url={s.cover_url} alt="" className="w-full" />
-          </button>
+            {slot === 0 ? (
+              <Link href={seriesPath(s.slug)} aria-label={`${s.title} serisine git`} className="block">
+                <Cover url={s.cover_url} alt="" eager className="w-full" />
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => bring(slot)}
+                aria-label={`${s.title}: fiyat ve cilt bilgisini göster`}
+                className="block w-full cursor-pointer"
+              >
+                <Cover url={s.cover_url} alt="" className="w-full" />
+              </button>
+            )}
+          </div>
         );
       })}
       {front.lowest_price !== null && (
