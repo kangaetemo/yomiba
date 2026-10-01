@@ -31,6 +31,18 @@ class SeriesVolumeOut(BaseModel):
     release_date: date | None = None
 
 
+class SeriesEditionOut(BaseModel):
+    """Another edition of the same work (e.g. "Soichi" <-> "Soichi (Bez Cilt)")."""
+
+    id: int
+    slug: str
+    title: str
+    publisher: str
+    volume_count: int = 0
+    in_stock_offers: int = 0
+    lowest_price: float | None = None
+
+
 class SeriesOut(BaseModel):
     id: int
     title: str
@@ -39,3 +51,5 @@ class SeriesOut(BaseModel):
     author: str | None = None
     cover_url: str | None = None
     volumes: list[SeriesVolumeOut] = []
+    #: Other editions of the same work; empty for most series.
+    editions: list[SeriesEditionOut] = []

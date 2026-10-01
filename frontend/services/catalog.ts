@@ -7,6 +7,7 @@ import { deleteJson, getJson, patchJson, postJson, putJson } from "@/lib/api";
 import type {
   CollectionStatus,
   HomeFeed,
+  PopularSeries,
   PriceAlertState,
   PriceDrop,
   PriceHistory,
@@ -17,8 +18,13 @@ import type {
 } from "@/types";
 
 /** `popular` = size of the popular pool; the hero rotates through all of it. */
-export function getHomeFeed(popular = 24): Promise<HomeFeed> {
-  return getJson<HomeFeed>(`/home?popular=${popular}`);
+export function getHomeFeed(popular = 24, oneShot = 48): Promise<HomeFeed> {
+  return getJson<HomeFeed>(`/home?popular=${popular}&one_shot=${oneShot}`);
+}
+
+/** Every one shot, in-stock first (the home shelf shows a rotating handful). */
+export function getAllOneShots(): Promise<{ one_shots: PopularSeries[] }> {
+  return getJson<{ one_shots: PopularSeries[] }>("/one-shots");
 }
 
 export function getPriceDrops(hours = 168, limit = 6): Promise<{ drops: PriceDrop[] }> {

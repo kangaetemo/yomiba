@@ -86,7 +86,7 @@ def reader_interest(session: Session) -> dict[int, float]:
 @router.get("/home")
 def home(
     popular: int = Query(default=8, ge=1, le=24),
-    one_shot: int = Query(default=8, ge=1, le=48),
+    one_shot: int = Query(default=8, ge=1, le=100),
     new: int = Query(default=10, ge=1, le=30),
     session: Session = Depends(get_db),
 ) -> dict:
@@ -189,6 +189,15 @@ def home(
     }
     return {"popular_series": popular_series, "one_shots": one_shots,
             "new_volumes": new_volumes, "stats": stats}
+
+
+@router.get("/one-shots")
+def all_one_shots(
+    limit: int = Query(default=500, ge=1, le=2000),
+    session: Session = Depends(get_db),
+) -> dict:
+    """Every one shot (the home shelf only shows a rotating handful)."""
+    return {"one_shots": _one_shots(session, reader_interest(session), limit)}
 
 
 def _one_shots(session: Session, interest: dict[int, float], limit: int) -> list[dict]:

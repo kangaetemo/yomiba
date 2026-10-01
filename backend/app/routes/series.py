@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..auth import optional_user
-from ..models import User
+from ..models import User, Volume
 from ..normalization.volume import UNNUMBERED_VOLUME
-from ..schemas.series import SeriesOut, SeriesVolumeOut
+from ..schemas.series import SeriesEditionOut, SeriesOut, SeriesVolumeOut
 from ..services import catalog_service, collections_service, series_slugs
 from ..utils import from_cents
 from ..services.covers import cover_url
@@ -45,6 +46,28 @@ def get_series_detail(
         for volume in detail.volumes
     ]
 
+    siblings = catalog_service.other_editions(session, detail.series.id)
+    sibling_ids = [s.id for s in siblings]
+    offers = catalog_service.series_offer_summary(session, sibling_ids)
+    sibling_slugs = series_slugs.slugs_for(session, sibling_ids)
+    volume_counts = dict(session.execute(
+        select(Volume.series_id, func.count()).where(
+            Volume.series_id.in_(sibling_ids), Volume.volume_number >= 0
+        ).group_by(Volume.series_id)
+    ).all()) if sibling_ids else {}
+    editions = [
+        SeriesEditionOut(
+            id=s.id,
+            slug=sibling_slugs[s.id],
+            title=s.title,
+            publisher=s.publisher.name,
+            volume_count=volume_counts.get(s.id, 0),
+            in_stock_offers=offers.get(s.id, (0, None))[0],
+            lowest_price=from_cents(offers.get(s.id, (0, None))[1]),
+        )
+        for s in siblings
+    ]
+
     return SeriesOut(
         id=detail.series.id,
         title=detail.series.title,
@@ -53,4 +76,5 @@ def get_series_detail(
         author=detail.series.author,
         cover_url=detail.cover_url,
         volumes=volumes,
+        editions=editions,
     )

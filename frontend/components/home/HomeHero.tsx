@@ -7,18 +7,10 @@
 import Link from "next/link";
 import { SearchSection } from "@/components/SearchSection";
 import { HeroShelf } from "@/components/home/HeroShelf";
+import { pickRandom } from "@/lib/random";
 import type { HomeFeed } from "@/types";
 
 const NUMBER = new Intl.NumberFormat("tr-TR");
-
-function pickRandom<T>(items: T[], count: number): T[] {
-  const pool = [...items];
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool.slice(0, count);
-}
 
 export function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: boolean }) {
   // The page is rendered per request, so each visit shows a different trio

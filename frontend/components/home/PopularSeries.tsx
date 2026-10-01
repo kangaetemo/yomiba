@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { pickRandom } from "@/lib/random";
 import { seriesPath } from "@/lib/paths";
 import { Cover, SectionHeading, formatTL } from "@/components/ui";
 import type { PopularSeries as Series } from "@/types";
@@ -23,8 +24,17 @@ export function PopularSeries({ series }: { series: Series[] }) {
   );
 }
 
+const ONE_SHOT_SHELF = 8;
+
+/** A rotating handful: in-stock one shots first (random among them), topped
+ * up with the rest only when fewer than a shelf are buyable. */
 export function OneShots({ series }: { series: Series[] }) {
   if (series.length === 0) return null;
+  const buyable = series.filter((s) => s.in_stock_offers > 0);
+  const shelf = [
+    ...pickRandom(buyable, ONE_SHOT_SHELF),
+    ...series.filter((s) => s.in_stock_offers === 0),
+  ].slice(0, ONE_SHOT_SHELF);
   return (
     <section id="one-shot" aria-labelledby="one-shot-title" className="scroll-mt-28 space-y-6">
       <SectionHeading
@@ -32,14 +42,15 @@ export function OneShots({ series }: { series: Series[] }) {
         folio="04"
         eyebrow="Tek ciltlik hikâyeler"
         title="One shot"
+        action={{ href: "/one-shot", label: "Tümünü göster" }}
         lead="Tek ciltte başlayıp biten hikâyeler: Japonya'da da Türkiye'de de tamamlanmış, tek cildi olan seriler."
       />
-      <SeriesGrid series={series} />
+      <SeriesGrid series={shelf} />
     </section>
   );
 }
 
-function SeriesGrid({ series }: { series: Series[] }) {
+export function SeriesGrid({ series }: { series: Series[] }) {
   return (
     <ul className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
       {series.map((s) => (

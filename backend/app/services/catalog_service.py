@@ -135,6 +135,31 @@ def series_offer_summary(
     return {sid: (count, price) for sid, count, price in rows}
 
 
+def other_editions(session: Session, series_id: int) -> list[Series]:
+    """Catalog series that are other editions of the same Mangakol work: the
+    plain entry ``<slug>`` and its variants ``<slug>~<format>``. Main
+    edition first, then variants by title."""
+    own = session.scalars(
+        select(CatalogSeries.mangakol_slug).where(CatalogSeries.series_id == series_id)
+    ).all()
+    bases = {slug.split("~")[0] for slug in own}
+    if not bases:
+        return []
+    conditions = []
+    for base in bases:
+        conditions.append(CatalogSeries.mangakol_slug == base)
+        conditions.append(CatalogSeries.mangakol_slug.startswith(f"{base}~", autoescape=True))
+    rows = session.execute(
+        select(CatalogSeries.series_id, CatalogSeries.mangakol_slug).where(or_(*conditions))
+    ).all()
+    is_main = {sid: "~" not in slug for sid, slug in rows}
+    ids = [sid for sid in is_main if sid != series_id]
+    if not ids:
+        return []
+    found = session.scalars(select(Series).options(selectinload(Series.publisher)).where(Series.id.in_(ids))).all()
+    return sorted(found, key=lambda s: (not is_main[s.id], s.title.casefold()))
+
+
 def search_series(session: Session, query: str) -> list[SeriesMatch]:
     """Match catalog series whose normalized title contains the query.
 

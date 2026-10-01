@@ -158,6 +158,80 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
         </div>
       </section>
 
+      {/* -- other editions (e.g. Soichi <-> Soichi (Bez Cilt)) ---------------- */}
+      {(detail.editions ?? []).length > 0 && (
+        <section aria-labelledby="baskilar" className="space-y-3">
+          <h2 id="baskilar" className="eyebrow">
+            Bu serinin başka baskıları
+          </h2>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {(detail.editions ?? []).map((e) => (
+              <li key={e.id}>
+                <Link
+                  href={seriesPath(e.slug)}
+                  className="group flex items-center justify-between gap-4 rounded-xl border border-line bg-surface px-4 py-3 shadow-card transition-colors hover:border-line-strong"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-ink group-hover:text-accent">{e.title}</p>
+                    <p className="truncate text-sm text-muted">
+                      {e.publisher} · {e.volume_count} cilt
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right text-sm">
+                    {e.lowest_price !== null ? (
+                      <span className="tabular font-bold text-ink">
+                        {formatTL(e.lowest_price)}
+                        <span className="font-normal text-muted">&apos;den</span>
+                      </span>
+                    ) : (
+                      <span className="text-faint">Stokta yok</span>
+                    )}
+                    <span aria-hidden className="ml-2 text-ink-2">→</span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* -- other editions (e.g. Soichi <-> Soichi (Bez Cilt)) ---------------- */}
+      {(detail.editions ?? []).length > 0 && (
+        <section aria-labelledby="baskilar" className="space-y-3">
+          <h2 id="baskilar" className="eyebrow">
+            Bu serinin başka baskıları
+          </h2>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {(detail.editions ?? []).map((e) => (
+              <li key={e.id}>
+                <Link
+                  href={seriesPath(e.slug)}
+                  className="group flex items-center justify-between gap-4 rounded-xl border border-line bg-surface px-4 py-3 shadow-card transition-colors hover:border-line-strong"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-ink group-hover:text-accent">{e.title}</p>
+                    <p className="truncate text-sm text-muted">
+                      {e.publisher} · {e.volume_count} cilt
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right text-sm">
+                    {e.lowest_price !== null ? (
+                      <span className="tabular font-bold text-ink">
+                        {formatTL(e.lowest_price)}
+                        <span className="font-normal text-muted">&apos;den</span>
+                      </span>
+                    ) : (
+                      <span className="text-faint">Stokta yok</span>
+                    )}
+                    <span aria-hidden className="ml-2 text-ink-2">→</span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* -- volumes ------------------------------------------------------ */}
       <section aria-labelledby="ciltler" className="space-y-4">
         <div className="rule" aria-hidden />

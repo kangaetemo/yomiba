@@ -114,6 +114,17 @@ export interface SeriesVolume {
   release_date?: string | null;
 }
 
+/** Another edition of the same work ("Soichi" <-> "Soichi (Bez Cilt)"). */
+export interface SeriesEdition {
+  id: number;
+  slug: string;
+  title: string;
+  publisher: string;
+  volume_count: number;
+  in_stock_offers: number;
+  lowest_price: number | null;
+}
+
 export interface SeriesDetail {
   id: number;
   title: string;
@@ -122,6 +133,8 @@ export interface SeriesDetail {
   author?: string | null;
   cover_url: string | null;
   volumes: SeriesVolume[];
+  /** Other editions of the same work; usually empty. */
+  editions?: SeriesEdition[];
 }
 
 export interface VolumeStore {
