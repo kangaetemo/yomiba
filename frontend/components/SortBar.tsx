@@ -30,6 +30,7 @@ export function SortBar({
           <Link
             key={s.key}
             href={hrefFor({ sort: s.key === sorts[0].key ? null : s.key })}
+            scroll={false}
             aria-current={s.key === active ? "true" : undefined}
             className={`${chip} ${s.key === active ? on : off}`}
           >
@@ -39,6 +40,7 @@ export function SortBar({
       </div>
       <Link
         href={hrefFor({ stock: stockOnly ? null : "1" })}
+        scroll={false}
         aria-pressed={stockOnly}
         className={`${chip} gap-1.5 ${stockOnly ? on : off}`}
       >
