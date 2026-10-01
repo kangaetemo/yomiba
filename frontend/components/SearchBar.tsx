@@ -10,11 +10,13 @@ export function SearchBar({
   onChange,
   onSubmit,
   loading,
+  autoFocus = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   loading: boolean;
+  autoFocus?: boolean;
 }) {
   return (
     <form
@@ -45,6 +47,7 @@ export function SearchBar({
         placeholder="Seri ara: Berserk, Dragon Ball, Zom 100…"
         aria-label="Manga ara"
         autoComplete="off"
+        autoFocus={autoFocus}
         className="min-w-0 flex-1 bg-transparent py-2.5 text-base text-ink placeholder:text-faint focus:outline-none sm:text-[1.05rem]"
       />
       <button

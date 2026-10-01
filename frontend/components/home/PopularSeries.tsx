@@ -1,38 +1,40 @@
 import Link from "next/link";
+import { seriesPath } from "@/lib/paths";
 import { Cover, SectionHeading, formatTL } from "@/components/ui";
-import { ShelfTabs } from "@/components/home/ShelfTabs";
 import type { PopularSeries as Series } from "@/types";
 
-/** Series shelf with two tabs: popular series (readers' collection /
- * wishlist interest first, then how widely the series is in stock) and one
- * shots (a single volume, completed in Japan and Turkey). Both lists are
- * ranked server-side, see GET /home. */
-export function PopularSeries({ series, oneShots }: { series: Series[]; oneShots: Series[] }) {
-  if (series.length === 0 && oneShots.length === 0) return null;
-  const shelves = [
-    {
-      label: "Popüler",
-      lead: "Okurların koleksiyonlarında ve istek listelerinde en çok yer alan, rafta en kolay bulunan seriler.",
-      items: series,
-    },
-    {
-      label: "One shot",
-      lead: "Tek ciltte başlayıp biten hikâyeler: Japonya'da da Türkiye'de de tamamlanmış, tek cildi olan seriler.",
-      items: oneShots,
-    },
-  ].filter((s) => s.items.length > 0);
-
+/** Home shelves: popular series (readers' collection / wishlist interest
+ * first, then how widely the series is in stock) and, as a separate section
+ * below, one shots (a single volume, completed in Japan and Turkey). Both
+ * lists are ranked server-side, see GET /home. */
+export function PopularSeries({ series }: { series: Series[] }) {
+  if (series.length === 0) return null;
   return (
     <section id="populer" aria-labelledby="populer-title" className="scroll-mt-28 space-y-6">
-      <SectionHeading id="populer-title" folio="01" eyebrow="Keşfet" title="Seriler" />
-      <ShelfTabs tabs={shelves.map((s) => ({ label: s.label }))}>
-        {shelves.map((s) => (
-          <div key={s.label} className="space-y-6">
-            <p className="max-w-2xl text-sm text-muted sm:text-base">{s.lead}</p>
-            <SeriesGrid series={s.items} />
-          </div>
-        ))}
-      </ShelfTabs>
+      <SectionHeading
+        id="populer-title"
+        folio="01"
+        eyebrow="Keşfet"
+        title="Popüler seriler"
+        lead="Okurların koleksiyonlarında ve istek listelerinde en çok yer alan, rafta en kolay bulunan seriler."
+      />
+      <SeriesGrid series={series} />
+    </section>
+  );
+}
+
+export function OneShots({ series }: { series: Series[] }) {
+  if (series.length === 0) return null;
+  return (
+    <section id="one-shot" aria-labelledby="one-shot-title" className="scroll-mt-28 space-y-6">
+      <SectionHeading
+        id="one-shot-title"
+        folio="04"
+        eyebrow="Tek ciltlik hikâyeler"
+        title="One shot"
+        lead="Tek ciltte başlayıp biten hikâyeler: Japonya'da da Türkiye'de de tamamlanmış, tek cildi olan seriler."
+      />
+      <SeriesGrid series={series} />
     </section>
   );
 }
@@ -42,7 +44,7 @@ function SeriesGrid({ series }: { series: Series[] }) {
     <ul className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
       {series.map((s) => (
         <li key={s.id}>
-          <Link href={`/series/${s.id}`} className="group block space-y-3">
+          <Link href={seriesPath(s.slug)} className="group block space-y-3">
             <div className="overflow-hidden rounded-[5px]">
               <Cover
                 url={s.cover_url}

@@ -4,6 +4,7 @@ import { Figtree, Fraunces } from "next/font/google";
 import "./globals.css";
 import { currentUserOrNull } from "@/services/auth";
 import { LogoutButton } from "@/components/LogoutButton";
+import { SearchDialogButton } from "@/components/SearchDialog";
 
 // Turkish needs latin-ext (ş, ğ, ı, İ).
 const body = Figtree({
@@ -55,7 +56,6 @@ function Logo() {
 }
 
 const SECTIONS = [
-  { href: "/#ara", label: "Ara" },
   { href: "/#indirimler", label: "İndirimler" },
   { href: "/#yeni", label: "Yeni çıkanlar" },
   { href: "/#populer", label: "Popüler" },
@@ -81,6 +81,7 @@ export default async function RootLayout({
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
             <Logo />
             <nav aria-label="Bölümler" className="hidden items-center gap-5 text-sm md:flex">
+              <SearchDialogButton className={`${navLink} inline-flex items-center gap-1.5`} />
               {SECTIONS.map((s) => (
                 <Link key={s.href} href={s.href} className={navLink}>
                   {s.label}
@@ -122,6 +123,9 @@ export default async function RootLayout({
           {/* Small screens: the section links get their own quiet row. */}
           <nav aria-label="Bölümler" className="border-t border-line md:hidden">
             <ul className="mx-auto flex max-w-6xl justify-between px-4 text-[0.95rem]">
+              <li>
+                <SearchDialogButton className="inline-flex min-h-11 items-center gap-1.5 px-1 text-ink-2 hover:text-accent" />
+              </li>
               {SECTIONS.map((s) => (
                 <li key={s.href}>
                   <Link href={s.href} className="inline-flex min-h-11 items-center px-1 text-ink-2 hover:text-accent">

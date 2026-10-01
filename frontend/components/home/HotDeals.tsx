@@ -1,3 +1,4 @@
+import { volumePath } from "@/lib/paths";
 import Link from "next/link";
 import { Badge, Cover, SectionHeading, formatTL } from "@/components/ui";
 import { volumeLabel } from "@/lib/volumeLabel";
@@ -53,7 +54,7 @@ export function HotDeals({ drops, windowDays }: { drops: PriceDrop[] | null; win
 function DealCard({ drop, featured = false }: { drop: PriceDrop; featured?: boolean }) {
   return (
     <Link
-      href={`/volume/${drop.volume_id}`}
+      href={volumePath(drop.series_slug, drop.volume_number)}
       className={`group flex h-full min-w-0 gap-4 rounded-xl border border-line bg-surface p-3.5 shadow-card transition-[border-color,box-shadow] hover:border-line-strong hover:shadow-lift ${
         featured ? "items-center gap-5 p-5 lg:flex-col lg:items-start lg:justify-between" : "items-center"
       } ${drop.in_stock ? "" : "opacity-70"}`}

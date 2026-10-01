@@ -23,7 +23,7 @@ const STEPS = [
 export function HowItWorks({ signedIn }: { signedIn: boolean }) {
   return (
     <section aria-labelledby="nasil-title" className="space-y-8">
-      <SectionHeading id="nasil-title" folio="04" eyebrow="Yomiba nasıl çalışır?" title="Üç adımda doğru fiyat" />
+      <SectionHeading id="nasil-title" folio="05" eyebrow="Yomiba nasıl çalışır?" title="Üç adımda doğru fiyat" />
 
       <ol className="grid gap-6 sm:grid-cols-3">
         {STEPS.map((s) => (

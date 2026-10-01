@@ -7,6 +7,7 @@
  */
 
 import Link from "next/link";
+import { volumePath } from "@/lib/paths";
 import { Cover, formatTL, volumeTitle } from "@/components/ui";
 import { VolumeQuickActions } from "@/components/VolumeQuickActions";
 import { StockBadge, storeSummary, volumeStock } from "@/components/volumeStock";
@@ -15,13 +16,15 @@ import type { SeriesVolume } from "@/types";
 export function VolumeTile({
   volume,
   seriesTitle,
+  seriesSlug,
   signedIn,
 }: {
   volume: SeriesVolume;
   seriesTitle: string;
+  seriesSlug: string;
   signedIn: boolean;
 }) {
-  const href = `/volume/${volume.id}`;
+  const href = volumePath(seriesSlug, volume.number);
   const label = volumeTitle(volume.number);
   const stock = volumeStock(volume);
   // A price nobody can buy right now is not shown as a price.

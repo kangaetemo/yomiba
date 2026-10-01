@@ -16,8 +16,9 @@ import type {
   WishlistState,
 } from "@/types";
 
-export function getHomeFeed(): Promise<HomeFeed> {
-  return getJson<HomeFeed>("/home");
+/** `popular` = size of the popular pool; the hero rotates through all of it. */
+export function getHomeFeed(popular = 24): Promise<HomeFeed> {
+  return getJson<HomeFeed>(`/home?popular=${popular}`);
 }
 
 export function getPriceDrops(hours = 168, limit = 6): Promise<{ drops: PriceDrop[] }> {
@@ -28,8 +29,9 @@ export function searchSeries(query: string): Promise<SearchResponse> {
   return getJson<SearchResponse>(`/search?q=${encodeURIComponent(query)}`);
 }
 
-export function getSeries(id: number): Promise<SeriesDetail> {
-  return getJson<SeriesDetail>(`/series/${id}`);
+/** `ref` is the public slug; a numeric id (old links) resolves too. */
+export function getSeries(ref: string | number): Promise<SeriesDetail> {
+  return getJson<SeriesDetail>(`/series/${encodeURIComponent(String(ref))}`);
 }
 
 export function getVolume(id: number): Promise<VolumeDetail> {

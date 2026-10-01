@@ -1,3 +1,4 @@
+import { volumePath } from "@/lib/paths";
 import Link from "next/link";
 import { Badge, Cover, SectionHeading, formatDate, formatTL, volumeTitle } from "@/components/ui";
 import type { NewVolume } from "@/types";
@@ -26,7 +27,7 @@ export function NewVolumes({ volumes }: { volumes: NewVolume[] }) {
       <ul className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-5">
         {volumes.map((v) => (
           <li key={v.id} className="w-36 shrink-0 snap-start sm:w-auto">
-            <Link href={`/volume/${v.id}`} className="group block space-y-2.5">
+            <Link href={volumePath(v.series_slug, v.number)} className="group block space-y-2.5">
               <div className="relative">
                 <Cover url={v.cover_url} alt={`${v.series_title} ${volumeTitle(v.number)} kapağı`} className="w-full" />
                 {isFresh(v.release_date) && (

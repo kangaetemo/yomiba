@@ -11,6 +11,8 @@ class SeriesSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    #: Public number-free URL slug (``/series/<slug>``).
+    slug: str = ""
     title: str
     publisher: str
     cover_url: str | None = None

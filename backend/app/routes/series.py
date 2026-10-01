@@ -10,20 +10,22 @@ from ..auth import optional_user
 from ..models import User
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.series import SeriesOut, SeriesVolumeOut
-from ..services import catalog_service, collections_service
+from ..services import catalog_service, collections_service, series_slugs
 from ..utils import from_cents
 from ..services.covers import cover_url
 
 router = APIRouter(tags=["series"])
 
 
-@router.get("/series/{series_id}", response_model=SeriesOut)
+@router.get("/series/{series_ref}", response_model=SeriesOut)
 def get_series_detail(
-    series_id: int,
+    series_ref: str,
     session: Session = Depends(get_db),
     user: User | None = Depends(optional_user),
 ) -> SeriesOut:
-    detail = catalog_service.get_series(session, series_id)
+    # The public URL uses the slug; a bare number (old links) still works.
+    series_id = series_slugs.series_id_for(session, series_ref)
+    detail = catalog_service.get_series(session, series_id) if series_id is not None else None
     if detail is None:
         raise HTTPException(status_code=404, detail="Seri bulunamadı.")
 
@@ -47,7 +49,7 @@ def get_series_detail(
         id=detail.series.id,
         title=detail.series.title,
         publisher=detail.series.publisher.name,
-        slug=detail.series.slug,
+        slug=series_slugs.slug_for(session, detail.series.id),
         author=detail.series.author,
         cover_url=detail.cover_url,
         volumes=volumes,

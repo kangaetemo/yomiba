@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { FollowMissingButton } from "@/components/FollowMissingButton";
 import { Cover, formatTL, volumeTitle } from "@/components/ui";
 import { VolumeCard } from "@/components/VolumeCard";
 import { VolumeTile } from "@/components/VolumeTile";
 import { ApiError } from "@/lib/api";
+import { seriesPath } from "@/lib/paths";
 import { currentUserOrNull } from "@/services/auth";
 import { getSeries } from "@/services/catalog";
 import type { CollectionStatus, SeriesVolume } from "@/types";
@@ -13,7 +14,7 @@ import type { CollectionStatus, SeriesVolume } from "@/types";
 export const dynamic = "force-dynamic";
 
 interface SeriesPageProps {
-  params: Promise<{ id: string }>;
+  params: Promise<{ slug: string }>;
   searchParams: Promise<{ status?: string; all?: string; sort?: string; view?: string }>;
 }
 
@@ -42,11 +43,9 @@ function cheapestInStock(volumes: SeriesVolume[]): SeriesVolume | null {
 }
 
 export async function generateMetadata({ params }: SeriesPageProps): Promise<Metadata> {
-  const { id } = await params;
-  const numId = Number(id);
-  if (!Number.isInteger(numId) || numId <= 0) return { title: "Seri bulunamadı" };
+  const { slug } = await params;
   try {
-    const detail = await getSeries(numId);
+    const detail = await getSeries(slug);
     return { title: `${detail.title} — ${detail.publisher}` };
   } catch {
     return { title: "Seri bulunamadı" };
@@ -54,17 +53,17 @@ export async function generateMetadata({ params }: SeriesPageProps): Promise<Met
 }
 
 export default async function SeriesPage({ params, searchParams }: SeriesPageProps) {
-  const { id } = await params;
-  const numId = Number(id);
-  if (!Number.isInteger(numId) || numId <= 0) notFound();
+  const { slug } = await params;
 
   let detail;
   try {
-    detail = await getSeries(numId);
+    detail = await getSeries(slug);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) notFound();
     throw e;
   }
+  // Old numeric links (and any non-canonical spelling) land on the slug URL.
+  if (detail.slug !== slug) permanentRedirect(seriesPath(detail.slug));
   const user = await currentUserOrNull();
   const signedIn = Boolean(user);
 
@@ -93,7 +92,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
     const current = { status: activeFilter === "all" ? null : activeFilter, all: all ?? null, sort: sort ?? null, view: view ?? null };
     for (const [k, v] of Object.entries({ ...current, ...changes })) if (v) next.set(k, v);
     const qs = next.toString();
-    return `/series/${numId}${qs ? `?${qs}` : ""}`;
+    return `${seriesPath(detail.slug)}${qs ? `?${qs}` : ""}`;
   };
 
   // Header facts.
@@ -234,13 +233,13 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
         ) : listView ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {visibleVolumes.map((volume) => (
-              <VolumeCard key={volume.id} volume={volume} />
+              <VolumeCard key={volume.id} volume={volume} seriesSlug={detail.slug} />
             ))}
           </div>
         ) : (
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
             {visibleVolumes.map((volume) => (
-              <VolumeTile key={volume.id} volume={volume} seriesTitle={detail.title} signedIn={signedIn} />
+              <VolumeTile key={volume.id} volume={volume} seriesTitle={detail.title} seriesSlug={detail.slug} signedIn={signedIn} />
             ))}
           </ul>
         )}

@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..services import series_slugs
 from ..services.covers import cover_url
 from ..utils import from_cents, utcnow
 
@@ -84,6 +85,7 @@ def price_drops(
     """Latest price drops observed within the window, newest first."""
     cutoff = utcnow() - timedelta(hours=hours)
     rows = session.execute(_DROP_SQL, {"cutoff": cutoff}).fetchmany(limit)
+    slugs = series_slugs.slugs_for(session, [r.series_id for r in rows])
     drops = []
     for r in rows:
         drops.append(
@@ -91,6 +93,7 @@ def price_drops(
                 "listing_id": r.listing_id,
                 "volume_id": r.volume_id,
                 "series_id": r.series_id,
+                "series_slug": slugs[r.series_id],
                 "series_title": r.series_title,
                 "volume_number": r.volume_number,
                 "store_name": r.store_name,

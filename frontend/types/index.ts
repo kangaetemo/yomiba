@@ -7,6 +7,7 @@
 
 export interface PopularSeries {
   id: number;
+  slug: string;
   title: string;
   publisher: string;
   author: string | null;
@@ -21,6 +22,7 @@ export interface PopularSeries {
 export interface NewVolume {
   id: number;
   series_id: number;
+  series_slug: string;
   series_title: string;
   publisher: string;
   number: number;
@@ -46,6 +48,7 @@ export interface PriceDrop {
   listing_id: number;
   volume_id: number;
   series_id: number;
+  series_slug: string;
   series_title: string;
   volume_number: number | null;
   store_name: string;
@@ -62,6 +65,7 @@ export interface PriceDrop {
 
 export interface SeriesSummary {
   id: number;
+  slug: string;
   title: string;
   publisher: string;
   cover_url: string | null;
@@ -136,6 +140,7 @@ export interface VolumeStore {
 
 export interface SeriesRef {
   id: number;
+  slug: string;
   title: string;
   publisher: string;
   author?: string | null;
@@ -378,6 +383,7 @@ export interface MyVolume {
   /** 0 is a real volume; null = unknown number. */
   volume_number: number | null;
   series_id: number;
+  series_slug: string;
   series_title: string;
   publisher: string;
   cover_url: string | null;

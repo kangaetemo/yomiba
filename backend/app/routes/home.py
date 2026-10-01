@@ -35,6 +35,7 @@ from ..models import (
     Volume,
     WishlistItem,
 )
+from ..services import series_slugs
 from ..services.covers import cover_url
 from ..utils import from_cents, utcnow
 
@@ -124,10 +125,12 @@ def home(
     }
     covers = _series_covers(session, popular_ids)
     popular_series = []
+    slugs = series_slugs.slugs_for(session, popular_ids)
     for sid, offer_count, min_price in ranked:
         series, publisher = series_rows[sid]
         popular_series.append({
             "id": sid,
+            "slug": slugs[sid],
             "title": series.title,
             "publisher": publisher,
             "author": series.author,
@@ -156,10 +159,12 @@ def home(
         .limit(new)
     ).all()
     fallback_covers = _series_covers(session, list({v.series_id for v, *_ in new_rows}))
+    new_slugs = series_slugs.slugs_for(session, [v.series_id for v, *_ in new_rows])
     new_volumes = [
         {
             "id": v.id,
             "series_id": v.series_id,
+            "series_slug": new_slugs[v.series_id],
             "series_title": title,
             "publisher": publisher,
             "number": v.volume_number,
@@ -216,9 +221,11 @@ def _one_shots(session: Session, interest: dict[int, float], limit: int) -> list
 
     picked = sorted(rows, key=rank)[:limit]
     covers = _series_covers(session, [s.id for s, _ in picked])
+    shot_slugs = series_slugs.slugs_for(session, [s.id for s, _ in picked])
     return [
         {
             "id": series.id,
+            "slug": shot_slugs[series.id],
             "title": series.title,
             "publisher": publisher,
             "author": series.author,

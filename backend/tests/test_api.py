@@ -179,8 +179,8 @@ def test_series_not_found(seeded):
     assert seeded.get("/series/9999").status_code == 404
 
 
-def test_series_invalid_id(seeded):
-    assert seeded.get("/series/abc").status_code == 422
+def test_series_unknown_slug(seeded):
+    assert seeded.get("/series/abc").status_code == 404  # a slug, just an unknown one
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@
 import Link from "next/link";
 import type { CollectionStatus, SeriesVolume } from "@/types";
 import { PriceBadge } from "@/components/PriceBadge";
+import { volumePath } from "@/lib/paths";
 import { volumeLabel } from "@/lib/volumeLabel";
 import { StockBadge, storeSummary, volumeStock } from "@/components/volumeStock";
 
@@ -22,14 +23,14 @@ const STATUS_LABEL: Record<CollectionStatus, string> = {
   wanted: "Takipte",
 };
 
-export function VolumeCard({ volume }: { volume: SeriesVolume }) {
+export function VolumeCard({ volume, seriesSlug }: { volume: SeriesVolume; seriesSlug: string }) {
   const label = volumeLabel(volume.number);
   const stock = volumeStock(volume);
   const buyable = stock === "in_stock";
 
   return (
     <Link
-      href={`/volume/${volume.id}`}
+      href={volumePath(seriesSlug, volume.number)}
       className="group flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-card transition-colors hover:border-line-strong"
     >
       <div className="min-w-0">

@@ -28,6 +28,7 @@ class VolumeStoreOut(BaseModel):
 
 class SeriesRefOut(BaseModel):
     id: int
+    slug: str = ""
     title: str
     publisher: str
     author: str | None = None

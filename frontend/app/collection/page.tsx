@@ -1,3 +1,4 @@
+import { volumePath } from "@/lib/paths";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -26,7 +27,7 @@ const STATUS_CHIP: Record<CollectionStatus, string> = {
 function Row({ item, children }: { item: MyVolume; children?: React.ReactNode }) {
   return (
     <Link
-      href={`/volume/${item.volume_id}`}
+      href={volumePath(item.series_slug, item.volume_number)}
       className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3 transition-colors hover:border-accent/60"
     >
       <div className="min-w-0">

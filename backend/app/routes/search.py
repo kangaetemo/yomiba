@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..schemas.search import ImportStatusOut, SearchResponse, SeriesSummary
-from ..services import catalog_service
+from ..services import catalog_service, series_slugs
 from ..utils import from_cents
 
 router = APIRouter(tags=["search"])
@@ -24,10 +24,12 @@ def search_series(
 
     matches = catalog_service.search_series(session, query)
     offers = catalog_service.series_offer_summary(session, [m.series.id for m in matches])
+    slugs = series_slugs.slugs_for(session, [m.series.id for m in matches])
     return SearchResponse(
         results=[
             SeriesSummary(
                 id=match.series.id,
+                slug=slugs[match.series.id],
                 title=match.series.title,
                 publisher=match.series.publisher.name,
                 cover_url=match.cover_url,

@@ -5,13 +5,15 @@
 
 import Link from "next/link";
 import { Cover, formatTL } from "@/components/ui";
+import { seriesPath } from "@/lib/paths";
 import type { SeriesSummary } from "@/types";
 
-export function SeriesCard({ series }: { series: SeriesSummary }) {
+export function SeriesCard({ series, onNavigate }: { series: SeriesSummary; onNavigate?: () => void }) {
   const price = series.lowest_price ?? null;
   return (
     <Link
-      href={`/series/${series.id}`}
+      href={seriesPath(series.slug)}
+      onClick={onNavigate}
       className="group grid grid-cols-[auto_1fr] gap-4 rounded-xl border border-line bg-surface p-4 shadow-card transition-[border-color,box-shadow] hover:border-line-strong hover:shadow-lift sm:grid-cols-[auto_1fr_auto] sm:gap-6"
     >
       <Cover url={series.cover_url} alt={`${series.title} kapağı`} className="w-20 sm:w-24" />

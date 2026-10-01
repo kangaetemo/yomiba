@@ -6,13 +6,29 @@
 
 import Link from "next/link";
 import { SearchSection } from "@/components/SearchSection";
+import { seriesPath } from "@/lib/paths";
 import { Cover, formatTL } from "@/components/ui";
-import type { HomeFeed } from "@/types";
+import type { HomeFeed, PopularSeries } from "@/types";
 
 const NUMBER = new Intl.NumberFormat("tr-TR");
 
+function pickRandom<T>(items: T[], count: number): T[] {
+  const pool = [...items];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, count);
+}
+
 export function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: boolean }) {
-  const shelf = (feed?.popular_series ?? []).filter((s) => s.cover_url).slice(0, 3);
+  // The page is rendered per request, so each visit shows a different trio
+  // from the whole popular pool instead of always the same top three.
+  const shelf = pickRandom(
+    // Only series someone can buy today (an in-stock price) with a cover.
+    (feed?.popular_series ?? []).filter((s) => s.cover_url && s.lowest_price !== null && s.in_stock_offers > 0),
+    3,
+  );
   const lead = shelf[0];
 
   return (
@@ -25,7 +41,7 @@ export function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: 
             className="text-[2.35rem] leading-[1.05] font-semibold text-ink sm:text-[3.4rem]"
           >
             Rafına eklenecek bir sonraki cilt,{" "}
-            <em className="font-medium text-accent not-italic [font-variation-settings:'SOFT'_100]">
+            <em className="font-sans font-bold tracking-tight text-accent not-italic">
               en uygun fiyatıyla
             </em>
             .
@@ -35,7 +51,7 @@ export function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: 
             bakışta bul. Koleksiyonunu tut, istek listeni oluştur, fiyat düşünce haberin olsun.
           </p>
 
-          <SearchSection />
+          <SearchSection syncUrl />
 
           <div className="flex flex-wrap items-center gap-3">
             <Link
@@ -72,17 +88,23 @@ export function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: 
         </div>
 
         {lead && (
-          <div aria-hidden className="relative mx-auto hidden h-[25rem] w-full max-w-md lg:block">
-            <div className="screentone absolute inset-6 rounded-[2rem] opacity-70 [mask-image:radial-gradient(closest-side,black,transparent)]" />
+          <div className="relative mx-auto hidden h-[25rem] w-full max-w-md lg:block">
+            <div
+              aria-hidden
+              className="screentone absolute inset-6 rounded-[2rem] opacity-70 [mask-image:radial-gradient(closest-side,black,transparent)]"
+            />
             {shelf[2] && (
-              <Cover url={shelf[2].cover_url} alt="" className="absolute top-10 right-4 w-36 rotate-[7deg]" />
+              <ShelfCover series={shelf[2]} className="absolute top-10 right-4 w-36 rotate-[7deg]" />
             )}
             {shelf[1] && (
-              <Cover url={shelf[1].cover_url} alt="" className="absolute top-4 left-4 w-36 -rotate-[8deg]" />
+              <ShelfCover series={shelf[1]} className="absolute top-4 left-4 w-36 -rotate-[8deg]" />
             )}
-            <Cover url={lead.cover_url} alt="" eager className="absolute top-12 left-1/2 w-44 -translate-x-1/2" />
+            <ShelfCover series={lead} eager className="absolute top-12 left-1/2 w-44 -translate-x-1/2" />
             {lead.lowest_price !== null && (
-              <div className="absolute bottom-6 left-1/2 w-64 -translate-x-1/2 rounded-xl border border-line bg-surface/95 p-3.5 shadow-lift backdrop-blur">
+              <Link
+                href={seriesPath(lead.slug)}
+                className="absolute bottom-6 left-1/2 w-64 -translate-x-1/2 rounded-xl border border-line bg-surface/95 p-3.5 shadow-lift backdrop-blur transition-colors hover:border-line-strong"
+              >
                 <p className="truncate font-display text-base text-ink">{lead.title}</p>
                 <div className="mt-1 flex items-baseline justify-between gap-3">
                   <span className="text-xs text-muted">
@@ -93,11 +115,31 @@ export function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: 
                     <span className="font-normal text-muted">&apos;den</span>
                   </span>
                 </div>
-              </div>
+              </Link>
             )}
           </div>
         )}
       </div>
     </section>
+  );
+}
+
+function ShelfCover({
+  series,
+  className,
+  eager = false,
+}: {
+  series: PopularSeries;
+  className: string;
+  eager?: boolean;
+}) {
+  return (
+    <Link
+      href={seriesPath(series.slug)}
+      aria-label={`${series.title} serisine git`}
+      className={`${className} transition-transform duration-300 hover:z-10 hover:scale-105`}
+    >
+      <Cover url={series.cover_url} alt="" eager={eager} className="w-full" />
+    </Link>
   );
 }

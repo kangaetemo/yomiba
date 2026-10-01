@@ -21,6 +21,7 @@ from ..schemas.wishlist import WishlistOut
 from ..services import (
     catalog_service,
     collections_service,
+    series_slugs,
     price_alerts_service,
     wishlist_service,
 )
@@ -65,6 +66,7 @@ def _build_volume_out(session: Session, volume_id: int, user_id: int | None = No
         cover_url=cover_url(volume.cover_key),
         series=SeriesRefOut(
             id=volume.series.id,
+            slug=series_slugs.slug_for(session, volume.series.id),
             title=volume.series.title,
             publisher=volume.series.publisher.name,
             author=volume.series.author,

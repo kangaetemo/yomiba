@@ -19,6 +19,7 @@ from ..database import get_db
 from ..models import PriceAlert, Publisher, Series, StoreListing, User, UserVolumeCollection, Volume, WishlistItem
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..utils import from_cents
+from ..services import series_slugs
 from ..services.covers import cover_url
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -28,6 +29,7 @@ class MyVolumeOut(BaseModel):
     volume_id: int
     volume_number: int | None
     series_id: int
+    series_slug: str = ""
     series_title: str
     publisher: str
     cover_url: str | None = None
@@ -64,6 +66,7 @@ def _volume_fields(session: Session, volume_ids: list[int]) -> dict[int, dict]:
                StoreListing.price.isnot(None))
         .group_by(StoreListing.volume_id)
     ).all())
+    slugs = series_slugs.slugs_for(session, [v.series_id for v, _, _ in rows])
     out = {}
     for volume, series_title, publisher in rows:
         phantom = volume.volume_number == UNNUMBERED_VOLUME
@@ -71,6 +74,7 @@ def _volume_fields(session: Session, volume_ids: list[int]) -> dict[int, dict]:
             "volume_id": volume.id,
             "volume_number": None if phantom else volume.volume_number,
             "series_id": volume.series_id,
+            "series_slug": slugs[volume.series_id],
             "series_title": series_title,
             "publisher": publisher,
             "cover_url": cover_url(volume.cover_key),
