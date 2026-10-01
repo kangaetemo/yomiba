@@ -58,6 +58,11 @@ class GerekliseylerScraper(BaseScraper):
     store_name = "Gerekli Şeyler"
     base_url = "https://www.gerekliseyler.com.tr"
 
+    def _limits(self) -> tuple[int, int]:
+        """(max search pages, max results) for this store."""
+        return (self.settings.gerekliseyler_max_search_pages,
+                self.settings.gerekliseyler_max_search_results)
+
     def search(self, query: str) -> list[SearchResult]:
         self.stats = {
             "pages_fetched": 0,
@@ -86,8 +91,9 @@ class GerekliseylerScraper(BaseScraper):
 
     # -- paginated search ----------------------------------------------------------
     def _search_pages(self, query: str) -> list[dict]:
-        max_pages = max(1, self.settings.gerekliseyler_max_search_pages)
-        max_results = max(1, self.settings.gerekliseyler_max_search_results)
+        pages_limit, results_limit = self._limits()
+        max_pages = max(1, pages_limit)
+        max_results = max(1, results_limit)
 
         items: list[dict] = []
         seen_urls: set[str] = set()
@@ -98,17 +104,17 @@ class GerekliseylerScraper(BaseScraper):
             response = self.get(url)
             if looks_like_blocked_page(response.status_code, response.text):
                 raise ScraperError(
-                    f"gerekliseyler: request blocked or robot-checked "
+                    f"{self.store_id}: request blocked or robot-checked "
                     f"(HTTP {response.status_code}) for query {query!r}"
                 )
             if response.status_code >= 400:
                 if page == 1:
                     raise ScraperError(
-                        f"gerekliseyler: HTTP {response.status_code} for search page 1 ({url})"
+                        f"{self.store_id}: HTTP {response.status_code} for search page 1 ({url})"
                     )
                 logger.warning(
-                    "gerekliseyler: search page %s failed (HTTP %s); keeping %s items",
-                    page, response.status_code, len(items),
+                    "%s: search page %s failed (HTTP %s); keeping %s items",
+                    self.store_id, page, response.status_code, len(items),
                 )
                 self.stats["stop_reason"] = "page_error"
                 break
@@ -146,8 +152,8 @@ class GerekliseylerScraper(BaseScraper):
 
         return items
 
-    @staticmethod
-    def _card_to_item(card) -> dict | None:
+    @classmethod
+    def _card_to_item(cls, card) -> dict | None:
         title_anchor = card.select_one("div.showcase-title a")
         if title_anchor is None:
             return None
@@ -155,7 +161,7 @@ class GerekliseylerScraper(BaseScraper):
         href = title_anchor.get("href")
         if not title or not href:
             return None
-        url = href if href.startswith("http") else urljoin(GerekliseylerScraper.base_url + "/", href)
+        url = href if href.startswith("http") else urljoin(cls.base_url + "/", href)
 
         brand_el = card.select_one("div.showcase-brand")
         publisher = re.sub(r"\s+", " ", brand_el.get_text(" ", strip=True)) if brand_el else ""
@@ -250,7 +256,7 @@ class GerekliseylerScraper(BaseScraper):
             response.status_code, response.text
         ):
             raise ScraperError(
-                f"gerekliseyler: detail page HTTP {response.status_code} for {result.product_url}"
+                f"{self.store_id}: detail page HTTP {response.status_code} for {result.product_url}"
             )
 
         match = self._STOK_KODU_ROW_RE.search(response.text)

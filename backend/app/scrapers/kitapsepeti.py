@@ -60,6 +60,11 @@ class KitapsepetiScraper(BaseScraper):
     #: stale_listing_ids); the detail JSON-LD carries offers.availability.
     verifies_unseen_listings = True
 
+    def _limits(self) -> tuple[int, int]:
+        """(max search pages, max results) for this store."""
+        return (self.settings.kitapsepeti_max_search_pages,
+                self.settings.kitapsepeti_max_search_results)
+
     def search(self, query: str) -> list[SearchResult]:
         self.stats = {
             "pages_fetched": 0,
@@ -88,8 +93,9 @@ class KitapsepetiScraper(BaseScraper):
 
     # -- paginated search ----------------------------------------------------------
     def _search_pages(self, query: str) -> list[dict]:
-        max_pages = max(1, self.settings.kitapsepeti_max_search_pages)
-        max_results = max(1, self.settings.kitapsepeti_max_search_results)
+        pages_limit, results_limit = self._limits()
+        max_pages = max(1, pages_limit)
+        max_results = max(1, results_limit)
 
         items: list[dict] = []
         seen_urls: set[str] = set()
@@ -99,17 +105,17 @@ class KitapsepetiScraper(BaseScraper):
             response = self.get(url)
             if looks_like_blocked_page(response.status_code, response.text):
                 raise ScraperError(
-                    f"kitapsepeti: request blocked or robot-checked "
+                    f"{self.store_id}: request blocked or robot-checked "
                     f"(HTTP {response.status_code}) for query {query!r}"
                 )
             if response.status_code >= 400:
                 if page == 1:
                     raise ScraperError(
-                        f"kitapsepeti: HTTP {response.status_code} for search page 1 ({url})"
+                        f"{self.store_id}: HTTP {response.status_code} for search page 1 ({url})"
                     )
                 logger.warning(
-                    "kitapsepeti: search page %s failed (HTTP %s); keeping %s items",
-                    page, response.status_code, len(items),
+                    "%s: search page %s failed (HTTP %s); keeping %s items",
+                    self.store_id, page, response.status_code, len(items),
                 )
                 self.stats["stop_reason"] = "page_error"
                 break
@@ -149,8 +155,8 @@ class KitapsepetiScraper(BaseScraper):
 
         return items
 
-    @staticmethod
-    def _card_to_item(card) -> dict | None:
+    @classmethod
+    def _card_to_item(cls, card) -> dict | None:
         title_anchor = card.select_one("a.product-title")
         if title_anchor is None:
             return None
@@ -158,7 +164,7 @@ class KitapsepetiScraper(BaseScraper):
         href = title_anchor.get("href")
         if not title or not href:
             return None
-        url = href if href.startswith("http") else urljoin(KitapsepetiScraper.base_url + "/", href)
+        url = href if href.startswith("http") else urljoin(cls.base_url + "/", href)
 
         publisher_el = card.select_one("a.brand-title")
         publisher = re.sub(r"\s+", " ", publisher_el.get_text(" ", strip=True)) if publisher_el else ""
@@ -241,7 +247,7 @@ class KitapsepetiScraper(BaseScraper):
             response.status_code, response.text
         ):
             raise ScraperError(
-                f"kitapsepeti: detail page HTTP {response.status_code} for {result.product_url}"
+                f"{self.store_id}: detail page HTTP {response.status_code} for {result.product_url}"
             )
 
         node = self.product_json_ld_node(self.extract_json_ld(response.text))

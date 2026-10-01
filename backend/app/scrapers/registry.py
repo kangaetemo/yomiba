@@ -18,6 +18,8 @@ from .kitapbulan import KitapbulanScraper
 from .kitapsec import KitapsecScraper
 from .kitapsepeti import KitapsepetiScraper
 from .komikseyler import KomikseylerScraper
+from .buyuludukkan import BuyuludukkanScraper
+from .istanbulkitapcisi import IstanbulkitapcisiScraper
 from .base import BaseScraper
 from ..config import get_settings
 
@@ -35,6 +37,8 @@ _SCRAPERS: dict[str, type[BaseScraper]] = {
         KitapsecScraper,
         KomikseylerScraper,
         EdessaScraper,
+        BuyuludukkanScraper,
+        IstanbulkitapcisiScraper,
     )
 }
 

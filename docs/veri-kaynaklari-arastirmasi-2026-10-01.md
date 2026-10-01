@@ -10,6 +10,18 @@
 
 **Önemli uyarı:** Testler bu bilgisayarın ağından yapıldı, Railway sunucusundan değil. Cizman buradan açılıyor ama Railway'e Cloudflare 403 döndürüyor; bu yüzden kapatılmıştı. Aşağıdaki "erişilebilir" sonuçlar, üretimde kullanmadan önce **Railway'den tekrar doğrulanmalı**. Bu özellikle Kitapyurdu ve idefix için geçerli.
 
+## Railway sunucusundan erişim testi (1 Ekim, admin "Mağaza erişim testi")
+
+Asıl karar bu tabloya göre verilir. Ev ve ofis ağındaki sonuçlar sunucuyu temsil etmiyor.
+
+- **Sunucudan erişilebilir, entegre edilebilir:** idefix (kategori ve ürün sayfası, ISBN okundu), Büyülü Dükkan, İstanbul Kitapçısı, Ucuzkitapal, Marmara Çizgi Dükkan, Ekin Kitap, Arka Bahçe (yalnızca arama), AniList, 1000Kitap.
+- **Sunucudan engelli:**
+  - **Kitapyurdu:** arama ve ürün sayfası 403 (duvar). Buradan açılıyor ama sunucuya kapalı; ortaklık dışında yol yok.
+  - Cizman (hâlâ 403), Trendyol, n11, Hepsiburada.
+- **Sürprizler:**
+  - **Amazon TR:** sunucudan 200 döndü ve 24 cilt görüldü. Geçmişte arada bir açılıp çoğunlukla 503 veriyordu. Açmadan önce birkaç gün tekrar test edilmeli. Amazon'un kullanım koşulları otomatik erişimi yasaklıyor; `store-access-research.md` dosyasına bakın.
+  - **D&R:** 403 değil **404** döndü (196 KB'lık normal bir sayfa). Yani sunucu D&R'a ulaşıyor ama arama adresi değişmiş. Doğru adres bulunursa D&R doğrudan da kullanılabilir. Fiyatları zaten idefix'te var.
+
 ## 1. Fiyat kaynakları: yeni ve erişilebilir
 
 | Kaynak | Arama | Ürün verisi | Not | Öncelik |

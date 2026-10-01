@@ -84,6 +84,10 @@ class Settings:
     # (public WooCommerce Store API, per_page=100).
     gerekliseyler_max_search_pages: int = int(os.getenv("GEREKLISEYLER_MAX_SEARCH_PAGES", "5"))
     gerekliseyler_max_search_results: int = int(os.getenv("GEREKLISEYLER_MAX_SEARCH_RESULTS", "60"))
+    buyuludukkan_max_search_pages: int = int(os.getenv("BUYULUDUKKAN_MAX_SEARCH_PAGES", "5"))
+    buyuludukkan_max_search_results: int = int(os.getenv("BUYULUDUKKAN_MAX_SEARCH_RESULTS", "60"))
+    istanbulkitapcisi_max_search_pages: int = int(os.getenv("ISTANBULKITAPCISI_MAX_SEARCH_PAGES", "5"))
+    istanbulkitapcisi_max_search_results: int = int(os.getenv("ISTANBULKITAPCISI_MAX_SEARCH_RESULTS", "60"))
     cizman_max_search_results: int = int(os.getenv("CIZMAN_MAX_SEARCH_RESULTS", "60"))
     kitapsec_max_search_pages: int = int(os.getenv("KITAPSEC_MAX_SEARCH_PAGES", "5"))
     kitapsec_max_search_results: int = int(os.getenv("KITAPSEC_MAX_SEARCH_RESULTS", "60"))

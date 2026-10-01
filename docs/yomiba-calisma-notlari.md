@@ -93,6 +93,20 @@ Ayrıntılar `docs/veri-kaynaklari-arastirmasi-2026-10-01.md` dosyasında.
   - **1000Kitap:** Türkçe özet ve okur puanı.
 - Testler bu ağdan yapıldı. Önce Railway'den erişim doğrulanmalı (Cizman örneği).
 
+## Mağaza erişim testi ve yeni mağazalar (1 Ekim)
+
+- **Erişim testi:** Admin paneline "Mağaza erişim testi" eklendi (`3730b8d`). Railway'den yapılan ilk testte:
+  - Kitapyurdu **403**: sunucuya kapalı.
+  - Amazon 200 döndü (tekrar test edilmeli).
+  - D&R 404 döndü: erişim var, arama adresi değişmiş.
+  - idefix ve küçük mağazalar açık.
+- **Yeni mağazalar:**
+  - **Büyülü Dükkan:** Gerekli Şeyler scraper'ının alt sınıfı (IdeaSoft).
+  - **İstanbul Kitapçısı:** Kitap Sepeti scraper'ının alt sınıfı (T-Soft).
+  - Üst sınıflardaki sabit adlar (`_limits()`, `cls.base_url`, `self.store_id`) genelleştirildi; davranış değişmedi.
+- **Canlı uçtan uca deneme:** Büyülü Dükkan Berserk 1–19'u, İstanbul Kitapçısı 1–12'yi eşledi.
+- **Ucuzkitapal eklenmedi:** Denenen tüm manga aramalarında (Berserk, One Piece, JJK, Chainsaw Man, Kaiju, Blue Lock, Naruto) her ürün "Stokta yok". Stok gelirse kolay eklenir: CS-Cart, kapak dosya adı ISBN, başlık "Ad - Yazar - Yayınevi" biçiminde.
+
 ## Açık fikirler / belki sonra
 
 - Seri sayfalarında "diğer baskılar" bağlantısı (Soichi ↔ Soichi (Bez Cilt)).

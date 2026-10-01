@@ -29,6 +29,8 @@ SEED_STORES: tuple[tuple[str, str], ...] = (
     ("kitapsec", "Kitapsec"),
     ("komikseyler", "Komikşeyler"),
     ("edessa", "Edessa Kitabevi"),
+    ("buyuludukkan", "Büyülü Dükkan"),
+    ("istanbulkitapcisi", "İstanbul Kitapçısı"),
 )
 
 

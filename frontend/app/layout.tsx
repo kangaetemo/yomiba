@@ -36,6 +36,8 @@ const STORES = [
   "Kitapsec",
   "Komikşeyler",
   "Edessa Kitabevi",
+  "Büyülü Dükkan",
+  "İstanbul Kitapçısı",
 ];
 
 /** Wordmark: "Yomiba" (読み場, "a place to read") with a hanko seal. */
