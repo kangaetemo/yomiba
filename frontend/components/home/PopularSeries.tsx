@@ -26,15 +26,12 @@ export function PopularSeries({ series }: { series: Series[] }) {
 
 const ONE_SHOT_SHELF = 8;
 
-/** A rotating handful: in-stock one shots first (random among them), topped
- * up with the rest only when fewer than a shelf are buyable. */
+/** A rotating handful of one shots that are in stock somewhere (sold-out
+ * ones are not shown on the home page; the full list is on /one-shot). */
 export function OneShots({ series }: { series: Series[] }) {
-  if (series.length === 0) return null;
-  const buyable = series.filter((s) => s.in_stock_offers > 0);
-  const shelf = [
-    ...pickRandom(buyable, ONE_SHOT_SHELF),
-    ...series.filter((s) => s.in_stock_offers === 0),
-  ].slice(0, ONE_SHOT_SHELF);
+  const buyable = series.filter((s) => s.in_stock_offers > 0 && s.lowest_price !== null);
+  if (buyable.length === 0) return null;
+  const shelf = pickRandom(buyable, ONE_SHOT_SHELF);
   return (
     <section id="one-shot" aria-labelledby="one-shot-title" className="scroll-mt-28 space-y-6">
       <SectionHeading

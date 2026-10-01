@@ -26,7 +26,7 @@ SEED_STORES: tuple[tuple[str, str], ...] = (
     ("kitapbulan", "Kitapbulan"),
     ("gerekliseyler", "Gerekli Şeyler"),
     ("cizman", "Cizman"),
-    ("kitapsec", "Kitapsec"),
+    ("kitapsec", "Kitapseç"),
     ("komikseyler", "Komikşeyler"),
     ("edessa", "Edessa Kitabevi"),
     ("buyuludukkan", "Büyülü Dükkan"),
@@ -35,7 +35,9 @@ SEED_STORES: tuple[tuple[str, str], ...] = (
 
 
 def seed_stores(session: Session) -> int:
-    """Idempotently create the known stores (matched by code)."""
+    """Idempotently create the known stores (matched by code). The display
+    name follows this list, so a corrected spelling ("Kitapsec" ->
+    "Kitapseç") reaches the existing row on the next start."""
     created = 0
     for code, name in SEED_STORES:
         existing = session.scalar(select(Store).where(Store.code == code))
@@ -43,5 +45,8 @@ def seed_stores(session: Session) -> int:
             session.add(Store(code=code, name=name))
             created += 1
             logger.info("seed: created store %r (%s)", name, code)
+        elif existing.name != name:
+            logger.info("seed: renamed store %s %r -> %r", code, existing.name, name)
+            existing.name = name
     session.commit()
     return created

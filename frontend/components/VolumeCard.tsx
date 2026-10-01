@@ -44,10 +44,12 @@ export function VolumeCard({ volume, seriesSlug }: { volume: SeriesVolume; serie
             </span>
           )}
         </p>
-        <p className="truncate text-xs text-muted">
-          {storeSummary(volume)}
-          {buyable && volume.best_store ? ` · En ucuz: ${volume.best_store}` : ""}
-        </p>
+        {buyable && (
+          <p className="truncate text-xs text-muted">
+            {storeSummary(volume)}
+            {volume.best_store ? ` · En ucuz: ${volume.best_store}` : ""}
+          </p>
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {!buyable && <StockBadge volume={volume} />}

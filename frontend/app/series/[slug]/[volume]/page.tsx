@@ -110,7 +110,10 @@ export default async function VolumePage({ params }: VolumePageProps) {
   const historyListings = (history?.listings ?? []).filter((l) => l.points.length > 0);
   const best = detail.unverified ? null : cheapest(detail.stores);
   const buyable = detail.stores.filter((s) => s.stock && !s.stale);
-  const unavailable = detail.stores.filter((s) => !s.stock || s.stale);
+  // Out-of-stock offers are never shown to readers; admins still see them
+  // (to remove a wrong match).
+  const isAdmin = user?.role === "ADMIN";
+  const unavailable = isAdmin ? detail.stores.filter((s) => !s.stock || s.stale) : [];
   const inStock = buyable.length;
   const adminRemove = (listing: VolumeStore) =>
     user?.role === "ADMIN" && listing.id ? (
@@ -223,14 +226,11 @@ export default async function VolumePage({ params }: VolumePageProps) {
               </span>
             </a>
           )}
-          {!best && !detail.unverified && detail.stores.length > 0 && (
+          {!best && !detail.unverified && (
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface px-5 py-4">
               <div>
                 <p className="font-display text-xl text-ink">Şu an hiçbir mağazada stokta yok</p>
                 <p className="mt-1 text-sm text-muted">
-                  {detail.stores.some((s) => s.stale)
-                    ? "Bazı mağazaların stok bilgisi güncel değil. "
-                    : ""}
                   Hedef fiyatını kaydet; stoğa girip fiyatı düştüğünde görebilirsin.
                 </p>
               </div>
@@ -281,10 +281,10 @@ export default async function VolumePage({ params }: VolumePageProps) {
                 Bu kaydın cilt numarası doğrulanamadı; eski mağaza fiyatları güncel olmadığı için
                 gösterilmiyor.
               </p>
-            ) : detail.stores.length === 0 ? (
+            ) : buyable.length === 0 && unavailable.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-line-strong bg-surface/70 p-6 text-sm text-muted">
-                Bu cilt için henüz mağaza fiyatı yok. Fiyatlar düzenli olarak kontrol edilir; bulunan
-                ilk teklif burada görünür.
+                Bu cildi şu an stokta satan bir mağaza yok. Fiyatlar düzenli olarak kontrol edilir;
+                stoğa giren ilk teklif burada görünür.
               </p>
             ) : (
               <>
@@ -301,9 +301,9 @@ export default async function VolumePage({ params }: VolumePageProps) {
                   </div>
                 )}
                 {unavailable.length > 0 && (
-                  <details open={buyable.length === 0} className="group rounded-2xl border border-line bg-surface/60">
+                  <details className="group rounded-2xl border border-dashed border-line-strong bg-surface/60">
                     <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-semibold text-muted hover:text-ink">
-                      <span>Stokta olmayan mağazalar ({unavailable.length})</span>
+                      <span>Admin: stokta olmayan kayıtlar ({unavailable.length}) · ziyaretçiler görmez</span>
                       <span aria-hidden className="transition-transform group-open:rotate-180">⌄</span>
                     </summary>
                     <div className="divide-y divide-line border-t border-line">
@@ -383,7 +383,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
                       {volumeTitle(v.number)}
                     </p>
                     <p className="tabular text-xs text-muted">
-                      {v.in_stock_count > 0 ? formatTL(v.best_price) : v.store_count > 0 ? "Stokta yok" : "Fiyat yok"}
+                      {v.in_stock_count > 0 && v.best_price !== null ? formatTL(v.best_price) : "Stokta yok"}
                     </p>
                   </Link>
                 </li>

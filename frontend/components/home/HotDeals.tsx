@@ -17,7 +17,8 @@ function timeAgo(iso: string): string {
  * store's own "discount" label. The biggest drop leads, editorial-style. */
 export function HotDeals({ drops, windowDays }: { drops: PriceDrop[] | null; windowDays: number }) {
   if (drops === null) return null; // feed unreachable: hide, never break the page
-  const sorted = [...drops].sort((a, b) => b.drop_pct - a.drop_pct);
+  // The feed only returns in-stock drops; a sold-out deal is never shown.
+  const sorted = drops.filter((d) => d.in_stock).sort((a, b) => b.drop_pct - a.drop_pct);
   const [feature, ...rest] = sorted;
 
   return (
@@ -57,7 +58,7 @@ function DealCard({ drop, featured = false }: { drop: PriceDrop; featured?: bool
       href={volumePath(drop.series_slug, drop.volume_number)}
       className={`group flex h-full min-w-0 gap-4 rounded-xl border border-line bg-surface p-3.5 shadow-card transition-[border-color,box-shadow] hover:border-line-strong hover:shadow-lift ${
         featured ? "items-center gap-5 p-5 lg:flex-col lg:items-start lg:justify-between" : "items-center"
-      } ${drop.in_stock ? "" : "opacity-70"}`}
+      }`}
     >
       <Cover
         url={drop.image_url}
@@ -68,7 +69,6 @@ function DealCard({ drop, featured = false }: { drop: PriceDrop; featured?: bool
         <div className="flex flex-wrap gap-1.5">
           <Badge tone="deal">%{drop.drop_pct} indirim</Badge>
           {drop.lowest_ever && <Badge tone="lowest">En düşük fiyat</Badge>}
-          {!drop.in_stock && <Badge tone="soldout">Stokta yok</Badge>}
         </div>
         <p className={`truncate font-display text-ink group-hover:text-accent ${featured ? "text-xl" : "text-base"}`}>
           {drop.series_title}

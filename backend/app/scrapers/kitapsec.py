@@ -61,7 +61,7 @@ _PUBLISHER_SUFFIX_RE = re.compile(
 
 class KitapsecScraper(BaseScraper):
     store_id = "kitapsec"
-    store_name = "Kitapsec"
+    store_name = "Kitapseç"
     base_url = "https://www.kitapsec.com"
     search_path = "/Arama/index.php"
     #: Live-verified 2026-09-29: sold-out products vanish from search (every

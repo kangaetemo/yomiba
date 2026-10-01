@@ -70,6 +70,8 @@ _DROP_SQL = text(
     WHERE d.prev_price IS NOT NULL
       AND d.price < d.prev_price
       AND v.volume_number >= 0
+      -- a drop nobody can buy is not a deal: sold-out offers are never shown
+      AND sl.in_stock
       AND d.checked_at >= :cutoff
     ORDER BY d.checked_at DESC, d.listing_id DESC
     """

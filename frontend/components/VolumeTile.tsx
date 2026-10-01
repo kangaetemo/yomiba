@@ -29,11 +29,7 @@ export function VolumeTile({
   const stock = volumeStock(volume);
   // A price nobody can buy right now is not shown as a price.
   const hasPrice = stock === "in_stock" && volume.best_price !== null;
-  const priceLabel = hasPrice
-    ? "En düşük fiyat"
-    : stock === "none"
-      ? "Fiyat bekleniyor"
-      : "Şu an satışta değil";
+  const priceLabel = hasPrice ? "En düşük fiyat" : "Şu an satışta değil";
 
   return (
     <li className="flex flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-card transition-shadow hover:shadow-lift">
@@ -42,7 +38,7 @@ export function VolumeTile({
           url={volume.cover_url ?? null}
           alt=""
           className={`w-full transition-transform duration-300 group-hover:-translate-y-0.5 ${
-            stock === "sold_out" ? "opacity-60 grayscale-[35%]" : ""
+            stock === "out_of_stock" ? "opacity-60 grayscale-[35%]" : ""
           }`}
         />
       </Link>
@@ -60,7 +56,7 @@ export function VolumeTile({
           )}
         </div>
 
-        <p className="text-xs text-muted">{storeSummary(volume)}</p>
+        {hasPrice && <p className="text-xs text-muted">{storeSummary(volume)}</p>}
 
         <div className="mt-auto space-y-1.5 border-t border-line pt-2">
           <div className="flex flex-wrap items-end justify-between gap-x-2 gap-y-1">
@@ -82,7 +78,7 @@ export function VolumeTile({
             href={href}
             className="group/cta inline-flex min-h-9 items-center gap-1 text-sm font-semibold text-accent hover:text-accent-hover"
           >
-            {volume.store_count > 1 ? "Fiyatları karşılaştır" : "Cildi incele"}
+            {volume.in_stock_count > 1 ? "Fiyatları karşılaştır" : "Cildi incele"}
             <span aria-hidden className="transition-transform group-hover/cta:translate-x-0.5">→</span>
           </Link>
         </div>

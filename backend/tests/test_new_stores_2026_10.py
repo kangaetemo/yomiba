@@ -118,3 +118,18 @@ def test_parent_stores_keep_their_identity():
 
     assert GerekliseylerScraper.base_url == "https://www.gerekliseyler.com.tr"
     assert KitapsepetiScraper.base_url == "https://www.kitapsepeti.com"
+
+
+def test_seed_renames_existing_store(db_session):
+    """"Kitapsec" was seeded without the ç; the next start fixes the row."""
+    from sqlalchemy import select
+
+    from app.models import Store
+    from app.seed import seed_stores
+
+    db_session.add(Store(code="kitapsec", name="Kitapsec"))
+    db_session.commit()
+    seed_stores(db_session)
+    assert db_session.scalar(select(Store.name).where(Store.code == "kitapsec")) == "Kitapseç"
+    seed_stores(db_session)  # idempotent
+    assert db_session.scalar(select(Store.name).where(Store.code == "kitapsec")) == "Kitapseç"

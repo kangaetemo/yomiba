@@ -33,7 +33,7 @@ const STORES = [
   "Gerekli Şeyler",
   "Kitap Sepeti",
   "Kitapbulan",
-  "Kitapsec",
+  "Kitapseç",
   "Komikşeyler",
   "Edessa Kitabevi",
   "Büyülü Dükkan",

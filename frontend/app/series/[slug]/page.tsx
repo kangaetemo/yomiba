@@ -125,7 +125,6 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
 
   // Header facts.
   const cheapest = cheapestInStock(detail.volumes);
-  const priced = detail.volumes.filter((v) => v.store_count > 0);
   const inStock = detail.volumes.filter((v) => v.in_stock_count > 0);
   const owned = detail.volumes.filter((v) => v.collection_status === "owned").length;
   const tracked = detail.volumes.filter((v) => v.collection_status === "wanted").length;
@@ -167,9 +166,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
               <dd className="text-xs text-muted">
                 {cheapest
                   ? `${volumeTitle(cheapest.number)}${cheapest.best_store ? ` · ${cheapest.best_store}` : ""}`
-                  : priced.length > 0
-                    ? "Şu an stokta cilt yok"
-                    : "Henüz fiyat yok"}
+                  : "Şu an stokta cilt yok"}
               </dd>
             </div>
             <div>

@@ -73,6 +73,16 @@ class TestPriceDrops:
         assert d["volume_number"] == 1
         assert d["in_stock"] is True
 
+    def test_sold_out_listing_drop_is_not_reported(self, db_session, client):
+        """A drop on a listing that is now out of stock is not a deal."""
+        listing = _seed(db_session)
+        _history(db_session, listing, 14990, when=utcnow() - timedelta(hours=2))
+        _history(db_session, listing, 9990)
+        listing.in_stock = False
+        db_session.commit()
+
+        assert client.get("/price-drops").json()["drops"] == []
+
     def test_price_rise_is_not_reported(self, db_session, client):
         listing = _seed(db_session)
         _history(db_session, listing, 9990, when=utcnow() - timedelta(hours=2))

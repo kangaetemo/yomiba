@@ -6,26 +6,22 @@
 import { Badge, type BadgeTone } from "@/components/ui";
 import type { SeriesVolume } from "@/types";
 
-export type VolumeStock = "none" | "in_stock" | "sold_out" | "unknown";
+/** Only stores that have a volume in stock count anywhere on the site:
+ * sold-out, stale ("stok belirsiz") and never-priced all read the same,
+ * "Stokta yok" — a reader cannot buy it in any of those cases. */
+export type VolumeStock = "in_stock" | "out_of_stock";
 
 export function volumeStock(v: SeriesVolume): VolumeStock {
-  if (v.store_count === 0) return "none";
-  if (v.in_stock_count > 0) return "in_stock";
-  // No store has it in stock: stores that SAY sold out vs listings that
-  // simply stopped showing up (stale), where stock is unknown.
-  return v.stale_count > 0 ? "unknown" : "sold_out";
+  return v.in_stock_count > 0 && v.best_price !== null ? "in_stock" : "out_of_stock";
 }
 
-const STOCK_BADGE: Record<Exclude<VolumeStock, "none">, { tone: BadgeTone; label: string }> = {
+const STOCK_BADGE: Record<VolumeStock, { tone: BadgeTone; label: string }> = {
   in_stock: { tone: "stock", label: "Stokta" },
-  sold_out: { tone: "soldout", label: "Tükendi" },
-  unknown: { tone: "stale", label: "Stok belirsiz" },
+  out_of_stock: { tone: "soldout", label: "Stokta yok" },
 };
 
 export function StockBadge({ volume, className = "" }: { volume: SeriesVolume; className?: string }) {
-  const state = volumeStock(volume);
-  if (state === "none") return null;
-  const { tone, label } = STOCK_BADGE[state];
+  const { tone, label } = STOCK_BADGE[volumeStock(volume)];
   return (
     <Badge tone={tone} dot className={className}>
       {label}
@@ -33,13 +29,9 @@ export function StockBadge({ volume, className = "" }: { volume: SeriesVolume; c
   );
 }
 
-/** "3/4 mağazada stokta", or "4 mağaza" when every store has it. */
+/** "3 mağazada stokta" — stores without stock are not counted. */
 export function storeSummary(v: SeriesVolume): string {
-  if (v.store_count === 0) return "Henüz mağaza yok";
-  if (v.in_stock_count === v.store_count || v.in_stock_count === 0) {
-    return `${v.store_count} mağaza`;
-  }
-  return `${v.in_stock_count}/${v.store_count} mağazada stokta`;
+  return volumeStock(v) === "in_stock" ? `${v.in_stock_count} mağazada stokta` : "Şu an satan mağaza yok";
 }
 
 // -- icons ----------------------------------------------------------------------
