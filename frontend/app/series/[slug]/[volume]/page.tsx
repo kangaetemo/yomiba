@@ -215,7 +215,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
             >
               <div>
                 <p className="text-sm text-accent">En düşük fiyat</p>
-                <p className="tabular font-display text-4xl text-ink">{formatTL(best.price)}</p>
+                <p className="tabular font-sans text-4xl font-bold tracking-tight text-ink">{formatTL(best.price)}</p>
                 <p className="mt-1 text-sm text-muted">{best.stores.join(" · ")}</p>
               </div>
               <span className="inline-flex min-h-11 items-center gap-1 font-semibold text-ink-2 group-hover:text-accent">

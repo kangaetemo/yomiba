@@ -1,0 +1,83 @@
+"use client";
+
+/**
+ * HeroShelf: three covers fanned out; the price card follows the cover in
+ * front. Tapping a cover at the side brings it to the front (its volume count
+ * and price show up in the card); only the front cover, or the card, opens
+ * the series, so the page never navigates by accident.
+ */
+
+import Link from "next/link";
+import { useState } from "react";
+import { Cover, formatTL } from "@/components/ui";
+import { seriesPath } from "@/lib/paths";
+import type { PopularSeries } from "@/types";
+
+// Slot positions by order: [front, left, right].
+const SLOTS = [
+  "top-12 left-1/2 z-20 w-44 -translate-x-1/2 rotate-0",
+  "top-4 left-4 z-10 w-36 -rotate-[8deg] opacity-90 hover:opacity-100",
+  "top-10 right-4 z-10 w-36 rotate-[7deg] opacity-90 hover:opacity-100",
+];
+
+export function HeroShelf({ series }: { series: PopularSeries[] }) {
+  // order[slot] = index into `series`
+  const [order, setOrder] = useState(() => series.map((_, i) => i));
+  const front = series[order[0]];
+  if (!front) return null;
+
+  function bring(slot: number) {
+    setOrder((o) => {
+      const next = [...o];
+      [next[0], next[slot]] = [next[slot], next[0]];
+      return next;
+    });
+  }
+
+  return (
+    <div className="relative mx-auto hidden h-[25rem] w-full max-w-md lg:block">
+      <div
+        aria-hidden
+        className="screentone absolute inset-6 rounded-[2rem] opacity-70 [mask-image:radial-gradient(closest-side,black,transparent)]"
+      />
+      {/* Stable keys per series, so a swap animates instead of re-mounting. */}
+      {series.map((s, i) => {
+        const slot = order.indexOf(i);
+        const cls = `absolute transition-all duration-500 ease-out ${SLOTS[slot]}`;
+        return slot === 0 ? (
+          <Link key={s.id} href={seriesPath(s.slug)} aria-label={`${s.title} serisine git`} className={cls}>
+            <Cover url={s.cover_url} alt="" eager className="w-full" />
+          </Link>
+        ) : (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => bring(slot)}
+            aria-label={`${s.title}: fiyat ve cilt bilgisini göster`}
+            className={`${cls} cursor-pointer`}
+          >
+            <Cover url={s.cover_url} alt="" className="w-full" />
+          </button>
+        );
+      })}
+      {front.lowest_price !== null && (
+        <Link
+          href={seriesPath(front.slug)}
+          className="absolute bottom-6 left-1/2 z-30 w-64 -translate-x-1/2 rounded-xl border border-line bg-surface/95 p-3.5 shadow-lift backdrop-blur transition-colors hover:border-line-strong"
+        >
+          <p className="truncate font-display text-base text-ink">{front.title}</p>
+          <div className="mt-1 flex items-baseline justify-between gap-3">
+            <span className="text-xs text-muted">
+              {front.volume_count} cilt · {front.in_stock_offers} stokta fiyat
+            </span>
+            <span className="tabular text-sm font-bold text-ink">
+              {formatTL(front.lowest_price)}
+              <span className="font-normal text-muted">&apos;den</span>
+            </span>
+          </div>
+          <p className="mt-2 text-xs font-semibold text-accent">Seriyi gör →</p>
+        </Link>
+      )}
+    </div>
+  );
+}

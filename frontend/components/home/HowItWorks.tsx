@@ -72,7 +72,7 @@ export function HowItWorks({ signedIn }: { signedIn: boolean }) {
               </Badge>
             </figcaption>
             <p className="text-sm text-muted">Hedef fiyat</p>
-            <p className="tabular font-display text-3xl text-ink">150 ₺</p>
+            <p className="tabular font-sans text-3xl font-bold text-ink">150 ₺</p>
             <div aria-hidden className="mt-4 flex h-12 items-end gap-1.5">
               {[70, 64, 66, 58, 60, 52, 44].map((h, i) => (
                 <span

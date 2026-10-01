@@ -6,9 +6,8 @@
 
 import Link from "next/link";
 import { SearchSection } from "@/components/SearchSection";
-import { seriesPath } from "@/lib/paths";
-import { Cover, formatTL } from "@/components/ui";
-import type { HomeFeed, PopularSeries } from "@/types";
+import { HeroShelf } from "@/components/home/HeroShelf";
+import type { HomeFeed } from "@/types";
 
 const NUMBER = new Intl.NumberFormat("tr-TR");
 
@@ -73,73 +72,23 @@ export function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: 
             <dl className="flex flex-wrap gap-x-8 gap-y-2 border-t border-line pt-5 text-sm">
               <div>
                 <dt className="text-faint">Katalogdaki seri</dt>
-                <dd className="tabular font-display text-xl text-ink">{NUMBER.format(feed.stats.series)}</dd>
+                <dd className="tabular font-sans text-xl font-bold text-ink">{NUMBER.format(feed.stats.series)}</dd>
               </div>
               <div>
                 <dt className="text-faint">Takip edilen mağaza</dt>
-                <dd className="tabular font-display text-xl text-ink">{NUMBER.format(feed.stats.stores)}</dd>
+                <dd className="tabular font-sans text-xl font-bold text-ink">{NUMBER.format(feed.stats.stores)}</dd>
               </div>
               <div>
                 <dt className="text-faint">Güncel fiyat</dt>
-                <dd className="tabular font-display text-xl text-ink">{NUMBER.format(feed.stats.offers)}</dd>
+                <dd className="tabular font-sans text-xl font-bold text-ink">{NUMBER.format(feed.stats.offers)}</dd>
               </div>
             </dl>
           )}
         </div>
 
-        {lead && (
-          <div className="relative mx-auto hidden h-[25rem] w-full max-w-md lg:block">
-            <div
-              aria-hidden
-              className="screentone absolute inset-6 rounded-[2rem] opacity-70 [mask-image:radial-gradient(closest-side,black,transparent)]"
-            />
-            {shelf[2] && (
-              <ShelfCover series={shelf[2]} className="absolute top-10 right-4 w-36 rotate-[7deg]" />
-            )}
-            {shelf[1] && (
-              <ShelfCover series={shelf[1]} className="absolute top-4 left-4 w-36 -rotate-[8deg]" />
-            )}
-            <ShelfCover series={lead} eager className="absolute top-12 left-1/2 w-44 -translate-x-1/2" />
-            {lead.lowest_price !== null && (
-              <Link
-                href={seriesPath(lead.slug)}
-                className="absolute bottom-6 left-1/2 w-64 -translate-x-1/2 rounded-xl border border-line bg-surface/95 p-3.5 shadow-lift backdrop-blur transition-colors hover:border-line-strong"
-              >
-                <p className="truncate font-display text-base text-ink">{lead.title}</p>
-                <div className="mt-1 flex items-baseline justify-between gap-3">
-                  <span className="text-xs text-muted">
-                    {lead.volume_count} cilt · {lead.in_stock_offers} stokta fiyat
-                  </span>
-                  <span className="tabular text-sm font-semibold text-ink">
-                    {formatTL(lead.lowest_price)}
-                    <span className="font-normal text-muted">&apos;den</span>
-                  </span>
-                </div>
-              </Link>
-            )}
-          </div>
-        )}
+        {lead && <HeroShelf series={shelf} />}
       </div>
     </section>
   );
 }
 
-function ShelfCover({
-  series,
-  className,
-  eager = false,
-}: {
-  series: PopularSeries;
-  className: string;
-  eager?: boolean;
-}) {
-  return (
-    <Link
-      href={seriesPath(series.slug)}
-      aria-label={`${series.title} serisine git`}
-      className={`${className} transition-transform duration-300 hover:z-10 hover:scale-105`}
-    >
-      <Cover url={series.cover_url} alt="" eager={eager} className="w-full" />
-    </Link>
-  );
-}
