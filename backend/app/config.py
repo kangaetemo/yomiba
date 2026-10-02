@@ -141,6 +141,12 @@ class Settings:
     import_max_concurrent_jobs: int = int(
         os.getenv("IMPORT_MAX_CONCURRENT_JOBS", "2")
     )
+    # Search the stores of one import at the same time (one thread per
+    # store) instead of one after another. Per-store request pacing is
+    # unchanged; set to 0 to fall back to the sequential behaviour.
+    import_parallel_stores: bool = os.getenv(
+        "IMPORT_PARALLEL_STORES", "1"
+    ).lower() in {"1", "true", "yes", "on"}
     # Waiting jobs are bounded independently of the fixed worker pool.
     import_queue_capacity: int = int(os.getenv("IMPORT_QUEUE_CAPACITY", "16"))
     # How long a background import waits for its query's lock when a manual

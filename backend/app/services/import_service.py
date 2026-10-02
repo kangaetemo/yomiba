@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -214,16 +215,18 @@ class ImportService:
         report = ImportReport(query=query, started_at=utcnow())
         scrapers = self.scrapers if self.scrapers is not None else get_scrapers(store_ids)
 
-        for scraper in scrapers:
+        fetched = self._search_all(scrapers, query)
+
+        for scraper, outcome in zip(scrapers, fetched):
             store_report = StoreImportResult(
                 store_code=scraper.store_id, store_name=scraper.store_name
             )
             report.stores.append(store_report)
-            scraper.gone_urls = set()
 
             try:
-                with scraper:
-                    results = scraper.search(query)
+                if isinstance(outcome, Exception):
+                    raise outcome
+                results = outcome
                 store_report.results_found = len(results)
                 if scraper.stats:
                     logger.info(
@@ -340,6 +343,30 @@ class ImportService:
                             store_report.store_code, query, top)
         report.finished_at = utcnow()
         return report
+
+    @staticmethod
+    def _search_all(scrapers: list[BaseScraper], query: str) -> list[list[SearchResult] | Exception]:
+        """Search every store for ``query``; results (or the raised error)
+        in scraper order.
+
+        The stores are different hosts, so they are searched at the same
+        time: each scraper still keeps its own request interval, and an
+        import takes as long as its slowest store instead of all of them
+        added up. Scrapers never touch the database; everything after this
+        stays on the caller's thread and session.
+        """
+        def search(scraper: BaseScraper) -> list[SearchResult] | Exception:
+            scraper.gone_urls = set()
+            try:
+                with scraper:
+                    return scraper.search(query)
+            except Exception as exc:  # noqa: BLE001 - isolation by design
+                return exc
+
+        if len(scrapers) < 2 or not get_settings().import_parallel_stores:
+            return [search(scraper) for scraper in scrapers]
+        with ThreadPoolExecutor(max_workers=len(scrapers), thread_name_prefix="yomiba-store") as pool:
+            return list(pool.map(search, scrapers))
 
     def _remove_gone_listings(self, scraper: BaseScraper) -> int:
         """Delete listings of products the store removed (``gone_urls``):

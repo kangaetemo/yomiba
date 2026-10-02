@@ -237,7 +237,10 @@ class KitapbulanScraper(BaseScraper):
 
     # -- detail-page enrichment (isbn / publisher / language / stock) ----------------
     def _enrich_with_details(self, results: list[SearchResult]) -> list[SearchResult]:
-        limit = self.settings.max_detail_requests
+        # Cards carry no stock signal and an un-enriched result defaults to
+        # "in stock", so every result needs its detail page (up to the
+        # search's own result cap), not just the first few.
+        limit = max(self.settings.max_detail_requests, self.settings.kitapbulan_max_search_results)
         for index, result in enumerate(results[:limit]):
             try:
                 results[index] = self._enrich_one(result)
