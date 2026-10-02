@@ -410,7 +410,10 @@ class CatalogSyncService:
             trusted_isbn = volume.isbn and not is_foreign_isbn(volume.isbn)
             # A variant without its ISBN is re-read every sync (only a few
             # books; until then its store products land on the base series).
-            variant = VARIANT_SEP in manga.slug
+            # The same goes for a regular volume that has variants: one of
+            # them may hold the ISBN both editions share, and the regular
+            # volume takes it back below — not a week later.
+            variant = VARIANT_SEP in manga.slug or bool(getattr(manga, "variants", ()))
             if checked is not None and (trusted_isbn or (checked > recheck and not variant)):
                 continue
             self._isbn_budget -= 1

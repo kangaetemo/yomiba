@@ -314,7 +314,9 @@ def test_isbn_shared_with_a_variant_stays_on_the_regular_edition(db_session):
     assert (regular.isbn, limited.isbn) == (AFRO_ISBN, None)
     assert report.isbn_conflicts == 0
 
-    regular.isbn, regular.details_checked_at = None, None
+    # Production: the regular page was read (and only reported a conflict)
+    # moments ago, so the weekly re-read rule must not put this off.
+    regular.isbn = None
     db_session.flush()
     limited.isbn = AFRO_ISBN
     db_session.commit()
