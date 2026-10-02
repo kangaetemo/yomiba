@@ -13,11 +13,12 @@ import { Cover, formatTL } from "@/components/ui";
 import { seriesPath } from "@/lib/paths";
 import type { PopularSeries } from "@/types";
 
-// Slot positions by order: [front, left, right].
+// Slot positions by order: [front, left, right]. Everything is a share of
+// the stage, so the same fan fills a phone screen and the desktop column.
 const SLOTS = [
-  "top-12 left-1/2 z-20 w-44 -translate-x-1/2 rotate-0",
-  "top-4 left-4 z-10 w-36 -rotate-[8deg] opacity-90 hover:opacity-100",
-  "top-10 right-4 z-10 w-36 rotate-[7deg] opacity-90 hover:opacity-100",
+  "top-[3%] left-1/2 z-20 w-[44%] -translate-x-1/2 rotate-0",
+  "top-[9%] left-[2%] z-10 w-[36%] -rotate-[8deg] opacity-90 hover:opacity-100",
+  "top-[13%] right-[2%] z-10 w-[36%] rotate-[7deg] opacity-90 hover:opacity-100",
 ];
 
 export function HeroShelf({ series }: { series: PopularSeries[] }) {
@@ -35,10 +36,10 @@ export function HeroShelf({ series }: { series: PopularSeries[] }) {
   }
 
   return (
-    <div className="relative mx-auto hidden h-[25rem] w-full max-w-md lg:block">
+    <div className="relative mx-auto aspect-[10/9] w-full max-w-[22rem] sm:max-w-md lg:max-w-[32rem]">
       <div
         aria-hidden
-        className="screentone absolute inset-6 rounded-[2rem] opacity-70 [mask-image:radial-gradient(closest-side,black,transparent)]"
+        className="screentone absolute inset-[4%] rounded-[2rem] opacity-70 [mask-image:radial-gradient(closest-side,black,transparent)]"
       />
       {/* The positioned element is always the same <div> per series (never
           swapped between <a> and <button>), so React keeps it mounted and
@@ -70,7 +71,7 @@ export function HeroShelf({ series }: { series: PopularSeries[] }) {
       {front.lowest_price !== null && (
         <Link
           href={seriesPath(front.slug)}
-          className="absolute bottom-6 left-1/2 z-30 w-64 -translate-x-1/2 rounded-xl border border-line bg-surface/95 p-3.5 shadow-lift backdrop-blur transition-colors hover:border-line-strong"
+          className="absolute bottom-0 left-1/2 z-30 w-[72%] max-w-72 -translate-x-1/2 rounded-xl border border-line bg-surface/95 p-3.5 shadow-lift backdrop-blur transition-colors hover:border-line-strong"
         >
           <p className="truncate font-display text-base text-ink">{front.title}</p>
           <div className="mt-1 flex items-baseline justify-between gap-3">
