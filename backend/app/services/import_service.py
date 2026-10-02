@@ -1321,13 +1321,23 @@ class ImportService:
             base = normalize_text(self._EDITION_LABEL_RE.sub("", series.title))
             if not base or not key.startswith(base + " "):
                 continue
-            match = self._EDITION_REMAINDER_RE.match(key[len(base) + 1:])
-            if match is not None:
+            remainder = key[len(base) + 1:]
+            match = self._EDITION_REMAINDER_RE.match(remainder)
+            numbers = list(self.session.scalars(
+                select(Volume.volume_number).where(
+                    Volume.series_id == series.id, Volume.volume_number >= 0
+                )
+            ))
+            if match is not None and int(match.group(1)) in numbers:
                 found.append((series, int(match.group(1))))
+            elif len(numbers) == 1 and not remainder.startswith("cilt "):
+                # A single-book edition needs no volume number: "Afro
+                # Samuray (444 Adet Limitli Sert Kapak)" is not volume 444.
+                found.append((series, numbers[0]))
         if len(found) != 1:
             return None
         series, number = found[0]
-        return self._resolve_volume(series, book_isbn(result.isbn), number, result)
+        return self._resolve_volume(series, book_isbn(result.isbn), number, result, title_verified=True)
 
     def _release_misplaced_listings(self, volume: Volume, store: Store, result: SearchResult) -> None:
         """Drop this product's listing from ANOTHER volume when the ISBN

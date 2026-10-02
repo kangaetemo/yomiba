@@ -176,6 +176,8 @@ class CatalogSyncService:
     def sync(self) -> CatalogSyncReport:
         report = CatalogSyncReport()
         self._isbn_budget = max(0, get_settings().mangakol_max_isbn_requests)
+        #: volume id -> its catalog page, for every volume seen this sync.
+        self._volume_urls: dict[int, str] = {}
         try:
             refs = self.scraper.list_manga()
         except Exception:
@@ -396,6 +398,7 @@ class CatalogSyncService:
             )
             if volume is None:
                 continue
+            self._volume_urls[volume.id] = cv.url
             checked = volume.details_checked_at
             if checked is not None and checked.tzinfo is None:
                 checked = checked.replace(tzinfo=timezone.utc)
@@ -458,7 +461,26 @@ class CatalogSyncService:
                                 holder.id, series.title, cv.number, isbn)
                     continue
                 note = " (kullanıcı verisi var, elle birleştirilmeli)"
+            elif VARIANT_SEP not in manga.slug and holder.series_id in self._variant_series_ids(manga.slug):
+                # The regular edition's page lists an ISBN one of its own
+                # variants holds: the publisher printed both under one ISBN
+                # (Afro Samuray and its limited hardcover), or it was never
+                # the variant's. Stores sell the regular book under it, so
+                # the regular volume keeps it; the variant's products are
+                # told apart by their title words (import_service).
+                holder.isbn = None
+                self.session.flush()
+                volume.isbn = isbn
+                self.session.commit()
+                report.isbns_added += 1
+                logger.info("catalog sync: ISBN %s moved from variant volume %s to the regular %s Cilt %s",
+                            isbn, holder.id, series.title, cv.number)
+                continue
             elif holder.series_id == self._base_series_id(manga.slug):
+                if self._page_isbn(self._volume_urls.get(holder.id)) == isbn:
+                    # Shared ISBN: the regular edition's own page lists it
+                    # too, so it stays there (see the branch above).
+                    continue
                 # A binding variant's own ISBN on its base series: stores
                 # title both bindings plainly "Soichi", so before the
                 # variant existed a title match stored the Bez Cilt ISBN on
@@ -499,6 +521,29 @@ class CatalogSyncService:
             logger.warning("catalog sync: %s", detail)
             if len(report.isbn_conflict_details) < 500:
                 report.isbn_conflict_details.append(detail)
+
+    def _page_isbn(self, url: str | None) -> str | None:
+        """ISBN a catalog volume page lists (None when unknown/unreadable)."""
+        if not url:
+            return None
+        fetch_details = getattr(self.scraper, "fetch_volume_details", None)
+        fetch_isbn = getattr(self.scraper, "fetch_volume_isbn", None)
+        try:
+            if fetch_details is not None:
+                details = fetch_details(url)
+                return details.isbn if details is not None else None
+            return fetch_isbn(url) if fetch_isbn is not None else None
+        except Exception:  # noqa: BLE001 - unknown is a valid answer
+            logger.warning("catalog sync: volume page failed for %s", url)
+            return None
+
+    def _variant_series_ids(self, slug: str) -> set[int]:
+        """Series of the variants of a base manga ("soichi" -> the series of
+        "soichi~clothbound", ...)."""
+        return set(self.session.scalars(
+            select(CatalogSeries.series_id)
+            .where(CatalogSeries.mangakol_slug.startswith(f"{slug}{VARIANT_SEP}", autoescape=True))
+        ))
 
     def _base_series_id(self, slug: str) -> int | None:
         """Series of a variant's base manga ("soichi~clothbound" -> the

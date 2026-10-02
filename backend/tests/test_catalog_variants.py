@@ -281,3 +281,65 @@ def test_ana_kapak_title_with_a_variant_isbn_goes_to_the_main_edition(db_session
     ImportService(db_session, scrapers=scrapers).run_import("Solo Leveling")
 
     assert [l.volume_id for l in db_session.scalars(select(StoreListing))] == [regular.id]
+
+
+AFRO = "https://mangakol.com/manga/afro-samurai"
+AFRO_ISBN = "9786057144522"
+
+
+class _AfroFake(FakeMangakolScraper):
+    def fetch_volume_details(self, url):
+        from app.scrapers.mangakol import CatalogVolumeDetails
+
+        return CatalogVolumeDetails(isbn=AFRO_ISBN)  # the pages of both editions list it
+
+
+def _afro() -> CatalogManga:
+    return CatalogManga(
+        slug="afro-samurai", title="Afro Samuray", local_publisher="Komikşeyler",
+        volumes=[CatalogVolume(number=1, cover_url=None, url=f"{AFRO}/cilt-1")],
+        variants=(CatalogVariant("Limited", "Limitli Baskı", [
+            CatalogVolume(number=1, cover_url=None, url=f"{AFRO}/cilt-1-limited"),
+        ]),),
+    )
+
+
+def test_isbn_shared_with_a_variant_stays_on_the_regular_edition(db_session):
+    """Afro Samuray and its limited hardcover carry one ISBN. Stores sell the
+    regular book under it: the variant must not take it, and the regular
+    volume takes it back from a variant that got it before (the production
+    state)."""
+    report = CatalogSyncService(db_session, scraper=_AfroFake([_afro()])).sync()
+    regular, limited = _volume(db_session, "Afro Samuray"), _volume(db_session, "Afro Samuray (Limitli Baskı)")
+    assert (regular.isbn, limited.isbn) == (AFRO_ISBN, None)
+    assert report.isbn_conflicts == 0
+
+    regular.isbn, regular.details_checked_at = None, None
+    db_session.flush()
+    limited.isbn = AFRO_ISBN
+    db_session.commit()
+    report = CatalogSyncService(db_session, scraper=_AfroFake([_afro()])).sync()
+    regular, limited = _volume(db_session, "Afro Samuray"), _volume(db_session, "Afro Samuray (Limitli Baskı)")
+    assert (regular.isbn, limited.isbn) == (AFRO_ISBN, None)
+    assert report.isbn_conflicts == 0
+
+
+def test_shared_isbn_products_go_to_the_edition_their_title_names(db_session):
+    CatalogSyncService(db_session, scraper=_AfroFake([_afro()])).sync()
+    regular, limited = _volume(db_session, "Afro Samuray"), _volume(db_session, "Afro Samuray (Limitli Baskı)")
+
+    def product(title, price, url, isbn):
+        return SearchResult(
+            store_id="bkm", store_name="BKM Kitap", title=title, product_url=url, isbn=isbn,
+            publisher="Komikşeyler", price=Decimal(price), currency="TRY", in_stock=True,
+        )
+
+    scrapers = _fake_scrapers({"bkm": [
+        product("Afro Samuray", "203", "https://ks.example/afro", AFRO_ISBN),
+        # The store API gives the limited book no ISBN; "444" is not a volume.
+        product("Afro Samuray (444 Adet Limitli Sert Kapak)", "450", "https://ks.example/afro-sert", None),
+    ]}, failing=set())
+    ImportService(db_session, scrapers=scrapers).run_import("Afro Samuray")
+
+    listings = {l.volume_id: l.price for l in db_session.scalars(select(StoreListing))}
+    assert listings == {regular.id: 20300, limited.id: 45000}
