@@ -457,3 +457,32 @@ def test_series_detail_flags_one_shots(seeded, db_session):
     gluttony.tr_status = "ongoing"
     db_session.commit()
     assert seeded.get(f"/series/{gluttony.id}").json()["one_shot"] is False
+
+
+def test_admin_sees_stores_without_a_listing(seeded, db_session):
+    """Out-of-stock offers are hidden from readers, so an admin needs to see
+    which stores have no record at all for a volume — and why."""
+    from app.models import ImportRecord, Store, StoreListing
+
+    series_id = _series_id_for(seeded, "Berserk")
+    vol2 = _volume_id_for(seeded, series_id, 2)
+    # BKM lists volume 1 only from here on.
+    bkm = db_session.query(Store).filter(Store.code == "bkm").one()
+    db_session.query(StoreListing).filter(
+        StoreListing.store_id == bkm.id, StoreListing.volume_id == vol2
+    ).delete()
+    record = db_session.query(ImportRecord).filter(ImportRecord.normalized_query == "berserk").one()
+    record.error = "kitapsec: ScraperError: HTTP 503"
+    db_session.commit()
+
+    data = seeded.get(f"/volume/{vol2}").json()
+    missing = {m["store"]: m for m in data["missing_stores"]}
+    assert missing["BKM Kitap"]["series_listings"] == 1  # sells the series, not this volume
+    assert missing["Kitap Sepeti"]["series_listings"] == 0
+    assert missing["Kitapseç"]["error"] == "ScraperError: HTTP 503"
+    assert "D&R" not in missing  # disabled stores are not expected to list anything
+    assert data["last_refresh_at"] is not None
+
+    seeded.cookies.clear()
+    anonymous = seeded.get(f"/volume/{vol2}").json()
+    assert anonymous["missing_stores"] == [] and anonymous["last_refresh_at"] is None

@@ -195,6 +195,10 @@ export interface VolumeDetail {
   /** Original volumes of an omnibus book (2-in-1: 9–10). */
   covers_from?: number | null;
   covers_to?: number | null;
+  /** Admin only: enabled stores with no listing for this volume. */
+  missing_stores?: { store: string; series_listings: number; error: string | null }[];
+  /** Admin only: when the series' prices were last refreshed. */
+  last_refresh_at?: string | null;
 }
 
 export interface WishlistState {

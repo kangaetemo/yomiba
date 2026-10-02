@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..auth import optional_user, require_admin, require_user
-from ..models import ListingExclusion, StoreListing, User
+from ..models import ImportRecord, ListingExclusion, Store, StoreListing, User, Volume
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.price_alert import PriceAlertDetail, PriceAlertIn, PriceAlertOut
 from ..schemas.price_history import HistoryListingOut, HistoryPointOut, PriceHistoryOut
 from ..schemas.volume import (
+    MissingStoreOut,
     SeriesRefOut,
     VolumeCollectionStatusIn,
     VolumeOut,
@@ -36,7 +38,44 @@ def _require_catalog_volume(session: Session, volume_id: int) -> None:
         raise HTTPException(status_code=404, detail="Cilt bulunamadı.")
 
 
-def _build_volume_out(session: Session, volume_id: int, user_id: int | None = None) -> VolumeOut | None:
+def _missing_stores(session: Session, volume: Volume) -> tuple[list[MissingStoreOut], ImportRecord | None]:
+    """Enabled stores with no listing for ``volume``, with what an admin
+    needs to tell "the store does not sell it" from "the import failed"."""
+    from ..scrapers.registry import enabled_store_ids, registered_scrapers
+    from ..services.background_import import normalized_query_key
+
+    here = set(session.scalars(
+        select(Store.code).join(StoreListing, StoreListing.store_id == Store.id)
+        .where(StoreListing.volume_id == volume.id)
+    ))
+    elsewhere = dict(session.execute(
+        select(Store.code, func.count(StoreListing.id))
+        .join(StoreListing, StoreListing.store_id == Store.id)
+        .join(Volume, Volume.id == StoreListing.volume_id)
+        .where(Volume.series_id == volume.series_id, Volume.id != volume.id)
+        .group_by(Store.code)
+    ).all())
+    record = session.scalar(select(ImportRecord).where(
+        ImportRecord.normalized_query == normalized_query_key(volume.series.title)
+    ))
+    # ImportRecord.error is "bkm: <err> | dr: <err>".
+    errors = dict(
+        part.split(": ", 1) for part in (record.error or "").split(" | ") if ": " in part
+    ) if record is not None else {}
+    scrapers = registered_scrapers()
+    return [
+        MissingStoreOut(
+            store=scrapers[code].store_name,
+            series_listings=elsewhere.get(code, 0),
+            error=errors.get(code),
+        )
+        for code in enabled_store_ids() if code not in here
+    ], record
+
+
+def _build_volume_out(
+    session: Session, volume_id: int, user_id: int | None = None, *, admin: bool = False
+) -> VolumeOut | None:
     """Map a volume (and its store listings) onto the API schema.
 
     Returns ``None`` when the volume does not exist. Shared by the detail
@@ -60,7 +99,10 @@ def _build_volume_out(session: Session, volume_id: int, user_id: int | None = No
         )
         for listing in detail.listings
     ]
+    missing, record = _missing_stores(session, volume) if admin else ([], None)
     return VolumeOut(
+        missing_stores=missing,
+        last_refresh_at=record.last_success_at if record is not None else None,
         id=volume.id,
         number=None if volume.volume_number == UNNUMBERED_VOLUME else volume.volume_number,
         cover_url=cover_url(volume.cover_key),
@@ -89,7 +131,10 @@ def get_volume_detail(
     session: Session = Depends(get_db),
     user: User | None = Depends(optional_user),
 ) -> VolumeOut:
-    out = _build_volume_out(session, volume_id, user.id if user else None)
+    out = _build_volume_out(
+        session, volume_id, user.id if user else None,
+        admin=user is not None and user.role == "ADMIN",
+    )
     if out is None:
         raise HTTPException(status_code=404, detail="Cilt bulunamadı.")
     return out

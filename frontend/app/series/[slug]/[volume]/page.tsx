@@ -114,6 +114,9 @@ export default async function VolumePage({ params }: VolumePageProps) {
   // (to remove a wrong match).
   const isAdmin = user?.role === "ADMIN";
   const unavailable = isAdmin ? detail.stores.filter((s) => !s.stock || s.stale) : [];
+  // Admin only (the API sends it to admins): stores with no record at all
+  // here, to tell "does not sell it" from "the import went wrong".
+  const missingStores = isAdmin && !detail.unverified ? (detail.missing_stores ?? []) : [];
   const inStock = buyable.length;
   const adminRemove = (listing: VolumeStore) =>
     user?.role === "ADMIN" && listing.id ? (
@@ -291,7 +294,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
                 Bu kaydın cilt numarası doğrulanamadı; eski mağaza fiyatları güncel olmadığı için
                 gösterilmiyor.
               </p>
-            ) : buyable.length === 0 && unavailable.length === 0 ? (
+            ) : buyable.length === 0 && unavailable.length === 0 && missingStores.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-line-strong bg-surface/70 p-6 text-sm text-muted">
                 Bu cildi şu an stokta satan bir mağaza yok. Fiyatlar düzenli olarak kontrol edilir;
                 stoğa giren ilk teklif burada görünür.
@@ -325,6 +328,34 @@ export default async function VolumePage({ params }: VolumePageProps) {
                           adminAction={adminRemove(listing)}
                         />
                       ))}
+                    </div>
+                  </details>
+                )}
+                {missingStores.length > 0 && (
+                  <details className="group rounded-2xl border border-dashed border-line-strong bg-surface/60">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-semibold text-muted hover:text-ink">
+                      <span>Admin: bu ciltte kaydı olmayan mağazalar ({missingStores.length}) · ziyaretçiler görmez</span>
+                      <span aria-hidden className="transition-transform group-open:rotate-180">⌄</span>
+                    </summary>
+                    <div className="space-y-2 border-t border-line p-4 text-sm">
+                      <p className="text-xs text-faint">
+                        Serinin son fiyat taraması:{" "}
+                        {detail.last_refresh_at ? new Date(detail.last_refresh_at).toLocaleString("tr-TR") : "henüz yok"}
+                      </p>
+                      <ul className="divide-y divide-line">
+                        {missingStores.map((m) => (
+                          <li key={m.store} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
+                            <span className="font-semibold text-ink-2">{m.store}</span>
+                            <span className={m.error ? "text-bad" : "text-muted"}>
+                              {m.error
+                                ? `Son taramada hata: ${m.error}`
+                                : m.series_listings > 0
+                                  ? `Bu cildi listelemiyor (seriden ${m.series_listings} başka kaydı var)`
+                                  : "Bu seriden hiç kaydı yok"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   </details>
                 )}

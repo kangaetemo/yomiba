@@ -26,6 +26,17 @@ class VolumeStoreOut(BaseModel):
     last_checked: datetime | None = None
 
 
+class MissingStoreOut(BaseModel):
+    """An enabled store with no listing for this volume (admin view)."""
+
+    store: str
+    #: The store's listings on OTHER volumes of this series: 0 = it does not
+    #: seem to sell the series at all, >0 = it just lacks this volume.
+    series_listings: int = 0
+    #: The store's error in the series' last import, when it failed then.
+    error: str | None = None
+
+
 class SeriesRefOut(BaseModel):
     id: int
     slug: str = ""
@@ -55,6 +66,10 @@ class VolumeOut(BaseModel):
     #: Original volumes an omnibus book collects (2-in-1: 9-10), else None.
     covers_from: int | None = None
     covers_to: int | None = None
+    #: Admin only: enabled stores without a listing here, and when the
+    #: series' prices were last refreshed. Empty / None for everyone else.
+    missing_stores: list[MissingStoreOut] = []
+    last_refresh_at: datetime | None = None
 
 
 class VolumeCollectionStatusIn(BaseModel):
