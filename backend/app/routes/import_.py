@@ -125,6 +125,23 @@ def import_coverage(session: Session = Depends(get_db)) -> dict:
         "listings_total": listings_total,
         "records_total": records_total,
         "records_by_status": by_status,
+        # Which queries the counts above are about, newest attempt first.
+        "problem_records": [
+            {
+                "query": r.last_query or r.normalized_query,
+                "status": r.status,
+                "error": r.error,
+                "stores_ok": r.stores_ok,
+                "stores_failed": r.stores_failed,
+                "last_attempt_at": r.last_attempt_at,
+            }
+            for r in session.scalars(
+                select(ImportRecord)
+                .where(ImportRecord.status.in_(("failed", "partial")))
+                .order_by(ImportRecord.last_attempt_at.desc())
+                .limit(100)
+            ).all()
+        ],
         "fresh_records": fresh,
         "freshness_ttl_minutes": settings.import_freshness_ttl_minutes,
     }

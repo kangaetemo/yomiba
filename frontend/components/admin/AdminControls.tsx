@@ -1023,6 +1023,29 @@ function CoveragePanel() {
               </dd>
             </div>
           </dl>
+          {(coverage.problem_records?.length ?? 0) > 0 && (
+            <details className="mt-3 text-xs">
+              <summary className="cursor-pointer font-medium text-ink-2">
+                Başarısız ve kısmi kayıtlar ({coverage.problem_records!.length})
+              </summary>
+              <ul className="mt-2 space-y-2">
+                {coverage.problem_records!.map((r) => (
+                  <li key={r.query} className="rounded-lg border border-line bg-surface-2 p-2">
+                    <p className="text-ink-2">
+                      <span className="font-semibold">{r.query}</span>
+                      <span className="text-muted">
+                        {" "}
+                        · {COVERAGE_STATUS_LABEL[r.status] ?? r.status} · {r.stores_ok} mağaza tamam,{" "}
+                        {r.stores_failed} hatalı
+                        {r.last_attempt_at && ` · ${new Date(r.last_attempt_at).toLocaleString("tr-TR")}`}
+                      </span>
+                    </p>
+                    {r.error && <p className="mt-1 break-words text-muted">{r.error}</p>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </>
       )}
     </section>

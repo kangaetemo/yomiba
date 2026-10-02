@@ -193,3 +193,15 @@ def test_missing_variant_outcomes(client, db_session):
 
     by_title = {m["title"]: m["outcome"] for m in client.get("/import/coverage/missing").json()}
     assert by_title == {"Soichi (Bez Cilt)": "variant_no_isbn", "Tomie (Bez Cilt)": "variant_unsold"}
+
+
+def test_coverage_lists_failed_and_partial_records(client, db_session):
+    _record(db_session, "alpha", status="success")
+    _record(db_session, "beta", status="partial", stores_failed=2, error="bkm: timeout")
+    _record(db_session, "gamma", status="failed", stores_ok=0, stores_failed=7, error="boom")
+    db_session.commit()
+
+    problems = {p["query"]: p for p in client.get("/import/coverage").json()["problem_records"]}
+    assert set(problems) == {"beta", "gamma"}
+    assert problems["beta"]["error"] == "bkm: timeout"
+    assert problems["gamma"]["stores_failed"] == 7

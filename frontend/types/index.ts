@@ -377,6 +377,15 @@ export interface ImportCoverage {
   listings_total: number;
   records_total: number;
   records_by_status: Record<string, number>;
+  /** The failed / partial records behind those counts, newest first. */
+  problem_records?: {
+    query: string;
+    status: string;
+    error: string | null;
+    stores_ok: number;
+    stores_failed: number;
+    last_attempt_at: string | null;
+  }[];
   fresh_records: number;
   freshness_ttl_minutes: number;
 }
