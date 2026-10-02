@@ -172,3 +172,112 @@ def test_isbn_of_an_unrelated_series_is_still_only_reported(db_session):
     report = CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
     assert held.isbn == CLOTH and _volume(db_session, "Soichi (Bez Cilt)").isbn is None
     assert report.isbn_conflicts == 1
+
+
+SOLO = "https://mangakol.com/manga/solo-leveling"
+SHARED = "9786255607782"
+
+
+class _SoloFake(FakeMangakolScraper):
+    def fetch_volume_details(self, url):
+        from app.scrapers.mangakol import CatalogVolumeDetails
+
+        return CatalogVolumeDetails(isbn=SHARED if url.endswith(("-variant", "-limited")) else None)
+
+
+def _solo() -> CatalogManga:
+    return CatalogManga(
+        slug="solo-leveling", title="Solo Leveling", local_publisher="Komikşeyler",
+        volumes=[CatalogVolume(number=5, cover_url=None, url=f"{SOLO}/cilt-5")],
+        variants=(
+            CatalogVariant("Limited", "Limitli Baskı", [CatalogVolume(number=5, cover_url=None, url=f"{SOLO}/cilt-5-limited")]),
+            CatalogVariant("Variant", "Varyant Kapak", [CatalogVolume(number=5, cover_url=None, url=f"{SOLO}/cilt-5-variant")]),
+        ),
+    )
+
+
+def test_two_editions_sharing_one_isbn_are_told_apart_by_title(db_session):
+    """Komikşeyler printed Solo Leveling 5 "Varyant Kapak" and "Limitli
+    Baskı" under one ISBN: only one volume can hold it, so the edition the
+    product title names decides — and a listing the ISBN once put on the
+    other edition moves with it."""
+    CatalogSyncService(db_session, scraper=_SoloFake([_solo()])).sync()
+    limited, variant = _volume(db_session, "Solo Leveling (Limitli Baskı)"), _volume(db_session, "Solo Leveling (Varyant Kapak)")
+    assert (limited.isbn, variant.isbn) == (None, SHARED)  # the listed owner keeps it
+
+    store = Store(code="bkm", name="BKM Kitap")
+    db_session.add(store)
+    db_session.flush()
+    db_session.add(StoreListing(volume_id=limited.id, store_id=store.id,
+                                product_url="https://ks.example/sl5-varyant", price=30000))
+    db_session.commit()
+
+    def product(title, price, url):
+        return SearchResult(
+            store_id="bkm", store_name="BKM Kitap", title=title, product_url=url,
+            isbn=SHARED, publisher="Komikşeyler", price=Decimal(price), currency="TRY", in_stock=True,
+        )
+
+    scrapers = _fake_scrapers({"bkm": [
+        product("Solo Leveling 5 (Varyant Kapak)", "300", "https://ks.example/sl5-varyant"),
+        product("Solo Leveling 5 (Limitli Baskı)", "450", "https://ks.example/sl5-limitli"),
+    ]}, failing=set())
+    ImportService(db_session, scrapers=scrapers).run_import("Solo Leveling")
+
+    listings = {l.volume_id: (l.product_url, l.price) for l in db_session.scalars(select(StoreListing))}
+    assert listings == {
+        variant.id: ("https://ks.example/sl5-varyant", 30000),
+        limited.id: ("https://ks.example/sl5-limitli", 45000),
+    }
+
+
+def _solo_product(title, price, url, isbn=None):
+    return SearchResult(
+        store_id="bkm", store_name="BKM Kitap", title=title, product_url=url,
+        isbn=isbn, publisher="Komikşeyler", price=Decimal(price), currency="TRY", in_stock=True,
+    )
+
+
+def test_shared_isbn_moves_to_its_listed_owner(db_session):
+    """The variant cover is the edition stores sell under the shared ISBN:
+    the sync hands it over and no longer reports a conflict."""
+    CatalogSyncService(db_session, scraper=_SoloFake([_solo()])).sync()
+    report = CatalogSyncService(db_session, scraper=_SoloFake([_solo()])).sync()
+    limited, variant = _volume(db_session, "Solo Leveling (Limitli Baskı)"), _volume(db_session, "Solo Leveling (Varyant Kapak)")
+    assert (limited.isbn, variant.isbn) == (None, SHARED)
+    assert report.isbn_conflicts == 0
+
+
+def test_editions_without_isbn_are_matched_by_their_title_words(db_session):
+    """No ISBN to go by: the label words place the product ("Limitli Sert
+    Kapak" is the catalog's "Limitli Baskı"); a plain title is not guessed."""
+    CatalogSyncService(db_session, scraper=_SoloFake([_solo()])).sync()
+    limited, variant = _volume(db_session, "Solo Leveling (Limitli Baskı)"), _volume(db_session, "Solo Leveling (Varyant Kapak)")
+    for volume in (limited, variant):
+        volume.isbn = None
+    db_session.commit()
+
+    scrapers = _fake_scrapers({"bkm": [
+        _solo_product("Solo Leveling Webtoon Cilt 5 (Limitli Sert Kapak)", "1400", "https://ks.example/sl5-sert"),
+        _solo_product("Solo Leveling Manga Cilt 5 (Kuşe Kağıt - Varyant Kapak)", "553", "https://ks.example/sl5-kuse"),
+    ]}, failing=set())
+    ImportService(db_session, scrapers=scrapers).run_import("Solo Leveling")
+
+    listings = {l.volume_id: l.price for l in db_session.scalars(select(StoreListing))}
+    assert listings == {limited.id: 140000, variant.id: 55300}
+
+
+def test_ana_kapak_title_with_a_variant_isbn_goes_to_the_main_edition(db_session):
+    """A store put the limited edition's ISBN on the regular book: its
+    531 TL must not show as the price of the 1400 TL hardcover."""
+    CatalogSyncService(db_session, scraper=_SoloFake([_solo()])).sync()
+    regular, limited = _volume(db_session, "Solo Leveling"), _volume(db_session, "Solo Leveling (Limitli Baskı)")
+    limited.isbn = "9786052115640"
+    db_session.commit()
+
+    scrapers = _fake_scrapers({"bkm": [
+        _solo_product("Solo Leveling Webtoon Cilt 5 (2. Hamur – Ana Kapak)", "531.25", "https://ks.example/sl5-ana", isbn=limited.isbn),
+    ]}, failing=set())
+    ImportService(db_session, scrapers=scrapers).run_import("Solo Leveling")
+
+    assert [l.volume_id for l in db_session.scalars(select(StoreListing))] == [regular.id]

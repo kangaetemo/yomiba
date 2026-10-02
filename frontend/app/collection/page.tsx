@@ -1,4 +1,4 @@
-import { volumePath } from "@/lib/paths";
+import { seriesPath, volumePath } from "@/lib/paths";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -6,7 +6,7 @@ import { Badge, type BadgeTone, Cover, SectionHeading, formatTL } from "@/compon
 import { volumeLabel } from "@/lib/volumeLabel";
 import { currentUser } from "@/services/auth";
 import { getMyCollection, getMyPriceAlerts, getMyWishlist } from "@/services/me";
-import type { CollectionStatus, MyVolume } from "@/types";
+import type { CollectionStatus, MyCollectionItem, MyVolume } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "Koleksiyonum" };
 const STATUS_LABEL: Record<CollectionStatus, string> = {
   owned: "Sahibim",
   missing: "Eksik",
-  wanted: "İstediğim",
+  wanted: "İstek listemdekiler",
 };
 
 const STATUS_TONE: Record<CollectionStatus, BadgeTone> = {
@@ -59,6 +59,77 @@ function Tile({
   );
 }
 
+const STATUS_ORDER: CollectionStatus[] = ["owned", "missing", "wanted"];
+
+interface SeriesGroup {
+  slug: string;
+  title: string;
+  publisher: string;
+  cover_url: string | null;
+  counts: Record<CollectionStatus, number>;
+  total: number;
+}
+
+/** One entry per series, in the list's own (title) order; the cover is the
+ * first marked volume that has one. */
+function groupBySeries(items: MyCollectionItem[]): SeriesGroup[] {
+  const groups = new Map<number, SeriesGroup>();
+  for (const item of items) {
+    let group = groups.get(item.series_id);
+    if (!group) {
+      group = {
+        slug: item.series_slug,
+        title: item.series_title,
+        publisher: item.publisher,
+        cover_url: null,
+        counts: { owned: 0, missing: 0, wanted: 0 },
+        total: 0,
+      };
+      groups.set(item.series_id, group);
+    }
+    group.cover_url ??= item.cover_url;
+    group.counts[item.status] += 1;
+    group.total += 1;
+  }
+  return [...groups.values()];
+}
+
+/** A series in the collection: the cover opens the series page, each count
+ * opens it filtered to that status (the page's own Sahibim / Eksik filter). */
+function SeriesTile({ group }: { group: SeriesGroup }) {
+  const href = seriesPath(group.slug);
+  return (
+    <li className="flex flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-card transition-shadow hover:shadow-lift">
+      <Link href={href} className="group block px-3 pt-3" aria-label={group.title}>
+        <Cover
+          url={group.cover_url}
+          alt={`${group.title} kapağı`}
+          className="w-full transition-transform duration-300 group-hover:-translate-y-0.5"
+        />
+      </Link>
+      <div className="flex flex-1 flex-col gap-2 p-3">
+        <div className="min-w-0">
+          <Link href={href} className="line-clamp-2 text-[1.02rem] leading-snug font-semibold text-ink hover:text-accent">
+            {group.title}
+          </Link>
+          <p className="truncate text-xs text-muted">
+            {group.publisher} · {group.total} cilt işaretli
+          </p>
+        </div>
+        <div className="mt-auto flex flex-wrap gap-1.5 border-t border-line pt-2">
+          {STATUS_ORDER.filter((status) => group.counts[status] > 0).map((status) => (
+            <Link key={status} href={`${href}?status=${status}`} className="transition-opacity hover:opacity-75">
+              <Badge tone={STATUS_TONE[status]}>
+                {STATUS_LABEL[status]} · {group.counts[status]}
+              </Badge>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </li>
+  );
+}
+
 /** "En düşük fiyat" with the price, or a plain "Stokta yok". */
 function PriceFooter({ price, label = "En düşük fiyat" }: { price: number | null; label?: string }) {
   return price !== null ? (
@@ -97,6 +168,7 @@ export default async function CollectionPage() {
   ]);
 
   const count = (status: CollectionStatus) => collection.filter((c) => c.status === status).length;
+  const seriesGroups = groupBySeries(collection);
 
   return (
     <div className="space-y-12">
@@ -108,7 +180,7 @@ export default async function CollectionPage() {
         </p>
         {collection.length > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
-            {(["owned", "missing", "wanted"] as const).map((status) => (
+            {STATUS_ORDER.map((status) => (
               <Badge key={status} tone={STATUS_TONE[status]}>
                 {STATUS_LABEL[status]} · {count(status)}
               </Badge>
@@ -118,18 +190,17 @@ export default async function CollectionPage() {
       </header>
 
       <section className="space-y-5" aria-labelledby="koleksiyon">
-        <SectionHeading id="koleksiyon" title={`Koleksiyon (${collection.length})`} />
+        <SectionHeading
+          id="koleksiyon"
+          title={`Koleksiyon (${seriesGroups.length} seri)`}
+          lead={collection.length > 0 ? `${collection.length} cilt işaretli. Bir seriye girince ciltlerini ve durumlarını görürsün.` : undefined}
+        />
         {collection.length === 0 ? (
-          <Empty text="Henüz işaretlediğin cilt yok — bir cildi açıp Sahibim / Eksik / İstediğim seç." />
+          <Empty text="Henüz işaretlediğin cilt yok — bir cildi açıp Sahibim / Eksik / İstek listemdekiler seç." />
         ) : (
           <Grid>
-            {collection.map((item) => (
-              <Tile
-                key={item.volume_id}
-                item={item}
-                badge={<Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge>}
-                footer={<PriceFooter price={item.best_price} />}
-              />
+            {seriesGroups.map((group) => (
+              <SeriesTile key={group.slug} group={group} />
             ))}
           </Grid>
         )}

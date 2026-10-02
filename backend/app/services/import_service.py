@@ -63,6 +63,7 @@ from ..normalization import (
 from ..scrapers import SearchResult
 from ..scrapers.registry import get_scrapers
 from ..scrapers.base import BaseScraper
+from ..scrapers.common import FOREIGN_PUBLISHER_RE
 from ..scrapers.relevance import check_manga_relevance
 from ..utils import from_cents, to_cents, utcnow
 
@@ -99,13 +100,7 @@ _REMAINDER_COLLECTION_RE = re.compile(
 )
 
 
-#: Publishers of English (and other non-Turkish) manga editions.
-_FOREIGN_PUBLISHER_RE = re.compile(
-    r"\b(viz\s*media|viz|kodansha(\s*(usa|comics))?|yen\s*press|seven\s*seas|dark\s*horse|"
-    r"vertical\s*(inc|comics)?|tokyopop|square\s*enix\s*manga|ghost\s*ship|one\s*peace\s*books|"
-    r"udon\s*entertainment|denpa|j-novel)\b",
-    re.IGNORECASE,
-)
+_FOREIGN_PUBLISHER_RE = FOREIGN_PUBLISHER_RE
 #: English volume wording: "Vol. 5", "Vol 5", "Volume 3".
 _ENGLISH_VOLUME_RE = re.compile(r"\bvol(?:ume|\.)?\s*\d", re.IGNORECASE)
 
@@ -501,8 +496,21 @@ class ImportService:
         # hardcover edition the catalog lists) carries edition words.
         proven = self._isbn_catalog_volume(book_isbn(result.isbn))
         if proven is not None:
+            store = self._resolve_store(result.store_id, result.store_name)
+            named = self._edition_named_in_title(proven, title)
+            if named.id != proven.id:
+                # The shared ISBN once put this product on the holder.
+                for listing in self.session.scalars(
+                    select(StoreListing).where(
+                        StoreListing.store_id == store.id,
+                        StoreListing.product_url == result.product_url,
+                        StoreListing.volume_id == proven.id,
+                    )
+                ):
+                    self.session.delete(listing)
+                proven = named
             self._backfill_cover(proven, result)
-            return (proven, self._resolve_store(result.store_id, result.store_name))
+            return (proven, store)
 
         parsed = parse_volume_title(title)
         if re.search(_EDITION_CONFLICT_RE, normalize_text(title)):
@@ -601,6 +609,9 @@ class ImportService:
                 reason = "ambiguous_volume"
             else:
                 reason = "publisher_conflict" if publisher_name else "no_series_match"
+            edition = self._edition_title_volume(result)
+            if edition is not None:
+                return (edition, store)
             return self._catalog_title_fallback(result, reason)
         if result.volume_number is not None and parsed.volume_number is not None and result.volume_number != parsed.volume_number:
             return self._reject("ambiguous_volume")
@@ -1211,6 +1222,112 @@ class ImportService:
         if volume is None or volume.volume_number < 0 or not self._series_is_catalog(volume.series_id):
             return None
         return volume
+
+    _EDITION_LABEL_RE = re.compile(r"\(([^()]+)\)\s*$")
+    #: Label words that do not tell editions apart ("Limitli Baskı" and a
+    #: store's "Limitli Sert Kapak" are the same edition).
+    _EDITION_GENERIC_WORDS = frozenset({"baski", "kapak", "cilt", "ozel", "edisyon"})
+    #: What may follow the series name in an edition product's title:
+    #: "[Webtoon|Manga] [Cilt] 3 ...".
+    _EDITION_REMAINDER_RE = re.compile(r"^(?:webtoon |manga )?(?:cilt )?0*(\d{1,3})(?: |$)")
+
+    def _edition_words(self, series: Series) -> frozenset[str]:
+        """Distinctive words of a variant's label: "Solo Leveling (Varyant
+        Kapak)" -> {"varyant"}; empty for a main edition."""
+        match = self._EDITION_LABEL_RE.search(series.title)
+        if match is None:
+            return frozenset()
+        return frozenset(normalize_text(match.group(1)).split()) - self._EDITION_GENERIC_WORDS
+
+    def _edition_named_in_title(self, proven: Volume, title: str) -> Volume:
+        """The volume a product belongs to when its title names ANOTHER
+        edition than the one holding its ISBN.
+
+        * A publisher may print two editions under one ISBN (Solo Leveling 5
+          "Varyant Kapak" and "Limitli Sert Kapak"); the ISBN is unique here,
+          so one of them holds it. A title naming the sibling edition, whose
+          volume has no ISBN of its own, goes to that sibling.
+        * A store may put a variant's ISBN on the regular book ("... Cilt 2
+          (2. Hamur – Ana Kapak)" carrying the limited edition's ISBN): "Ana
+          Kapak" names the main edition.
+
+        Otherwise ``proven``.
+        """
+        from .catalog_service import other_editions
+
+        key = normalize_text(title)
+        words = set(key.split())
+        own = self._edition_words(proven.series)
+        if own and own <= words:
+            return proven
+
+        def twin_in(series: Series) -> Volume | None:
+            return self.session.scalar(
+                select(Volume).where(
+                    Volume.series_id == series.id,
+                    Volume.volume_number == proven.volume_number,
+                )
+            )
+
+        for sibling in other_editions(self.session, proven.series_id):
+            named = self._edition_words(sibling)
+            if not named:
+                if own and "ana kapak" in key:
+                    twin = twin_in(sibling)
+                    if twin is not None:
+                        return twin
+                continue
+            if named <= words:
+                twin = twin_in(sibling)
+                if twin is not None and twin.isbn is None:
+                    return twin
+        return proven
+
+    def _edition_title_volume(self, result: SearchResult) -> Volume | None:
+        """A variant edition's volume for a product no ISBN could place.
+
+        Some variant books carry no real ISBN (Solo Leveling 1 "Varyant
+        Kapak" has a store barcode, the "Limitli Sert Kapak" volumes none),
+        and stores add words the plain title match cannot read ("Solo
+        Leveling Webtoon Cilt 1 (Kuşe Kağıt – Varyant Kapak)"). The title
+        must start with the variant's base title, continue with the volume
+        ("[Webtoon|Manga] [Cilt] N") and contain the variant's distinctive
+        label words; exactly one catalog variant may fit.
+        """
+        key = normalize_text(result.title)
+        words = set(key.split())
+        publisher_name = (result.publisher or "").strip()
+        publisher_ids: set[int] | None = None
+        if publisher_name:
+            publisher = self._find_publisher(publisher_name)
+            publisher_ids = set(self._publisher_family_ids(publisher_name))
+            if publisher is not None:
+                publisher_ids.add(publisher.id)
+            if not publisher_ids:
+                return None
+        found: list[tuple[Series, int]] = []
+        variants = self.session.scalars(
+            select(Series)
+            .join(CatalogSeries, CatalogSeries.series_id == Series.id)
+            .where(CatalogSeries.mangakol_slug.contains("~", autoescape=True))
+            .distinct()
+        )
+        for series in variants:
+            named = self._edition_words(series)
+            if not named or not named <= words:
+                continue
+            if publisher_ids is not None and series.publisher_id not in publisher_ids:
+                continue
+            base = normalize_text(self._EDITION_LABEL_RE.sub("", series.title))
+            if not base or not key.startswith(base + " "):
+                continue
+            match = self._EDITION_REMAINDER_RE.match(key[len(base) + 1:])
+            if match is not None:
+                found.append((series, int(match.group(1))))
+        if len(found) != 1:
+            return None
+        series, number = found[0]
+        return self._resolve_volume(series, book_isbn(result.isbn), number, result)
 
     def _release_misplaced_listings(self, volume: Volume, store: Store, result: SearchResult) -> None:
         """Drop this product's listing from ANOTHER volume when the ISBN

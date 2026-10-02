@@ -44,7 +44,7 @@ from urllib.parse import quote_plus, urljoin
 
 from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
 from .base import BaseScraper, ScraperError
-from .common import looks_like_blocked_page, parse_tr_price
+from .common import FOREIGN_PUBLISHER_RE, looks_like_blocked_page, parse_tr_price
 from .search_result import SearchResult
 from .relevance import filter_manga_results
 
@@ -242,6 +242,11 @@ class KitapbulanScraper(BaseScraper):
         # search's own result cap), not just the first few.
         limit = max(self.settings.max_detail_requests, self.settings.kitapbulan_max_search_results)
         for index, result in enumerate(results[:limit]):
+            # An English edition is never imported (the catalog is Turkish
+            # only): its detail page would be a wasted request — a long
+            # series lists a hundred of them ahead of the Turkish volumes.
+            if FOREIGN_PUBLISHER_RE.search(result.publisher or ""):
+                continue
             try:
                 results[index] = self._enrich_one(result)
             except ScraperError:

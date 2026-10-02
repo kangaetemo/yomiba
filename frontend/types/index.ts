@@ -149,6 +149,8 @@ export interface SeriesDetail {
   volumes: SeriesVolume[];
   /** Other editions of the same work; usually empty. */
   editions?: SeriesEdition[];
+  /** A finished single-volume work: its series page opens the volume. */
+  one_shot?: boolean;
 }
 
 export interface VolumeStore {

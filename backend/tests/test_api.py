@@ -438,3 +438,22 @@ def test_search_with_volume_number_returns_that_volume(seeded):
 def test_search_with_missing_volume_number_has_no_volume_hit(seeded):
     assert seeded.get("/search", params={"q": "berserk 99"}).json()["volumes"] == []
     assert seeded.get("/search", params={"q": "berserk"}).json()["volumes"] == []
+
+
+def test_series_detail_flags_one_shots(seeded, db_session):
+    """One numbered volume, completed in Japan and Turkey: the site opens
+    the volume straight away instead of a one-item volume list."""
+    from app.models import Series
+
+    gluttony = db_session.query(Series).filter(Series.title == "Berserk of Gluttony").one()
+    berserk = db_session.query(Series).filter(Series.title == "Berserk").one()
+    for series in (gluttony, berserk):
+        series.jp_status = series.tr_status = "completed"
+    db_session.commit()
+
+    assert seeded.get(f"/series/{gluttony.id}").json()["one_shot"] is True
+    assert seeded.get(f"/series/{berserk.id}").json()["one_shot"] is False  # two volumes
+
+    gluttony.tr_status = "ongoing"
+    db_session.commit()
+    assert seeded.get(f"/series/{gluttony.id}").json()["one_shot"] is False

@@ -9,6 +9,18 @@ export function volumePath(seriesSlug: string, number: number | null): string {
   return `${seriesPath(seriesSlug)}/${number === null ? "cilt-numarasiz" : `cilt-${number}`}`;
 }
 
+/** The only volume of a one shot, when its series page has nothing else
+ * to show (no other editions): links go straight to the prices. */
+export function oneShotVolumeNumber(series: {
+  one_shot?: boolean;
+  editions?: unknown[];
+  volumes: { number: number | null }[];
+}): number | null {
+  if (!series.one_shot || (series.editions ?? []).length > 0) return null;
+  const numbered = series.volumes.filter((v) => v.number !== null && v.number >= 0);
+  return numbered.length === 1 ? numbered[0].number : null;
+}
+
 /** Inverse of the volume segment: "cilt-3" -> 3, "cilt-numarasiz" -> null,
  * anything else -> undefined (not found). */
 export function parseVolumeSegment(segment: string): number | null | undefined {

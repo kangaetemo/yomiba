@@ -77,4 +77,9 @@ def get_series_detail(
         cover_url=detail.cover_url,
         volumes=volumes,
         editions=editions,
+        one_shot=(
+            detail.series.jp_status == "completed"
+            and detail.series.tr_status == "completed"
+            and sum(1 for v in volumes if v.number is not None and v.number >= 0) == 1
+        ),
     )

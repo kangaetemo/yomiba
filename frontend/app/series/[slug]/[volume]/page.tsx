@@ -9,7 +9,7 @@ import { PriceAlertForm } from "@/components/PriceAlertForm";
 import { RemoveListingButton } from "@/components/admin/RemoveListingButton";
 import { Badge, Cover, formatDate, formatTL, volumeTitle } from "@/components/ui";
 import { ApiError } from "@/lib/api";
-import { parseVolumeSegment, seriesPath, volumePath } from "@/lib/paths";
+import { oneShotVolumeNumber, parseVolumeSegment, seriesPath, volumePath } from "@/lib/paths";
 import { volumeLabel as labelFor } from "@/lib/volumeLabel";
 import { currentUserOrNull } from "@/services/auth";
 import { getPriceAlert, getPriceHistory, getSeries, getVolume, getWishlist } from "@/services/catalog";
@@ -121,6 +121,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
     ) : undefined;
   const title = volumeTitle(detail.number);
   const isNew = detail.release_date ? daysSince(detail.release_date) <= NEW_DAYS && daysSince(detail.release_date) >= 0 : false;
+  const isOneShot = oneShotVolumeNumber(series) !== null;
   const siblings = (series?.volumes ?? []).filter((v) => v.number !== null && v.number >= 0);
   const here = siblings.findIndex((v) => v.id === detail.id);
   // A window of volumes around this one (the whole shelf can be long).
@@ -134,12 +135,17 @@ export default async function VolumePage({ params }: VolumePageProps) {
           Ana sayfa
         </Link>
         <span aria-hidden className="text-faint">/</span>
-        <Link href={seriesPath(detail.series.slug)} className="text-muted hover:text-accent">
-          {detail.series.title}
-        </Link>
-        <span aria-hidden className="text-faint">/</span>
+        {/* A one shot's series page only redirects back here: no link. */}
+        {!isOneShot && (
+          <>
+            <Link href={seriesPath(detail.series.slug)} className="text-muted hover:text-accent">
+              {detail.series.title}
+            </Link>
+            <span aria-hidden className="text-faint">/</span>
+          </>
+        )}
         <span className="text-ink-2" aria-current="page">
-          {title}
+          {isOneShot ? detail.series.title : title}
         </span>
       </nav>
 
@@ -187,9 +193,13 @@ export default async function VolumePage({ params }: VolumePageProps) {
         <div className="min-w-0 space-y-8">
           <header className="space-y-3">
             <p className="eyebrow">
-              <Link href={seriesPath(detail.series.slug)} className="hover:text-accent">
-                {detail.series.title}
-              </Link>{" "}
+              {isOneShot ? (
+                detail.series.title
+              ) : (
+                <Link href={seriesPath(detail.series.slug)} className="hover:text-accent">
+                  {detail.series.title}
+                </Link>
+              )}{" "}
               · {detail.series.publisher}
             </p>
             <h1 className="text-[2.2rem] leading-[1.05] font-semibold text-ink sm:text-5xl">

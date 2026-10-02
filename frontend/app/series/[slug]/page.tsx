@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, permanentRedirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { FollowMissingButton } from "@/components/FollowMissingButton";
 import { Cover, formatTL, volumeTitle } from "@/components/ui";
 import { SortBar } from "@/components/SortBar";
 import { VolumeCard } from "@/components/VolumeCard";
 import { VolumeTile } from "@/components/VolumeTile";
 import { ApiError } from "@/lib/api";
-import { seriesPath } from "@/lib/paths";
+import { oneShotVolumeNumber, seriesPath, volumePath } from "@/lib/paths";
 import { currentUserOrNull } from "@/services/auth";
 import { getSeries } from "@/services/catalog";
 import type { CollectionStatus, SeriesVolume } from "@/types";
@@ -25,7 +25,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: "all", label: "Tümü" },
   { value: "owned", label: "Sahibim" },
   { value: "missing", label: "Eksik" },
-  { value: "wanted", label: "Takipte" },
+  { value: "wanted", label: "İstek listemdekiler" },
 ];
 
 /** Default view shows the first N volumes; the rest sit behind the
@@ -83,6 +83,10 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
   }
   // Old numeric links (and any non-canonical spelling) land on the slug URL.
   if (detail.slug !== slug) permanentRedirect(seriesPath(detail.slug));
+  // A one shot has a single volume: nothing to choose, open its prices.
+  // Temporary redirect: a sequel volume would bring the list back.
+  const only = oneShotVolumeNumber(detail);
+  if (only !== null) redirect(volumePath(detail.slug, only));
   const user = await currentUserOrNull();
   const signedIn = Boolean(user);
 

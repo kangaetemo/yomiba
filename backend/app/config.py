@@ -72,20 +72,23 @@ class Settings:
     bkm_max_search_pages: int = int(os.getenv("BKM_MAX_SEARCH_PAGES", "5"))
     bkm_max_search_results: int = int(os.getenv("BKM_MAX_SEARCH_RESULTS", "100"))
 
+    # Long series need deep searches: Kitapbulan shows 6 products a page and
+    # lists ~130 English One Piece volumes before the Turkish ones; Gerekli
+    # Şeyler mixes ~400 figures into "One Piece" (Cilt 51 is result 300).
     # Kitap Sepeti / Kitapbulan (same T-Soft CMS, paginated SSR search with
     # the ``pg`` parameter) limits. Same stop-earliest-bound rule.
     kitapsepeti_max_search_pages: int = int(os.getenv("KITAPSEPETI_MAX_SEARCH_PAGES", "5"))
     kitapsepeti_max_search_results: int = int(os.getenv("KITAPSEPETI_MAX_SEARCH_RESULTS", "60"))
-    kitapbulan_max_search_pages: int = int(os.getenv("KITAPBULAN_MAX_SEARCH_PAGES", "5"))
-    kitapbulan_max_search_results: int = int(os.getenv("KITAPBULAN_MAX_SEARCH_RESULTS", "60"))
+    kitapbulan_max_search_pages: int = int(os.getenv("KITAPBULAN_MAX_SEARCH_PAGES", "40"))
+    kitapbulan_max_search_results: int = int(os.getenv("KITAPBULAN_MAX_SEARCH_RESULTS", "240"))
 
     # Gerekli Şeyler (WAW ``/arama/<q>?tp=N``), Cizman (single-page public
     # search form), Kitapsec (``/Arama/index.php`` microdata), Komikşeyler
     # (public WooCommerce Store API, per_page=100).
-    gerekliseyler_max_search_pages: int = int(os.getenv("GEREKLISEYLER_MAX_SEARCH_PAGES", "5"))
-    gerekliseyler_max_search_results: int = int(os.getenv("GEREKLISEYLER_MAX_SEARCH_RESULTS", "60"))
-    buyuludukkan_max_search_pages: int = int(os.getenv("BUYULUDUKKAN_MAX_SEARCH_PAGES", "5"))
-    buyuludukkan_max_search_results: int = int(os.getenv("BUYULUDUKKAN_MAX_SEARCH_RESULTS", "60"))
+    gerekliseyler_max_search_pages: int = int(os.getenv("GEREKLISEYLER_MAX_SEARCH_PAGES", "15"))
+    gerekliseyler_max_search_results: int = int(os.getenv("GEREKLISEYLER_MAX_SEARCH_RESULTS", "600"))
+    buyuludukkan_max_search_pages: int = int(os.getenv("BUYULUDUKKAN_MAX_SEARCH_PAGES", "8"))
+    buyuludukkan_max_search_results: int = int(os.getenv("BUYULUDUKKAN_MAX_SEARCH_RESULTS", "300"))
     istanbulkitapcisi_max_search_pages: int = int(os.getenv("ISTANBULKITAPCISI_MAX_SEARCH_PAGES", "5"))
     istanbulkitapcisi_max_search_results: int = int(os.getenv("ISTANBULKITAPCISI_MAX_SEARCH_RESULTS", "60"))
     cizman_max_search_results: int = int(os.getenv("CIZMAN_MAX_SEARCH_RESULTS", "60"))

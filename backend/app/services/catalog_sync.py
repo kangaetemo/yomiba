@@ -106,6 +106,15 @@ logger = logging.getLogger("yomiba.catalog")
 
 #: Manifest slug of a binding variant: "<slug>~clothbound".
 VARIANT_SEP = "~"
+
+#: ISBNs a publisher printed on two editions -> the catalog series that
+#: keeps it (an ISBN is unique here). Komikşeyler sells Solo Leveling 5
+#: "Varyant Kapak" and "Limitli Sert Kapak" under one ISBN; the stores'
+#: plain "Solo Leveling Webtoon Cilt 5" with it is the variant cover
+#: (verified against nine stores, 2026-10-03).
+SHARED_ISBN_OWNERS = {
+    "9786255607782": "Solo Leveling (Varyant Kapak)",
+}
 #: Fallback publisher for mangas without a "Yerel Yayıncı" value.
 _UNKNOWN_PUBLISHER = "Bilinmiyor"
 #: Minimum normalized-name length for prefix/containment publisher matching.
@@ -466,8 +475,22 @@ class CatalogSyncService:
                 logger.info("catalog sync: ISBN %s moved from %s volume %s to its variant %s Cilt %s",
                             isbn, holder.series_id, holder.id, series.title, cv.number)
                 continue
-            report.isbn_conflicts += 1
             holder_series = self.session.get(Series, holder.series_id)
+            owner = SHARED_ISBN_OWNERS.get(isbn)
+            if owner is not None and holder_series is not None and owner in (series.title, holder_series.title):
+                # One ISBN printed on two editions: the unique column holds
+                # it on the edition stores sell under it; the other edition
+                # is matched by its title words (import_service).
+                if owner == series.title:
+                    holder.isbn = None
+                    self.session.flush()
+                    volume.isbn = isbn
+                    self.session.commit()
+                    report.isbns_added += 1
+                    logger.info("catalog sync: shared ISBN %s moved from %s to %s Cilt %s",
+                                isbn, holder_series.title, series.title, cv.number)
+                continue
+            report.isbn_conflicts += 1
             detail = (
                 f"{series.title} Cilt {cv.number}: ISBN {isbn} zaten "
                 f"{holder_series.title if holder_series else holder.series_id} "

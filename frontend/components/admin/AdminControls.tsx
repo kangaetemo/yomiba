@@ -853,9 +853,13 @@ const COVERAGE_STATUS_LABEL: Record<string, string> = {
   skipped: "atlandı",
 };
 
+/** The records endpoint's own maximum. */
+const RECENT_REFRESH_LIMIT = 200;
+
 function CoveragePanel() {
   const [coverage, setCoverage] = useState<ImportCoverage | null>(null);
   const [priceRefresh, setPriceRefresh] = useState<PriceRefreshStatus | null>(null);
+  const [recent, setRecent] = useState<ImportRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [warming, setWarming] = useState<"full" | "unpriced" | null>(null);
   const [warmupMsg, setWarmupMsg] = useState<string | null>(null);
@@ -863,11 +867,12 @@ function CoveragePanel() {
 
   const refresh = useCallback(async () => {
     try {
-      const [nextCoverage, nextRefresh] = await Promise.all([
-        getImportCoverage(), getPriceRefreshStatus(),
+      const [nextCoverage, nextRefresh, nextRecent] = await Promise.all([
+        getImportCoverage(), getPriceRefreshStatus(), getImportRecords(RECENT_REFRESH_LIMIT),
       ]);
       setCoverage(nextCoverage);
       setPriceRefresh(nextRefresh);
+      setRecent(nextRecent);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kapsama durumu alınamadı");
@@ -915,6 +920,16 @@ function CoveragePanel() {
       setWarming(null);
     }
   }
+
+  // During a cycle: what this cycle has refreshed so far; otherwise the
+  // most recent refreshes. Newest first (the API's order).
+  const cycleStart = priceRefresh?.current_cycle_started_at ?? null;
+  const refreshed = recent.filter(
+    (r) =>
+      r.status !== "running" &&
+      r.last_attempt_at !== null &&
+      (cycleStart === null || new Date(r.last_attempt_at) >= new Date(cycleStart)),
+  );
 
   const pct =
     coverage && coverage.catalog_series > 0
@@ -975,6 +990,43 @@ function CoveragePanel() {
             sonraki: {formatDateTime(priceRefresh.next_scheduled_refresh)}
           </p>
         </div>
+      )}
+
+      {refreshed.length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer font-medium text-ink-2">
+            {cycleActive ? "Bu döngüde yenilenen seriler" : "Son yenilenen seriler"} ({refreshed.length}
+            {refreshed.length >= RECENT_REFRESH_LIMIT ? "+" : ""})
+          </summary>
+          <div className="mt-2 max-h-80 overflow-y-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-[0.68rem] uppercase tracking-wide text-muted">
+                  <th className="py-1 pr-3">Seri</th>
+                  <th className="py-1 pr-3">Saat</th>
+                  <th className="py-1 pr-3">Durum</th>
+                  <th className="py-1 pr-3">Bulunan</th>
+                  <th className="py-1 pr-3">Yeni</th>
+                  <th className="py-1">Güncellenen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {refreshed.map((r) => (
+                  <tr key={r.normalized_query} className="border-t border-line">
+                    <td className="py-1 pr-3 text-ink-2">{r.last_query ?? r.normalized_query}</td>
+                    <td className="py-1 pr-3 whitespace-nowrap text-muted">{formatDateTime(r.last_attempt_at)}</td>
+                    <td className={`py-1 pr-3 ${r.status === "success" ? "text-muted" : "text-warn"}`}>
+                      {COVERAGE_STATUS_LABEL[r.status] ?? r.status}
+                    </td>
+                    <td className="py-1 pr-3 tabular text-muted">{r.results_found}</td>
+                    <td className="py-1 pr-3 tabular text-muted">{r.created}</td>
+                    <td className="py-1 tabular text-muted">{r.updated}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
       )}
 
       {coverage && (

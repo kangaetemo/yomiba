@@ -53,6 +53,14 @@ def parse_tr_price(raw: str | int | float | Decimal | None) -> Decimal | None:
 
 #: Status codes that indicate an anti-bot / robot wall (fail fast — retrying
 #: a bot wall is pointless and rude).
+#: Publishers of English (and other non-Turkish) manga editions.
+FOREIGN_PUBLISHER_RE = re.compile(
+    r"\b(viz\s*media|viz|kodansha(\s*(usa|comics))?|yen\s*press|seven\s*seas|dark\s*horse|"
+    r"vertical\s*(inc|comics)?|tokyopop|square\s*enix\s*manga|ghost\s*ship|one\s*peace\s*books|"
+    r"udon\s*entertainment|denpa|j-novel)\b",
+    re.IGNORECASE,
+)
+
 _BLOCK_STATUS = {403, 429, 503, 509, 999}
 
 #: Page-content markers seen on real bot-wall pages (Amazon, D&R, T-Soft).

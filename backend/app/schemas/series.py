@@ -53,3 +53,6 @@ class SeriesOut(BaseModel):
     volumes: list[SeriesVolumeOut] = []
     #: Other editions of the same work; empty for most series.
     editions: list[SeriesEditionOut] = []
+    #: A finished single-volume work (completed in Japan and in Turkey, one
+    #: numbered volume): the site skips its volume list and opens the volume.
+    one_shot: bool = False
