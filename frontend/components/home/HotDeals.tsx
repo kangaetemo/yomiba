@@ -1,11 +1,12 @@
 import { volumePath } from "@/lib/paths";
+import { serverDate } from "@/lib/time";
 import Link from "next/link";
 import { Badge, Cover, SectionHeading, formatTL } from "@/components/ui";
 import { volumeLabel } from "@/lib/volumeLabel";
 import type { PriceDrop } from "@/types";
 
 function timeAgo(iso: string): string {
-  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  const minutes = Math.max(0, Math.round((Date.now() - serverDate(iso).getTime()) / 60000));
   if (minutes < 1) return "az önce";
   if (minutes < 60) return `${minutes} dk önce`;
   const hours = Math.round(minutes / 60);

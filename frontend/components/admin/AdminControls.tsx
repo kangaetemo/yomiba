@@ -12,6 +12,7 @@
  * source of truth (no optimistic state).
  */
 
+import { formatDateTime, serverDate } from "@/lib/time";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getCatalogSyncStatus,
@@ -62,22 +63,12 @@ function sleep(ms: number): Promise<void> {
 /** Wall-clock seconds since the (ISO) start timestamp. Module-scoped so the
  * React purity rule doesn't see Date.now() inside component code. */
 function secondsSince(startIso: string): number {
-  return Math.max(1, Math.round((Date.now() - new Date(startIso).getTime()) / 1000));
-}
-
-function formatDateTime(value: string | null): string {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("tr-TR", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return Math.max(1, Math.round((Date.now() - serverDate(startIso).getTime()) / 1000));
 }
 
 function durationSeconds(start: string, end: string | null): string {
   if (!end) return "—";
-  const s = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000);
+  const s = Math.round((serverDate(end).getTime() - serverDate(start).getTime()) / 1000);
   return `${s} sn`;
 }
 
@@ -928,7 +919,7 @@ function CoveragePanel() {
     (r) =>
       r.status !== "running" &&
       r.last_attempt_at !== null &&
-      (cycleStart === null || new Date(r.last_attempt_at) >= new Date(cycleStart)),
+      (cycleStart === null || serverDate(r.last_attempt_at) >= serverDate(cycleStart)),
   );
 
   const pct =
@@ -1089,7 +1080,7 @@ function CoveragePanel() {
                         {" "}
                         · {COVERAGE_STATUS_LABEL[r.status] ?? r.status} · {r.stores_ok} mağaza tamam,{" "}
                         {r.stores_failed} hatalı
-                        {r.last_attempt_at && ` · ${new Date(r.last_attempt_at).toLocaleString("tr-TR")}`}
+                        {r.last_attempt_at && ` · ${formatDateTime(r.last_attempt_at)}`}
                       </span>
                     </p>
                     {r.error && <p className="mt-1 break-words text-muted">{r.error}</p>}

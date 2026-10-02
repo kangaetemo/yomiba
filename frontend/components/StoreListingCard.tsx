@@ -3,11 +3,11 @@
  * Server-Component safe (plain anchors, no client state).
  */
 
+import { formatDateTime } from "@/lib/time";
 import type { ReactNode } from "react";
 import { Badge, formatTL } from "@/components/ui";
 import type { VolumeStore } from "@/types";
 
-const CHECKED = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export function StoreListingCard({
   listing,
@@ -48,7 +48,7 @@ export function StoreListingCard({
             </Badge>
           )}
           {listing.last_checked && (
-            <span className="text-faint">kontrol: {CHECKED.format(new Date(listing.last_checked))}</span>
+            <span className="text-faint">kontrol: {formatDateTime(listing.last_checked)}</span>
           )}
         </div>
       </div>

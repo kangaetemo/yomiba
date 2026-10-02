@@ -8,6 +8,7 @@
  * GET /volume/{id}/price-history, points already sorted chronologically.
  */
 
+import { TIME_ZONE, serverDate } from "@/lib/time";
 import { formatPrice } from "@/components/PriceBadge";
 import type { PriceHistoryListing } from "@/types";
 
@@ -44,10 +45,10 @@ function formatTickPrice(v: number): string {
 }
 
 function formatTickDate(d: Date, spanMs: number): string {
-  const day = d.toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+  const day = d.toLocaleDateString("tr-TR", { day: "numeric", month: "short", timeZone: TIME_ZONE });
   // Short windows: show the time too, otherwise just the day.
   if (spanMs < 48 * HOUR_MS) {
-    const time = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    const time = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: TIME_ZONE });
     return `${day} ${time}`;
   }
   return day;
@@ -55,6 +56,7 @@ function formatTickDate(d: Date, spanMs: number): string {
 
 function formatPointDate(d: Date): string {
   return d.toLocaleString("tr-TR", {
+    timeZone: TIME_ZONE,
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -76,7 +78,7 @@ export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[
   for (const listing of listings) {
     if (listing.points.length === 0) continue;
     const points: SeriesPoint[] = listing.points.map((p) => {
-      const d = new Date(p.checked_at);
+      const d = serverDate(p.checked_at);
       return {
         t: d.getTime(),
         price: p.price,

@@ -9,6 +9,7 @@ import { PriceAlertForm } from "@/components/PriceAlertForm";
 import { RemoveListingButton } from "@/components/admin/RemoveListingButton";
 import { Badge, Cover, formatDate, formatTL, volumeTitle } from "@/components/ui";
 import { ApiError } from "@/lib/api";
+import { formatDateTime } from "@/lib/time";
 import { oneShotVolumeNumber, parseVolumeSegment, seriesPath, volumePath } from "@/lib/paths";
 import { volumeLabel as labelFor } from "@/lib/volumeLabel";
 import { currentUserOrNull } from "@/services/auth";
@@ -340,7 +341,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
                     <div className="space-y-2 border-t border-line p-4 text-sm">
                       <p className="text-xs text-faint">
                         Serinin son fiyat taraması:{" "}
-                        {detail.last_refresh_at ? new Date(detail.last_refresh_at).toLocaleString("tr-TR") : "henüz yok"}
+                        {detail.last_refresh_at ? formatDateTime(detail.last_refresh_at) : "henüz yok"}
                       </p>
                       <ul className="divide-y divide-line">
                         {missingStores.map((m) => (
