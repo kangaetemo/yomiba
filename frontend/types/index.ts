@@ -87,8 +87,20 @@ export interface CatalogImportStatus {
   last_success_at: string | null;
 }
 
+/** A single volume found by a "<series> <number>" query. */
+export interface VolumeHit {
+  series_slug: string;
+  series_title: string;
+  publisher: string;
+  number: number;
+  cover_url: string | null;
+  in_stock_count: number;
+  best_price: number | null;
+}
+
 export interface SearchResponse {
   results: SeriesSummary[];
+  volumes?: VolumeHit[];
   status: CatalogImportStatus;
 }
 

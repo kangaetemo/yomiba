@@ -4,13 +4,15 @@
 
 import { useEffect, useState } from "react";
 import { searchSeries } from "@/services/catalog";
-import type { SearchResponse, SeriesSummary } from "@/types";
+import type { SearchResponse, SeriesSummary, VolumeHit } from "@/types";
 
 export type SearchStatus = "idle" | "loading" | "success" | "error";
 
 export interface UseSearchResult {
   status: SearchStatus;
   results: SeriesSummary[];
+  /** Single volumes for a "<series> <number>" query. */
+  volumes: VolumeHit[];
   error: string | null;
   isEmpty: boolean;
 }
@@ -21,6 +23,7 @@ interface SearchState {
   key: string;
   status: "loading" | "success" | "error";
   results: SeriesSummary[];
+  volumes: VolumeHit[];
   error: string | null;
 }
 
@@ -42,6 +45,7 @@ export function useSearch(query: string, debounceMs = 300): UseSearchResult {
           key: trimmed,
           status: "success",
           results: Array.isArray(raw.results) ? raw.results : [],
+          volumes: Array.isArray(raw.volumes) ? raw.volumes : [],
           error: null,
         });
       } catch (error) {
@@ -50,6 +54,7 @@ export function useSearch(query: string, debounceMs = 300): UseSearchResult {
           key: trimmed,
           status: "error",
           results: [],
+          volumes: [],
           error: error instanceof Error ? error.message : "Arama başarısız",
         });
       }
@@ -62,16 +67,17 @@ export function useSearch(query: string, debounceMs = 300): UseSearchResult {
   }, [trimmed, debounceMs]);
 
   if (!active) {
-    return { status: "idle", results: [], error: null, isEmpty: false };
+    return { status: "idle", results: [], volumes: [], error: null, isEmpty: false };
   }
   const current = searched && searched.key === trimmed ? searched : null;
   if (!current) {
-    return { status: "loading", results: [], error: null, isEmpty: false };
+    return { status: "loading", results: [], volumes: [], error: null, isEmpty: false };
   }
   return {
     status: current.status,
     results: current.results,
+    volumes: current.volumes,
     error: current.error,
-    isEmpty: current.status === "success" && current.results.length === 0,
+    isEmpty: current.status === "success" && current.results.length === 0 && current.volumes.length === 0,
   };
 }

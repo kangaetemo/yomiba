@@ -259,3 +259,35 @@ def test_detail_reads_jp_and_tr_status():
     )
     manga = make_scraper(lambda r: httpx.Response(200, text=page)).fetch_manga("dragon-ball")
     assert (manga.jp_status, manga.tr_status) == ("completed", "ongoing")
+
+
+AFRO_TABS = (
+    "<html><body><h1><span>Afro Samuray</span></h1>"
+    '<ul class="nav nav-tabs">'
+    '<li><button class="nav-link active fw-bold" data-bs-target="#pane-Clothbound">Bez Cilt · 1</button></li>'
+    '<li><button class="nav-link fw-bold" data-bs-target="#pane-SingleVolume">Tekli Cilt · 1</button></li>'
+    "</ul>"
+    '<div class="tab-content">'
+    f'<div class="tab-pane fade show active" id="pane-Clothbound">{_vol_item(1).replace("cilt-1", "cilt-1-clothbound")}</div>'
+    '<div class="tab-pane fade" id="pane-SingleVolume" data-loaded="false" '
+    'data-manga-id="77" data-format="SingleVolume"></div>'
+    "</div></body></html>"
+)
+
+
+def test_single_volume_tab_is_main_even_when_page_opens_on_another():
+    """Afro Samuray opens on "Bez Cilt": the regular binding must still be
+    the series and the cloth-bound one its variant, not the other way round."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/manga/afro-samuray":
+            return httpx.Response(200, text=AFRO_TABS)
+        if request.url.path == "/manga/77/volumes/load-more":
+            fmt = request.url.params["format"]
+            if request.url.params["pageIndex"] == "1":
+                return httpx.Response(200, text=_vol_item(1).replace("cilt-1", f"cilt-1-{fmt.lower()}"))
+            return httpx.Response(200, text="")
+        return httpx.Response(404, text="not found")
+
+    manga = make_scraper(handler).fetch_manga("afro-samuray")
+    assert [v.url.rsplit("/", 1)[1] for v in manga.volumes] == ["cilt-1-singlevolume"]
+    assert [(v.format, v.label) for v in manga.variants] == [("Clothbound", "Bez Cilt")]

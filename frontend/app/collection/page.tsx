@@ -2,7 +2,7 @@ import { volumePath } from "@/lib/paths";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { formatPrice } from "@/components/PriceBadge";
+import { Badge, type BadgeTone, Cover, SectionHeading, formatTL } from "@/components/ui";
 import { volumeLabel } from "@/lib/volumeLabel";
 import { currentUser } from "@/services/auth";
 import { getMyCollection, getMyPriceAlerts, getMyWishlist } from "@/services/me";
@@ -18,33 +18,69 @@ const STATUS_LABEL: Record<CollectionStatus, string> = {
   wanted: "İstediğim",
 };
 
-const STATUS_CHIP: Record<CollectionStatus, string> = {
-  owned: "bg-ok/10 text-ok",
-  missing: "bg-bad/10 text-bad",
-  wanted: "bg-accent/10 text-accent",
+const STATUS_TONE: Record<CollectionStatus, BadgeTone> = {
+  owned: "stock",
+  missing: "soldout",
+  wanted: "lowest",
 };
 
-function Row({ item, children }: { item: MyVolume; children?: React.ReactNode }) {
+/** A cover-first card, the same look as the series page's volume grid. */
+function Tile({
+  item,
+  badge,
+  footer,
+}: {
+  item: MyVolume;
+  badge?: React.ReactNode;
+  footer: React.ReactNode;
+}) {
+  const href = volumePath(item.series_slug, item.volume_number);
   return (
-    <Link
-      href={volumePath(item.series_slug, item.volume_number)}
-      className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3 transition-colors hover:border-accent/60"
-    >
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink">
-          {item.series_title}
-          <span className="text-muted"> · {volumeLabel(item.volume_number)}</span>
-        </p>
-        <p className="truncate text-xs text-muted">{item.publisher}</p>
+    <li className="flex flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-card transition-shadow hover:shadow-lift">
+      <Link href={href} className="group relative block px-3 pt-3" aria-label={`${item.series_title} ${volumeLabel(item.volume_number)}`}>
+        <Cover
+          url={item.cover_url}
+          alt={`${item.series_title} ${volumeLabel(item.volume_number)} kapağı`}
+          className="w-full transition-transform duration-300 group-hover:-translate-y-0.5"
+        />
+        {badge && <span className="absolute top-5 left-5">{badge}</span>}
+      </Link>
+      <div className="flex flex-1 flex-col gap-2 p-3">
+        <div className="min-w-0">
+          <p className="eyebrow truncate">{item.series_title}</p>
+          <Link href={href} className="text-[1.02rem] font-semibold text-ink hover:text-accent">
+            {volumeLabel(item.volume_number)}
+          </Link>
+          <p className="truncate text-xs text-muted">{item.publisher}</p>
+        </div>
+        <div className="mt-auto border-t border-line pt-2">{footer}</div>
       </div>
-      <div className="flex shrink-0 items-center gap-2 text-sm">{children}</div>
-    </Link>
+    </li>
   );
+}
+
+/** "En düşük fiyat" with the price, or a plain "Stokta yok". */
+function PriceFooter({ price, label = "En düşük fiyat" }: { price: number | null; label?: string }) {
+  return price !== null ? (
+    <div>
+      <p className="text-[0.7rem] text-faint">{label}</p>
+      <p className="tabular text-lg leading-tight font-bold text-ink">{formatTL(price)}</p>
+    </div>
+  ) : (
+    <div>
+      <p className="text-[0.7rem] text-faint">Şu an satışta değil</p>
+      <p className="tabular text-lg leading-tight font-bold text-faint">—</p>
+    </div>
+  );
+}
+
+function Grid({ children }: { children: React.ReactNode }) {
+  return <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">{children}</ul>;
 }
 
 function Empty({ text }: { text: string }) {
   return (
-    <div className="rounded-xl border border-line bg-surface p-6 text-center text-sm text-muted">
+    <div className="rounded-xl border border-dashed border-line-strong bg-surface/70 p-6 text-center text-sm text-muted">
       {text}
     </div>
   );
@@ -60,70 +96,83 @@ export default async function CollectionPage() {
     getMyPriceAlerts(),
   ]);
 
+  const count = (status: CollectionStatus) => collection.filter((c) => c.status === status).length;
+
   return (
-    <div className="space-y-10">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Koleksiyonum</h1>
-        <p className="text-sm text-muted">
+    <div className="space-y-12">
+      <header className="space-y-3">
+        <p className="eyebrow">Kitaplığın</p>
+        <h1 className="text-3xl font-semibold text-ink sm:text-4xl">Koleksiyonum</h1>
+        <p className="max-w-2xl text-sm text-muted sm:text-base">
           İşaretlediğin ciltler, istek listen ve fiyat alarmların.
         </p>
+        {collection.length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {(["owned", "missing", "wanted"] as const).map((status) => (
+              <Badge key={status} tone={STATUS_TONE[status]}>
+                {STATUS_LABEL[status]} · {count(status)}
+              </Badge>
+            ))}
+          </div>
+        )}
       </header>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-ink">
-          Koleksiyon <span className="text-sm font-normal text-muted">({collection.length})</span>
-        </h2>
+      <section className="space-y-5" aria-labelledby="koleksiyon">
+        <SectionHeading id="koleksiyon" title={`Koleksiyon (${collection.length})`} />
         {collection.length === 0 ? (
           <Empty text="Henüz işaretlediğin cilt yok — bir cildi açıp Sahibim / Eksik / İstediğim seç." />
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <Grid>
             {collection.map((item) => (
-              <Row key={item.volume_id} item={item}>
-                <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${STATUS_CHIP[item.status]}`}>
-                  {STATUS_LABEL[item.status]}
-                </span>
-              </Row>
+              <Tile
+                key={item.volume_id}
+                item={item}
+                badge={<Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge>}
+                footer={<PriceFooter price={item.best_price} />}
+              />
             ))}
-          </div>
+          </Grid>
         )}
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-ink">
-          İstek listesi <span className="text-sm font-normal text-muted">({wishlist.length})</span>
-        </h2>
+      <section className="space-y-5" aria-labelledby="istek-listesi">
+        <SectionHeading id="istek-listesi" title={`İstek listesi (${wishlist.length})`} />
         {wishlist.length === 0 ? (
           <Empty text="İstek listen boş." />
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <Grid>
             {wishlist.map((item) => (
-              <Row key={item.volume_id} item={item}>
-                <span className="tabular-nums text-ink-2">{formatPrice(item.best_price)}</span>
-              </Row>
+              <Tile key={item.volume_id} item={item} footer={<PriceFooter price={item.best_price} />} />
             ))}
-          </div>
+          </Grid>
         )}
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-ink">
-          Fiyat alarmları <span className="text-sm font-normal text-muted">({alerts.length})</span>
-        </h2>
+      <section className="space-y-5" aria-labelledby="fiyat-alarmlari">
+        <SectionHeading id="fiyat-alarmlari" title={`Fiyat alarmları (${alerts.length})`} />
         {alerts.length === 0 ? (
           <Empty text="Kurulu fiyat alarmın yok." />
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <Grid>
             {alerts.map((item) => (
-              <Row key={item.volume_id} item={item}>
-                <span className="text-xs text-muted">
-                  en ucuz {formatPrice(item.best_price)}
-                </span>
-                <span className={item.is_active ? "tabular-nums text-ok" : "tabular-nums text-muted"}>
-                  ≤ {formatPrice(item.threshold_price / 100)}
-                </span>
-              </Row>
+              <Tile
+                key={item.volume_id}
+                item={item}
+                badge={<Badge tone={item.is_active ? "alert" : "neutral"}>{item.is_active ? "Alarm açık" : "Alarm kapalı"}</Badge>}
+                footer={
+                  <div className="space-y-1">
+                    <p className="text-[0.7rem] text-faint">Hedef fiyat</p>
+                    <p className={`tabular text-lg leading-tight font-bold ${item.is_active ? "text-ok" : "text-muted"}`}>
+                      ≤ {formatTL(item.threshold_price / 100)}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {item.best_price !== null ? `Şu an ${formatTL(item.best_price)}` : "Şu an satışta değil"}
+                    </p>
+                  </div>
+                }
+              />
             ))}
-          </div>
+          </Grid>
         )}
       </section>
     </div>

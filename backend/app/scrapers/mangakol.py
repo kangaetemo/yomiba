@@ -238,14 +238,23 @@ class MangakolCatalogScraper(BaseScraper):
         local_publisher = info.get("yerel yayıncı") or info.get("yerel yayinci")
 
         tabs = self._format_tabs(soup)
-        main_format = tabs[0][0] if tabs else "SingleVolume"
-        active = soup.select_one(f"#pane-{main_format}") if tabs else None
-        volumes = self._volume_items(active if active is not None else soup)
         manga_id = self._manga_id(soup)
-        if len(volumes) >= self._SSR_VOLUME_PAGE_SIZE and manga_id:
-            # Possibly truncated: follow the public load-more fragment
-            # endpoint (pageIndex starts at 2; 0/1 repeat the first page).
-            volumes = self._load_more_volumes(manga_id, volumes, main_format)
+        # The regular (single-volume) binding is the series itself even when
+        # the page opens on another tab (Afro Samurai opens on Bez Cilt):
+        # every other tab is a variant.
+        if any(fmt == "SingleVolume" for fmt, _ in tabs[1:]) and manga_id:
+            tabs = [t for t in tabs if t[0] == "SingleVolume"] + [
+                t for t in tabs if t[0] != "SingleVolume"
+            ]
+            volumes = self._load_more_volumes(manga_id, [], "SingleVolume", first_page=1)
+        else:
+            main_format = tabs[0][0] if tabs else "SingleVolume"
+            active = soup.select_one(f"#pane-{main_format}") if tabs else None
+            volumes = self._volume_items(active if active is not None else soup)
+            if len(volumes) >= self._SSR_VOLUME_PAGE_SIZE and manga_id:
+                # Possibly truncated: follow the public load-more fragment
+                # endpoint (pageIndex starts at 2; 0/1 repeat the first page).
+                volumes = self._load_more_volumes(manga_id, volumes, main_format)
         variants = []
         for fmt, label in tabs[1:]:
             if not manga_id:

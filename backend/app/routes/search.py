@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..schemas.search import ImportStatusOut, SearchResponse, SeriesSummary
+from ..schemas.search import ImportStatusOut, SearchResponse, SeriesSummary, VolumeHitOut
 from ..services import catalog_service, series_slugs
 from ..utils import from_cents
 
@@ -25,7 +25,21 @@ def search_series(
     matches = catalog_service.search_series(session, query)
     offers = catalog_service.series_offer_summary(session, [m.series.id for m in matches])
     slugs = series_slugs.slugs_for(session, [m.series.id for m in matches])
+    hits = catalog_service.search_volumes(session, query)
+    hit_slugs = series_slugs.slugs_for(session, [h.series.id for h in hits]) if hits else {}
     return SearchResponse(
+        volumes=[
+            VolumeHitOut(
+                series_slug=hit_slugs[hit.series.id],
+                series_title=hit.series.title,
+                publisher=hit.series.publisher.name,
+                number=hit.volume.volume_number,
+                cover_url=hit.cover_url,
+                in_stock_count=hit.in_stock_count,
+                best_price=from_cents(hit.best_price_cents),
+            )
+            for hit in hits
+        ],
         results=[
             SeriesSummary(
                 id=match.series.id,

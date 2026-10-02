@@ -204,3 +204,16 @@ def test_common_filter_rejects_merchandise_from_search():
     assert scraper.stats["rejected"].get("non_manga") == 1
     # the other fixture books are untouched
     assert any("Berserk 19" in r.title for r in results)
+
+
+def test_enrichment_reaches_results_beyond_default_detail_limit():
+    """Cards carry no stock: a sold-out volume past the first
+    ``max_detail_requests`` results must not stay "in stock" (One Piece 47)."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/arama":
+            return httpx.Response(200, text=SEARCH_P1 if _page_of(request) == 1 else EMPTY_PAGE)
+        return httpx.Response(200, text=DETAIL_OUTOFSTOCK)
+
+    results = make_scraper(handler, max_detail_requests=1).search("berserk")
+    assert len(results) > 1
+    assert all(r.in_stock is False for r in results)

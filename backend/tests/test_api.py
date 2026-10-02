@@ -424,3 +424,17 @@ def test_stale_listing_is_stock_unknown_not_in_stock(db_session):
 
 def test_missing_price_refresh_needs_scheduler(client):
     assert client.post("/import/price-refresh/missing").status_code == 503
+
+
+def test_search_with_volume_number_returns_that_volume(seeded):
+    data = seeded.get("/search", params={"q": "berserk 1"}).json()
+    hit = next(v for v in data["volumes"] if v["series_title"] == "Berserk")
+    assert hit["number"] == 1
+    assert hit["best_price"] == 163.54
+    assert hit["in_stock_count"] == 3
+    assert hit["series_slug"]
+
+
+def test_search_with_missing_volume_number_has_no_volume_hit(seeded):
+    assert seeded.get("/search", params={"q": "berserk 99"}).json()["volumes"] == []
+    assert seeded.get("/search", params={"q": "berserk"}).json()["volumes"] == []

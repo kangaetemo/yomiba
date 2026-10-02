@@ -23,6 +23,18 @@ class SeriesSummary(BaseModel):
     lowest_price: float | None = None
 
 
+class VolumeHitOut(BaseModel):
+    """One volume found by a "<series> <number>" query."""
+
+    series_slug: str
+    series_title: str
+    publisher: str
+    number: int
+    cover_url: str | None = None
+    in_stock_count: int = 0
+    best_price: float | None = None
+
+
 class ImportStatusOut(BaseModel):
     """Legacy response envelope; search emits only fresh or idle.
 
@@ -36,4 +48,6 @@ class ImportStatusOut(BaseModel):
 
 class SearchResponse(BaseModel):
     results: list[SeriesSummary]
+    #: Filled for queries like "one piece 47"; empty otherwise.
+    volumes: list[VolumeHitOut] = []
     status: ImportStatusOut

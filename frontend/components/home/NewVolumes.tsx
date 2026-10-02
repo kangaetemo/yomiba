@@ -11,7 +11,7 @@ function isFresh(iso: string): boolean {
   return days <= NEW_DAYS;
 }
 
-/** New volumes by their LOCAL release date from the catalog (Mangakol).
+/** New volumes by their LOCAL release date from the catalog.
  * A horizontal shelf on phones, a grid from tablet up. */
 export function NewVolumes({ volumes }: { volumes: NewVolume[] }) {
   if (volumes.length === 0) return null;

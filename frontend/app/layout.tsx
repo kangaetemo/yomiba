@@ -160,8 +160,7 @@ export default async function RootLayout({
                 ))}
               </ul>
               <p className="text-xs text-faint">
-                Fiyatlar mağazaların kamuya açık sayfalarından toplanır ve gecikmeli olabilir. Katalog
-                bilgileri Mangakol&apos;dan beslenir.
+                Fiyatlar mağazaların kamuya açık sayfalarından toplanır ve gecikmeli olabilir.
               </p>
             </div>
           </div>

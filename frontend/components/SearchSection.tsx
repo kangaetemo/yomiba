@@ -6,6 +6,7 @@ import { useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { SearchBar } from "@/components/SearchBar";
 import { SeriesCard } from "@/components/SeriesCard";
+import { VolumeHitCard } from "@/components/VolumeHitCard";
 import { ResultsSkeleton } from "@/components/LoadingSkeleton";
 import { useSearch } from "@/hooks/useSearch";
 
@@ -23,7 +24,7 @@ export function SearchSection({
   const pathname = usePathname();
   const initial = useSearchParams().get("q") ?? "";
   const [query, setQuery] = useState(syncUrl ? initial : "");
-  const { status, results, error, isEmpty } = useSearch(query);
+  const { status, results, volumes, error, isEmpty } = useSearch(query);
 
   function change(value: string) {
     setQuery(value);
@@ -59,8 +60,16 @@ export function SearchSection({
           <div className="rounded-xl border border-dashed border-line-strong bg-surface/70 p-6 text-center">
             <p className="font-display text-lg text-ink-2">“{query.trim()}” katalogda bulunamadı</p>
             <p className="mt-1 text-sm text-muted">
-              Türkçe ya da orijinal adıyla deneyin; katalog Mangakol&apos;dan beslenir.
+              Türkçe ya da orijinal adıyla deneyin.
             </p>
+          </div>
+        )}
+
+        {status === "success" && volumes.length > 0 && (
+          <div className="grid gap-3">
+            {volumes.map((hit) => (
+              <VolumeHitCard key={`${hit.series_slug}-${hit.number}`} hit={hit} onNavigate={onNavigate} />
+            ))}
           </div>
         )}
 

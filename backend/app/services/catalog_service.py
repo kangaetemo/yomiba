@@ -6,6 +6,7 @@ the returned ORM objects / dataclasses onto Pydantic response models.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -412,3 +413,69 @@ def _is_catalog_series(session: Session, series_id: int) -> bool:
     return session.scalar(
         select(CatalogSeries.series_id).where(CatalogSeries.series_id == series_id).limit(1)
     ) is not None
+
+
+_TRAILING_NUMBER_RE = re.compile(r"^(?P<title>.*?\S)\s+(?:cilt\s+|c\s+|#)?(?P<number>\d{1,4})$", re.IGNORECASE)
+
+
+@dataclass
+class VolumeHit:
+    series: Series
+    volume: Volume
+    cover_url: str | None
+    in_stock_count: int
+    best_price_cents: int | None
+
+
+def split_volume_query(query: str) -> tuple[str, int] | None:
+    """"one piece 47" -> ("one piece", 47); None when the query does not end
+    with a volume number or has nothing but the number."""
+    match = _TRAILING_NUMBER_RE.match(query.strip())
+    if match is None:
+        return None
+    return match.group("title"), int(match.group("number"))
+
+
+def search_volumes(session: Session, query: str, limit: int = 3) -> list[VolumeHit]:
+    """Volumes for a "<series> <number>" query: that volume of the best
+    matching series (a few, so a twin edition shows too). Two small indexed
+    lookups per query; empty when the query has no trailing number."""
+    split = split_volume_query(query)
+    if split is None:
+        return []
+    title, number = split
+    matches = search_series(session, title)[:limit]
+    if not matches:
+        return []
+    volumes = session.scalars(
+        select(Volume).where(
+            Volume.series_id.in_([m.series.id for m in matches]),
+            Volume.volume_number == number,
+            not_(legacy_phantom_condition()),
+        )
+    ).all()
+    by_series = {v.series_id: v for v in volumes}
+    offers = {
+        vid: (count, price)
+        for vid, count, price in session.execute(
+            select(StoreListing.volume_id, func.count(StoreListing.id), func.min(StoreListing.price))
+            .where(
+                StoreListing.volume_id.in_([v.id for v in volumes]),
+                StoreListing.in_stock.is_(True),
+                StoreListing.price.isnot(None),
+            )
+            .group_by(StoreListing.volume_id)
+        ).all()
+    }
+    hits = []
+    for match in matches:
+        volume = by_series.get(match.series.id)
+        if volume is None:
+            continue
+        count, price = offers.get(volume.id, (0, None))
+        hits.append(VolumeHit(
+            series=match.series, volume=volume,
+            cover_url=cover_url(volume.cover_key) if volume.cover_key else match.cover_url,
+            in_stock_count=count, best_price_cents=price,
+        ))
+    return hits
