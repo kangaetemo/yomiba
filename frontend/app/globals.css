@@ -124,6 +124,24 @@ body {
   background-attachment: fixed;
 }
 
+/* Polka-dot screentone behind the whole page: faint under the content
+ * column, a little stronger towards the empty side margins. Fixed, so it
+ * reads as the paper's print pattern rather than scrolling decoration. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--ink) 13%, transparent) 1.5px,
+    transparent 1.9px
+  );
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 75% 85% at 50% 40%, rgb(0 0 0 / 0.3), #000 100%);
+  mask-image: radial-gradient(ellipse 75% 85% at 50% 40%, rgb(0 0 0 / 0.3), #000 100%);
+}
+
 @layer base {
   h1,
   h2,
