@@ -37,6 +37,13 @@ export interface NewVolume {
   in_stock_offers: number;
 }
 
+export interface ReleaseCalendar {
+  month: string;
+  today: string;
+  latest_month: string | null;
+  volumes: NewVolume[];
+}
+
 export interface HomeFeed {
   popular_series: PopularSeries[];
   /** Single-volume series completed in Japan and Turkey (same card shape);

@@ -23,6 +23,7 @@ export function NewVolumes({ volumes }: { volumes: NewVolume[] }) {
         eyebrow="Raflarda"
         title="Yeni çıkan ciltler"
         lead="Türkiye'de en son yayımlanan ciltler, yayınevinin çıkış tarihine göre."
+        action={{ href: `/takvim?ay=${volumes[0].release_date.slice(0, 7)}`, label: "Yayın takvimi" }}
       />
       <ul className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-5">
         {volumes.map((v) => (

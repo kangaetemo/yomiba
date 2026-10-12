@@ -7,6 +7,7 @@ import { deleteJson, getJson, patchJson, postJson, putJson } from "@/lib/api";
 import type {
   CollectionStatus,
   HomeFeed,
+  ReleaseCalendar,
   PopularSeries,
   PriceAlertState,
   PriceDrop,
@@ -25,6 +26,11 @@ export function getHomeFeed(popular = 24, oneShot = 48): Promise<HomeFeed> {
 /** Every one shot, in-stock first (the home shelf shows a rotating handful). */
 export function getAllOneShots(): Promise<{ one_shots: PopularSeries[] }> {
   return getJson<{ one_shots: PopularSeries[] }>("/one-shots");
+}
+
+/** All dated catalog volumes in a month, including announced releases. */
+export function getReleaseCalendar(month: string): Promise<ReleaseCalendar> {
+  return getJson<ReleaseCalendar>(`/releases?month=${encodeURIComponent(month)}`);
 }
 
 export function getPriceDrops(hours = 168, limit = 6): Promise<{ drops: PriceDrop[] }> {
