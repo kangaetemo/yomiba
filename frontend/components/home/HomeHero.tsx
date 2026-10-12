@@ -1,24 +1,23 @@
 /**
  * HomeHero: headline, the search (the page's main job), CTAs and a real
- * "shelf" of popular covers with their actual lowest prices on the right.
+ * "shelf" of catalog covers with their actual lowest prices on the right.
  * Nothing on this shelf is illustrative: covers and prices come from /home.
  */
 
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { SearchSection } from "@/components/SearchSection";
 import { HeroShelf } from "@/components/home/HeroShelf";
-import { pickRandom } from "@/lib/random";
+import { HERO_HISTORY_COOKIE, parseHeroHistory, pickHeroSeries } from "@/lib/heroSelection";
 import type { HomeFeed } from "@/types";
 
 const NUMBER = new Intl.NumberFormat("tr-TR");
 
-export function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: boolean }) {
-  // The page is rendered per request, so each visit shows a different trio
-  // from the whole popular pool instead of always the same top three.
-  const shelf = pickRandom(
-    // Only series someone can buy today (an in-stock price) with a cover.
-    (feed?.popular_series ?? []).filter((s) => s.cover_url && s.lowest_price !== null && s.in_stock_offers > 0),
-    3,
+export async function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: boolean }) {
+  const recent = parseHeroHistory((await cookies()).get(HERO_HISTORY_COOKIE)?.value);
+  const shelf = pickHeroSeries(
+    feed?.hero_series ?? feed?.popular_series ?? [],
+    recent,
   );
   const lead = shelf[0];
 
@@ -78,7 +77,7 @@ export function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: 
           )}
         </div>
 
-        {lead && <HeroShelf series={shelf} />}
+        {lead && <HeroShelf key={shelf.map((s) => s.id).join("-")} series={shelf} />}
       </div>
     </section>
   );

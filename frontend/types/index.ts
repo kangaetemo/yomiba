@@ -46,6 +46,9 @@ export interface ReleaseCalendar {
 
 export interface HomeFeed {
   popular_series: PopularSeries[];
+  /** Buyable catalog series with a cover, independent of popular ranking.
+   * Optional during rolling deployment of the backend. */
+  hero_series?: PopularSeries[];
   /** Single-volume series completed in Japan and Turkey (same card shape);
    * optional so an older backend without it still renders. */
   one_shots?: PopularSeries[];

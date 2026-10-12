@@ -90,6 +90,7 @@ def home(
     popular: int = Query(default=8, ge=1, le=24),
     one_shot: int = Query(default=8, ge=1, le=100),
     new: int = Query(default=10, ge=1, le=30),
+    hero: bool = Query(default=False),
     session: Session = Depends(get_db),
 ) -> dict:
     catalog = _catalog_ids()
@@ -119,18 +120,22 @@ def home(
 
     ranked = sorted(offers, key=rank)[:popular]
     popular_ids = [r[0] for r in ranked]
+    # The discovery hero draws from every buyable, covered catalog series,
+    # independently of the popularity ranking. Only requested by the SSR page.
+    detail_ids = [r[0] for r in offers] if hero else popular_ids
     series_rows = {
         s.id: (s, p) for s, p in session.execute(
             select(Series, Publisher.name).join(Publisher, Publisher.id == Series.publisher_id)
-            .where(Series.id.in_(popular_ids))
+            .where(Series.id.in_(detail_ids))
         )
     }
-    covers = _series_covers(session, popular_ids)
-    popular_series = []
-    slugs = series_slugs.slugs_for(session, popular_ids)
-    for sid, offer_count, min_price in ranked:
+    covers = _series_covers(session, detail_ids)
+    slugs = series_slugs.slugs_for(session, detail_ids)
+
+    def series_card(row):
+        sid, offer_count, min_price = row
         series, publisher = series_rows[sid]
-        popular_series.append({
+        return {
             "id": sid,
             "slug": slugs[sid],
             "title": series.title,
@@ -140,7 +145,10 @@ def home(
             "volume_count": volume_counts.get(sid, 0),
             "in_stock_offers": offer_count,
             "lowest_price": from_cents(min_price),
-        })
+        }
+
+    popular_series = [series_card(row) for row in ranked]
+    hero_series = [series_card(row) for row in offers if row[0] in covers] if hero else None
 
     # -- new volumes (local release date) --------------------------------------------
     new_rows = session.execute(
@@ -160,8 +168,11 @@ def home(
         "offers": session.scalar(
             select(func.count(StoreListing.id)).where(StoreListing.price.isnot(None))) or 0,
     }
-    return {"popular_series": popular_series, "one_shots": one_shots,
-            "new_volumes": new_volumes, "stats": stats}
+    result = {"popular_series": popular_series, "one_shots": one_shots,
+              "new_volumes": new_volumes, "stats": stats}
+    if hero_series is not None:
+        result["hero_series"] = hero_series
+    return result
 
 
 def _release_query():

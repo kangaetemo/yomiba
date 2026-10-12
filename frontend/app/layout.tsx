@@ -80,7 +80,7 @@ export default async function RootLayout({
         >
           İçeriğe geç
         </a>
-        <header className="sticky top-0 z-40 border-b border-line bg-paper/85 backdrop-blur-md">
+        <header className="sticky top-0 z-40 border-b border-line bg-paper md:bg-paper/85 md:backdrop-blur-md">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
             <Logo />
             <nav aria-label="Bölümler" className="hidden items-center gap-5 text-sm md:flex">
