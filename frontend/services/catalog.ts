@@ -18,9 +18,9 @@ import type {
   WishlistState,
 } from "@/types";
 
-/** `popular` = size of the popular pool; the hero rotates through all of it. */
+/** The broad hero pool stays on the server; only three cards reach the client. */
 export function getHomeFeed(popular = 24, oneShot = 48): Promise<HomeFeed> {
-  return getJson<HomeFeed>(`/home?popular=${popular}&one_shot=${oneShot}`);
+  return getJson<HomeFeed>(`/home?popular=${popular}&one_shot=${oneShot}&hero=true`);
 }
 
 /** Every one shot, in-stock first (the home shelf shows a rotating handful). */

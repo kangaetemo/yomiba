@@ -125,6 +125,7 @@ export function Cover({
       src={url}
       alt={alt}
       loading={eager ? "eager" : "lazy"}
+      decoding="async"
       className={`${className} cover-art aspect-[2/3] shrink-0 rounded-[5px] bg-surface-2 object-cover`}
     />
   );

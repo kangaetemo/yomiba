@@ -119,14 +119,10 @@ html {
 body {
   background-color: var(--paper);
   color: var(--ink);
-  /* Three layers, top to bottom:
-   * 1. paper grain: a fixed, very faint fractal noise;
-   * 2. a veil of paper colour over the content column, so the dots below
-   *    stay faint behind text and stronger in the empty side margins;
-   * 3. polka-dot screentone that scrolls with the page, like print on the
-   *    paper itself. */
+  /* Pre-rendered paper grain: no runtime SVG filter or fixed background.
+   * The soft veil and halftone dots keep the same warm paper character. */
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .26 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    url("/paper-grain.webp"),
     linear-gradient(
       90deg,
       transparent 0%,
@@ -136,7 +132,7 @@ body {
     ),
     radial-gradient(color-mix(in oklab, var(--ink) 13%, transparent) 1.5px, transparent 1.9px);
   background-size: auto, 100% 100%, 22px 22px;
-  background-attachment: fixed, scroll, scroll;
+  background-attachment: scroll, scroll, scroll;
 }
 
 @layer base {
