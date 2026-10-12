@@ -19,7 +19,9 @@ Read-only; nothing here triggers a scrape.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from calendar import monthrange
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, select
@@ -141,6 +143,28 @@ def home(
         })
 
     # -- new volumes (local release date) --------------------------------------------
+    new_rows = session.execute(
+        _release_query()
+        .where(Volume.release_date <= date.today())
+        .order_by(Volume.release_date.desc(), Volume.id.desc())
+        .limit(new)
+    ).all()
+    new_volumes = _serialize_releases(session, new_rows)
+
+    one_shots = _one_shots(session, interest, one_shot)
+
+    stats = {
+        "series": session.scalar(select(func.count(func.distinct(CatalogSeries.series_id)))) or 0,
+        "stores": session.scalar(
+            select(func.count(func.distinct(StoreListing.store_id)))) or 0,
+        "offers": session.scalar(
+            select(func.count(StoreListing.id)).where(StoreListing.price.isnot(None))) or 0,
+    }
+    return {"popular_series": popular_series, "one_shots": one_shots,
+            "new_volumes": new_volumes, "stats": stats}
+
+
+def _release_query():
     price_sub = (
         select(StoreListing.volume_id, func.min(StoreListing.price).label("min_price"),
                func.count(StoreListing.id).label("stores"))
@@ -148,19 +172,20 @@ def home(
         .group_by(StoreListing.volume_id)
         .subquery()
     )
-    new_rows = session.execute(
+    return (
         select(Volume, Series.title, Publisher.name, price_sub.c.min_price, price_sub.c.stores)
         .join(Series, Series.id == Volume.series_id)
         .join(Publisher, Publisher.id == Series.publisher_id)
         .outerjoin(price_sub, price_sub.c.volume_id == Volume.id)
-        .where(Volume.series_id.in_(catalog), real, Volume.release_date.isnot(None),
-               Volume.release_date <= date.today())
-        .order_by(Volume.release_date.desc(), Volume.id.desc())
-        .limit(new)
-    ).all()
-    fallback_covers = _series_covers(session, list({v.series_id for v, *_ in new_rows}))
-    new_slugs = series_slugs.slugs_for(session, [v.series_id for v, *_ in new_rows])
-    new_volumes = [
+        .where(Volume.series_id.in_(_catalog_ids()), Volume.volume_number >= 0,
+               Volume.release_date.isnot(None))
+    )
+
+
+def _serialize_releases(session: Session, rows) -> list[dict]:
+    fallback_covers = _series_covers(session, list({v.series_id for v, *_ in rows}))
+    new_slugs = series_slugs.slugs_for(session, [v.series_id for v, *_ in rows])
+    return [
         {
             "id": v.id,
             "series_id": v.series_id,
@@ -175,20 +200,37 @@ def home(
             "lowest_price": from_cents(min_price),
             "in_stock_offers": stores or 0,
         }
-        for v, title, publisher, min_price, stores in new_rows
+        for v, title, publisher, min_price, stores in rows
     ]
 
-    one_shots = _one_shots(session, interest, one_shot)
 
-    stats = {
-        "series": session.scalar(select(func.count(func.distinct(CatalogSeries.series_id)))) or 0,
-        "stores": session.scalar(
-            select(func.count(func.distinct(StoreListing.store_id)))) or 0,
-        "offers": session.scalar(
-            select(func.count(StoreListing.id)).where(StoreListing.price.isnot(None))) or 0,
-    }
-    return {"popular_series": popular_series, "one_shots": one_shots,
-            "new_volumes": new_volumes, "stats": stats}
+@router.get("/releases")
+def releases(
+    month: str = Query(pattern=r"^[1-9]\d{3}-(0[1-9]|1[0-2])$"),
+    session: Session = Depends(get_db),
+) -> dict:
+    """All catalog releases in a month; no shelf limit and no scraping.
+
+    Future dates are announced releases. Unknown dates and unresolved or
+    non-catalog volumes cannot be placed on the calendar and are omitted.
+    """
+    year, month_number = map(int, month.split("-"))
+    start = date(year, month_number, 1)
+    end = date(year, month_number, monthrange(year, month_number)[1])
+    today = datetime.now(ZoneInfo("Europe/Istanbul")).date()
+    rows = session.execute(
+        _release_query()
+        .where(Volume.release_date >= start, Volume.release_date <= end)
+        .order_by(Volume.release_date.desc(), Volume.id.desc())
+    ).all()
+    latest = session.scalar(
+        select(func.max(Volume.release_date))
+        .where(Volume.series_id.in_(_catalog_ids()), Volume.volume_number >= 0,
+               Volume.release_date <= today)
+    )
+    return {"month": month, "today": today.isoformat(),
+            "latest_month": latest.isoformat()[:7] if latest else None,
+            "volumes": _serialize_releases(session, rows)}
 
 
 @router.get("/one-shots")
