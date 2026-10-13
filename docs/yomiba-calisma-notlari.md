@@ -84,6 +84,21 @@ Son güncelleme: 13 Ekim 2026 (dokümantasyon ve kod inceleme notları).
 - **Yeni talep:** İndirim bölümüne “Tüm indirimler” bağlantısı ve tümünü gösteren bir sayfa eklenecek.
 - **İstişare konusu — henüz uygulanmadı:** Etiket/liste fiyatına göre indirim ile gözlemlenen satış fiyatı düşüşü farklı ölçülerdir. Örnek: etiket 240 TL, önceki satış 180 TL, güncel satış 170 TL olduğunda etiket farkı yaklaşık %29,2; son satış fiyatındaki düşüş yaklaşık %5,6'dır. Hangi ölçünün ana rozet olacağı ve etiket fiyatının veri kaynağı birlikte netleştirilecek; 180 TL sabit bir referans değildir.
 
+### 13 Ekim: satış fiyatı fırsatları, cilt sayfası ve katalog görünürlüğü
+
+- **İndirim kararı:** Etiket/liste fiyatı ana referans olmayacak. Önceki etiket fiyatı önerisi istişarede geri çekildi; kitapların olağan çevrimiçi satış fiyatına göre gerçek avantaj gösterilecek.
+- **Hesap:** Son 30 günlük gözlemlenen en ucuz piyasa satış fiyatlarının süreyle ağırlıklı medyanı kullanılıyor; en az 7 günlük kapsama gerekiyor. Kısa geçmişte sadece önceki gözlemlenen en ucuz fiyatla karşılaştırılıyor ve “tipik fiyat” iddiası yapılmıyor. Eski fiyat kayıtlarında stok bilgisi bulunmadığı için eski aralıklar fiyat geçmişi tahminidir; yeni gözlemler stok ve ürün kimliğini korur, 48 saatten sonra taze gözlem olmadan geçerli sayılmaz.
+- **Ana sayfa:** Tipik satış fiyatına göre en az %10 avantaj sunan, güncel ve stoktaki ciltler eşit boyutlu kartlarda gösterilir. Mağaza bazında düşmüş fakat başka mağazada zaten daha ucuz olan teklifler öne çıkarılmaz. Fiyat yeniden yükseldiğinde eski düşük fiyat gösterilmez. Cilt başına tek kart vardır.
+- **Tüm indirimler:** `/indirimler` sayfası, 7/14/30 gün seçimi, tarih/oran/TL farkı/güncel fiyat sıralaması ve 24 ciltlik sayfalama eklendi. Küçük düşüşler burada korunur.
+- **Cilt sayfası:** Fiyat özetinde ve fırsatı sunan mağaza satırında aynı düşüş bilgisi gösterilir. Tarihsel fırsat bilgisi yoksa tek en ucuz mağazanın diğer mağazalara göre avantajı ayrı ifadeyle gösterilir; bu fark tarihsel indirim olarak adlandırılmaz.
+- **Örnek:** Yeterli geçmişte 180 → 144 TL, “36 TL ucuzladı / %20 daha uygun”; 180 → 170 TL küçük düşüş olarak tüm indirimlerde kalır. 180 TL sabit referans değildir.
+- **Veri:** `0013_offer_evidence` şema güncellemesi, fiyat geçmişine stok/ürün URL'si ve ciltlere kaynak yayın durumu ekler. Aynı fiyatın sık kontrolleri tekrar yazılmaz; başarılı kontrol gün içinde değişiklik yoksa en fazla günde bir gözlem bırakır. Baskı/ürün değişimi yeni geçmiş olarak ayrılır; eski ürün fiyatları yeni ürüne ait düşüş sayılmaz.
+- **Cilt sayısı:** Kaynaktaki “Yakında” bilgisi daha önce okunuyor ama DB'ye taşınmıyordu. Artık taşınıyor. Yalnızca tam ve başarılı kaynak görüntüsünde kaynaktan çıkan ciltler pasif yapılır; kayıtlar, mağaza geçmişleri ve kullanıcı koleksiyonları silinmez. Eksik fragment veya sayfalama sınırı eski ciltleri yanlışlıkla pasif yapmaz. Tarihi belli duyurular erişilebilir kalır.
+- **Araştırma:** [14 seri örneklemi ve Fairy Tail bulguları](cilt-sayisi-arastirmasi-2026-10-13.md). Canlı Fairy Tail 52 kayıt/63'e kadar numara içeriyor; 31 kayıtta yerel tarih yok. Bu çalışma ortamında Mangakol 403 döndüğünden, kaynakta güncel 22 cilt bilgisi bağımsız doğrulanamadı. Eksik metadata tek başına silme/gizleme ölçütü yapılmadı.
+- **Kontroller:** Backend 867 test geçti (`test_task2_identity.py`, mevcut çalışma düzenindeki gerçek DB gereksinimi nedeniyle hariç). TypeScript, ESLint ve üretim derlemesi geçti. Yeni fırsat ve katalog görünürlüğü senaryoları ayrı regresyon testleriyle doğrulandı.
+- **Arayüz doğrulaması:** İzole örnek veritabanıyla gerçek tarayıcıda ana sayfanın 6 kartı, tüm 26 fırsatın iki sayfaya yayılması, sıralama değişince sayfanın sıfırlanması ve cilt sayfasında 144 TL / 36 TL / %20 ortak gösterimi doğrulandı. 320 ve 393 px mobilde yeni sayfa ile cilt sayfasında yatay taşma ve tarayıcı sayfa hatası görülmedi.
+- **Canlı adımı:** Kod ve şema yayımlandıktan sonra başarılı bir katalog senkronu gerekir. Şu anki araştırma canlı veritabanını doğrudan değiştirmedi; kaynakla son cilt sayısı kontrolü yapılacaklarda açık tutuluyor.
+
 ## Sıradaki adımlar (30 Eylül push'undan sonra)
 
 1. Railway deploy'unun bitmesini bekle.

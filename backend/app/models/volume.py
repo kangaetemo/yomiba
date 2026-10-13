@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -53,6 +53,9 @@ class Volume(Base):
     #: (Yerel)"); None when the source has none.
     page_count: Mapped[int | None] = mapped_column(Integer)
     release_date: Mapped[date | None] = mapped_column(Date)
+    # None: not yet verified by the new catalog sync. False: "Yakında" or
+    # absent from a complete source snapshot. Never delete user-owned rows.
+    catalog_released: Mapped[bool | None] = mapped_column(Boolean)
     #: When the catalog volume page was last read (ISBN + details); None =
     #: never, so the sync knows what is still to fetch.
     details_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

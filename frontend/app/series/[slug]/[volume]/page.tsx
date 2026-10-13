@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
+import { DealSummary } from "@/components/DealSummary";
 import { StoreListingCard } from "@/components/StoreListingCard";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { CollectionStatusPicker } from "@/components/CollectionStatusPicker";
@@ -111,6 +112,10 @@ export default async function VolumePage({ params }: VolumePageProps) {
   const historyListings = (history?.listings ?? []).filter((l) => l.points.length > 0);
   const best = detail.unverified ? null : cheapest(detail.stores);
   const buyable = detail.stores.filter((s) => s.stock && !s.stale);
+  const deal = detail.price_deal && best && detail.price_deal.new_price === best.price ? detail.price_deal : null;
+  const alternativePrices = best && best.stores.length === 1
+    ? buyable.filter((s) => s.price !== null && Number(s.price) > best.price).map((s) => Number(s.price)) : [];
+  const alternative = alternativePrices.length ? Math.min(...alternativePrices) : null;
   // Out-of-stock offers are never shown to readers; admins still see them
   // (to remove a wrong match).
   const isAdmin = user?.role === "ADMIN";
@@ -234,6 +239,10 @@ export default async function VolumePage({ params }: VolumePageProps) {
                 <p className="text-sm text-accent">En düşük fiyat</p>
                 <p className="tabular font-sans text-4xl font-bold tracking-tight text-ink">{formatTL(best.price)}</p>
                 <p className="mt-1 text-sm text-muted">{best.stores.join(" · ")}</p>
+                {deal ? <div className="mt-3"><DealSummary deal={deal} /></div>
+                  : alternative !== null && <p className="mt-2 text-sm font-semibold text-accent">
+                    Diğer mağazaların en ucuz teklifinden {formatTL(alternative - best.price)} daha uygun
+                  </p>}
               </div>
               <span className="inline-flex min-h-11 items-center gap-1 font-semibold text-ink-2 group-hover:text-accent">
                 Mağazaları karşılaştır <span aria-hidden>↓</span>
@@ -310,6 +319,8 @@ export default async function VolumePage({ params }: VolumePageProps) {
                         listing={listing}
                         isCheapest={best !== null && listing.price !== null && Number(listing.price) === best.price}
                         adminAction={adminRemove(listing)}
+                        deal={deal && deal.listing_id === listing.id ? deal : undefined}
+                        comparisonSaving={!deal && best && listing.price !== null && Number(listing.price) === best.price && alternative !== null ? alternative - best.price : undefined}
                       />
                     ))}
                   </div>

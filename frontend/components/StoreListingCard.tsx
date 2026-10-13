@@ -3,21 +3,26 @@
  * Server-Component safe (plain anchors, no client state).
  */
 
+import { DealSummary } from "@/components/DealSummary";
 import { formatDateTime } from "@/lib/time";
 import type { ReactNode } from "react";
 import { Badge, formatTL } from "@/components/ui";
-import type { VolumeStore } from "@/types";
+import type { PriceDeal, VolumeStore } from "@/types";
 
 
 export function StoreListingCard({
   listing,
   isCheapest,
   adminAction,
+  deal,
+  comparisonSaving,
 }: {
   listing: VolumeStore;
   isCheapest: boolean;
   /** Admin-only control (e.g. remove a wrongly matched listing). */
   adminAction?: ReactNode;
+  deal?: PriceDeal;
+  comparisonSaving?: number;
 }) {
   // A stale listing's "in stock" flag is only the last known value: the
   // store stopped showing the product (often because it sold out).
@@ -51,6 +56,10 @@ export function StoreListingCard({
             <span className="text-faint">kontrol: {formatDateTime(listing.last_checked)}</span>
           )}
         </div>
+        {buyable && deal && <DealSummary deal={deal} />}
+        {buyable && !deal && comparisonSaving !== undefined && comparisonSaving > 0 && (
+          <p className="text-xs font-semibold text-accent">Diğer mağazalara göre {formatTL(comparisonSaving)} daha uygun</p>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4 sm:justify-end">

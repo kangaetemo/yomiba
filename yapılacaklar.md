@@ -6,10 +6,11 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 
 ## Ana sayfa ve tasarım
 
-- [ ] **İndirim bölümünü yeniden düzenle.** Tasarımı, indirim oranlarının hesaplanmasını ve gösterimini gözden geçir. Özellikle masaüstündeki kötü görünümü düzelt.
-  - Etiket/liste fiyatına göre indirim ile gözlemlenen satış fiyatı düşüşünün nasıl sunulacağını birlikte netleştir. Önceki satış fiyatını etiket fiyatı olarak adlandırma; sabit bir fiyat referansı kullanma.
-  - Fiyat tekrar yükselmişse eski düşüşü güncel fırsat gibi gösterme; güncel stok ve fiyatı doğrula.
-- [ ] **“Tüm indirimler” bağlantısı ve sayfası ekle.** Ana sayfadaki sınırlı seçkinin dışındaki indirimler de görülebilsin.
+- [x] **İndirim bölümünü yeniden düzenle.** Eşit boyutlu kartlar, satış fiyatı geçmişine dayalı karşılaştırma, güncel stok/fiyat doğrulaması ve cilt başına tek fırsat uygulandı. Etiket fiyatı referans alınmıyor. Ana sayfa için en az 7 günlük geçmiş ve tipik en ucuz satış fiyatına göre en az %10 avantaj aranıyor. Küçük düşüşler ayrı sayfada görülebiliyor.
+- [x] **“Tüm indirimler” bağlantısı ve sayfası ekle.** `/indirimler`: 7/14/30 gün, oran/TL farkı/fiyat/tarih sıralaması ve sayfalama.
+- [x] **Fiyat avantajını cilt sayfasında göster.** Fiyat özeti ve ilgili mağaza satırında ortak düşüş bilgisi; yeterli geçmiş yoksa mevcut mağazalar arasındaki avantaj ayrı ifadeyle belirtiliyor.
+- [x] **Fairy Tail ve diğer serilerdeki fazla cilt kayıtlarını araştır; genel koruma ekle.** 14 seri örneklemi incelendi. Kaynak yayın durumu ve tam kaynak görüntüsüne göre, kayıt silmeden genel görünürlük düzeltmesi hazırlandı. [Araştırma](docs/cilt-sayisi-arastirmasi-2026-10-13.md).
+- [ ] **Yayımlama sonrası katalog doğrulaması.** Başarılı Mangakol senkronunun ardından Fairy Tail ve örneklem serilerinin canlı cilt sayılarını kaynakla yeniden karşılaştır. Araştırma ortamında Mangakol 403 döndüğü için güncel 22 cilt bilgisi bağımsız doğrulanamadı.
 - [ ] **Yayın takvimini küçült.** Takvim alanı çok yer kaplıyor; daha az alan kaplayan bir düzen oluştur.
 - [ ] **“Takip edilen mağazalar” bölümünü kaldır.** Bu ayrı bölüme ihtiyaç yok.
 - [ ] **Ana sayfadaki istatistik alanını kaldır.** “Katalogdaki seri: 495”, “Takip edilen mağaza: 10” ve “Güncel fiyat: 13.314” göstergelerini içeren alana ihtiyaç yok. Sayılar, kaldırılacak alanı tanımlamak için mevcut görünümden örnektir.

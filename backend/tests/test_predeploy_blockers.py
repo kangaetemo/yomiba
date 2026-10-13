@@ -89,17 +89,24 @@ def test_safe_switch_has_no_synthetic_price_change(db_session, current_stock, ca
     assert listing.product_url == b.product_url
     assert listing.price == int(candidate_price) * 100
     assert listing.in_stock
-    assert _history(db_session) == [10000]  # switch itself is not a price drop
+    assert _history(db_session) == [10000, int(candidate_price) * 100]
+    points = list(db_session.scalars(select(PriceHistory).order_by(PriceHistory.id)))
+    assert [p.product_url for p in points] == [a.product_url, b.product_url]
+    from app.services.price_deals import current_price_deals
+    assert current_price_deals(db_session) == []  # new product has no predecessor
     if candidate_price == "90":
         for _ in range(3):
             _run(db_session, a)
             _run(db_session, b)
         assert listing.product_url == b.product_url
-        assert _history(db_session) == [10000]
+        assert _history(db_session) == [10000, int(candidate_price) * 100]
     changed = make_result("bkm", "Berserk Cilt 1", "80", publisher="Yayinci")
     for _ in range(3):
         _run(db_session, changed)
-    assert _history(db_session) == [10000, 8000]
+    assert _history(db_session) == [10000, int(candidate_price) * 100, 8000]
+    from app.services.catalog_service import get_price_history
+    current_history = get_price_history(db_session, listing.volume_id)
+    assert [p.price for p in current_history.entries[0].points] == [int(candidate_price) * 100, 8000]
 
 
 def test_same_product_real_price_change_is_idempotent(db_session):

@@ -38,6 +38,7 @@ from ..models import (
     WishlistItem,
 )
 from ..services import series_slugs
+from ..services.catalog_service import public_volume_condition
 from ..services.covers import cover_url
 from ..utils import from_cents, utcnow
 
@@ -54,7 +55,7 @@ def _series_covers(session: Session, series_ids: list[int]) -> dict[int, str]:
     rows = session.execute(
         select(Volume.series_id, Volume.cover_key)
         .where(Volume.series_id.in_(series_ids), Volume.cover_key.isnot(None),
-               Volume.volume_number >= 0)
+               Volume.volume_number >= 0, public_volume_condition())
         .order_by(Volume.series_id, Volume.volume_number)
     )
     for series_id, key in rows:
@@ -94,7 +95,7 @@ def home(
     session: Session = Depends(get_db),
 ) -> dict:
     catalog = _catalog_ids()
-    real = Volume.volume_number >= 0
+    real = (Volume.volume_number >= 0) & public_volume_condition()
 
     # -- popular series ---------------------------------------------------------
     interest = reader_interest(session)
@@ -254,7 +255,7 @@ def all_one_shots(
 
 
 def _one_shots(session: Session, interest: dict[int, float], limit: int) -> list[dict]:
-    real = Volume.volume_number >= 0
+    real = (Volume.volume_number >= 0) & public_volume_condition()
     main_catalog = select(CatalogSeries.series_id).where(~CatalogSeries.mangakol_slug.contains("~"))
     single = (
         select(Volume.series_id).where(real).group_by(Volume.series_id)

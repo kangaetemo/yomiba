@@ -254,6 +254,7 @@ class CatalogSyncService:
                 illustrator=manga.illustrator,
                 jp_status=manga.jp_status,
                 tr_status=manga.tr_status,
+                volumes_complete=manga.volumes_complete,
             )
             for variant in getattr(manga, "variants", ()) or ()
             if variant.volumes
@@ -344,6 +345,16 @@ class CatalogSyncService:
             if value and getattr(series, attr) != value:
                 setattr(series, attr, value)
 
+        incoming_numbers = {v.number if v.number is not None else -1 for v in manga.volumes}
+        # Only a complete, non-empty source snapshot can retire legacy
+        # extra volumes. Keep rows, prices and user references intact.
+        aliases = self.session.scalars(select(CatalogSeries).where(
+            CatalogSeries.series_id == series.id
+        )).all()
+        if manga.volumes_complete and incoming_numbers and len(aliases) <= 1:
+            for old in self.session.scalars(select(Volume).where(Volume.series_id == series.id)):
+                if old.volume_number not in incoming_numbers:
+                    old.catalog_released = False
         for volume in manga.volumes:
             number = volume.number if volume.number is not None else -1
             existing = self.session.scalar(
@@ -354,6 +365,7 @@ class CatalogSyncService:
             )
             covers = getattr(volume, "covers", None)
             if existing is not None:
+                existing.catalog_released = volume.released
                 if existing.cover_url is None and volume.cover_url:
                     existing.cover_url = volume.cover_url
                     report.covers_backfilled += 1
@@ -366,6 +378,7 @@ class CatalogSyncService:
                 Volume(
                     series_id=series.id,
                     volume_number=number,
+                    catalog_released=volume.released,
                     cover_url=volume.cover_url,
                     covers_from=covers[0] if covers else None,
                     covers_to=covers[1] if covers else None,

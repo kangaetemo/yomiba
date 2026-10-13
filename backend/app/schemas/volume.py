@@ -37,6 +37,18 @@ class MissingStoreOut(BaseModel):
     error: str | None = None
 
 
+class PriceDealOut(BaseModel):
+    listing_id: int
+    old_price: float
+    new_price: float
+    saving: float
+    drop_pct: float
+    reference_kind: Literal["usual", "previous"]
+    reference_days: float
+    significant: bool
+    changed_at: datetime
+
+
 class SeriesRefOut(BaseModel):
     id: int
     slug: str = ""
@@ -70,6 +82,7 @@ class VolumeOut(BaseModel):
     #: series' prices were last refreshed. Empty / None for everyone else.
     missing_stores: list[MissingStoreOut] = []
     last_refresh_at: datetime | None = None
+    price_deal: PriceDealOut | None = None
 
 
 class VolumeCollectionStatusIn(BaseModel):

@@ -7,6 +7,7 @@ from datetime import date, timedelta
 
 from sqlalchemy import select
 
+from app.utils import utcnow
 from app.models import PriceHistory, Series, Store, StoreListing, User, Volume, WishlistItem
 from tests.test_import_service import seed_catalog_series
 
@@ -64,8 +65,8 @@ def test_price_drops_flag_lowest_ever(client, db_session):
     a = _offer(db_session, _vol(db_session, series, 1), store, 14000)
     b = _offer(db_session, _vol(db_session, series, 2), store, 15000)
     for listing, prices in ((a, (13000, 16000, 14000)), (b, (16000, 15000))):
-        for p in prices:
-            db_session.add(PriceHistory(listing_id=listing.id, price=p))
+        for index, p in enumerate(prices):
+            db_session.add(PriceHistory(listing_id=listing.id, price=p, checked_at=utcnow() - timedelta(hours=len(prices) - index)))
     db_session.commit()
 
     drops = {d["listing_id"]: d for d in client.get("/price-drops").json()["drops"]}

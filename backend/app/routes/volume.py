@@ -29,6 +29,7 @@ from ..services import (
 )
 from ..services.covers import cover_url
 from ..utils import from_cents
+from ..services.price_deals import current_price_deals
 
 router = APIRouter(tags=["volume"])
 
@@ -100,9 +101,11 @@ def _build_volume_out(
         for listing in detail.listings
     ]
     missing, record = _missing_stores(session, volume) if admin else ([], None)
+    deals = [] if detail.unverified else current_price_deals(session, volume_id=volume.id, hours=24 * 30)
     return VolumeOut(
         missing_stores=missing,
         last_refresh_at=record.last_success_at if record is not None else None,
+        price_deal=deals[0] if deals else None,
         id=volume.id,
         number=None if volume.volume_number == UNNUMBERED_VOLUME else volume.volume_number,
         cover_url=cover_url(volume.cover_key),

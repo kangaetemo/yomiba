@@ -119,6 +119,8 @@ class CatalogManga:
     #: "ongoing" (Mangakol's own status key); None when absent.
     jp_status: str | None = None
     tr_status: str | None = None
+    # False if a fragment failed or the pagination budget was exhausted.
+    volumes_complete: bool = True
 
 
 @dataclass(frozen=True)
@@ -209,6 +211,7 @@ class MangakolCatalogScraper(BaseScraper):
 
     # -- manga detail -----------------------------------------------------------
     def fetch_manga(self, slug: str) -> CatalogManga:
+        self._volume_pages_complete = True
         response = self.get(f"{self.base_url}/manga/{slug}")
         if looks_like_blocked_page(response.status_code, response.text):
             raise ScraperError(
@@ -272,6 +275,7 @@ class MangakolCatalogScraper(BaseScraper):
             author=info.get("yazar") or None,
             illustrator=info.get("cizer") or None,
             variants=tuple(variants),
+            volumes_complete=self._volume_pages_complete,
             **self._statuses(soup),
         )
 
@@ -431,6 +435,7 @@ class MangakolCatalogScraper(BaseScraper):
             try:
                 response = self.get(url)
             except ScraperError as exc:
+                self._volume_pages_complete = False
                 logger.warning(
                     "mangakol: volume page %s for manga %s failed (%s); "
                     "keeping %s volumes", page, manga_id, exc, len(volumes),
@@ -439,6 +444,7 @@ class MangakolCatalogScraper(BaseScraper):
             if response.status_code >= 400 or looks_like_blocked_page(
                 response.status_code, response.text
             ):
+                self._volume_pages_complete = False
                 logger.warning(
                     "mangakol: volume page %s for manga %s blocked/failed "
                     "(HTTP %s); keeping %s volumes",
@@ -459,4 +465,6 @@ class MangakolCatalogScraper(BaseScraper):
             if not fresh or new_here == 0 or len(fresh) < self._SSR_VOLUME_PAGE_SIZE:
                 break
             page += 1
+        else:
+            self._volume_pages_complete = False
         return volumes

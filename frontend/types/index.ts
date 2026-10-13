@@ -71,8 +71,25 @@ export interface PriceDrop {
   in_stock: boolean;
   product_url: string;
   image_url: string | null;
-  /** The lowest price this store listing has ever been seen at. */
+  /** Lowest observed price of this volume across its current store products. */
   lowest_ever?: boolean;
+  saving?: number;
+  reference_kind?: "usual" | "previous";
+  reference_days?: number;
+  significant?: boolean;
+  alternative_price?: number | null;
+}
+
+export type PriceDeal = Pick<PriceDrop,
+  "listing_id" | "old_price" | "new_price" | "saving" | "drop_pct" |
+  "reference_kind" | "reference_days" | "significant" | "changed_at">;
+
+export interface PriceDropsFeed {
+  drops: PriceDrop[];
+  total: number;
+  offset: number;
+  limit: number;
+  window_hours: number;
 }
 
 export interface SeriesSummary {
@@ -209,6 +226,7 @@ export interface VolumeDetail {
   missing_stores?: { store: string; series_listings: number; error: string | null }[];
   /** Admin only: when the series' prices were last refreshed. */
   last_refresh_at?: string | null;
+  price_deal?: PriceDeal | null;
 }
 
 export interface WishlistState {

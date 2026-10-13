@@ -18,7 +18,7 @@ export default async function HomePage() {
   // the search always render.
   const [feed, drops, user] = await Promise.all([
     getHomeFeed().catch((): HomeFeed | null => null),
-    getPriceDrops(DEAL_WINDOW_DAYS * 24, 7)
+    getPriceDrops(DEAL_WINDOW_DAYS * 24, 6, { significant: true, sort: "percent" })
       .then((d) => d.drops)
       .catch((): PriceDrop[] | null => null),
     currentUserOrNull(),

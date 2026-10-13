@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -1365,7 +1365,7 @@ class ImportService:
         self, volume: Volume, store: Store, result: SearchResult
     ) -> ImportAction:
         # Final write boundary: every resolution path must remain catalog-only.
-        if not self._series_is_catalog(volume.series_id):
+        if not self._series_is_catalog(volume.series_id) or volume.catalog_released is False:
             self.last_reason = "non_catalog_volume"
             return ImportAction.SKIPPED
         now = utcnow()
@@ -1392,10 +1392,12 @@ class ImportService:
             self.session.flush()
             if price_cents is not None:
                 self.session.add(
-                    PriceHistory(listing_id=listing.id, price=price_cents, checked_at=now)
+                    PriceHistory(listing_id=listing.id, price=price_cents, checked_at=now,
+                                 in_stock=result.in_stock, product_url=result.product_url)
                 )
             return ImportAction.CREATED
 
+        stock_changed = listing.in_stock != result.in_stock
         product_changed = listing.product_url != result.product_url
         if product_changed and not self._may_switch_product(
             listing, result, price_cents, now
@@ -1412,6 +1414,13 @@ class ImportService:
             )
             return ImportAction.SKIPPED
 
+        if product_changed:
+            # Give legacy observations their old product identity before the
+            # listing switches. A new printing starts a separate history.
+            self.session.execute(update(PriceHistory).where(
+                PriceHistory.listing_id == listing.id,
+                PriceHistory.product_url.is_(None),
+            ).values(product_url=listing.product_url))
         # A product switch is not a price change of the old product. Keep
         # existing history, but do not fabricate a transition on the switch.
         # Subsequent same-product changes use the new product's price.
@@ -1424,8 +1433,15 @@ class ImportService:
         if result.image_url and not listing.image_url:
             listing.image_url = result.image_url
 
-        if price_changed:
-            self.session.add(
-                PriceHistory(listing_id=listing.id, price=listing.price, checked_at=now)
-            )
+        # At most one unchanged observation per day supplies real coverage
+        # for the normal-price reference, without logging every scraper poll.
+        latest = self.session.scalar(select(PriceHistory).where(
+            PriceHistory.listing_id == listing.id
+        ).order_by(PriceHistory.checked_at.desc(), PriceHistory.id.desc()).limit(1))
+        daily = latest is None or now - _aware(latest.checked_at) >= timedelta(hours=24)
+        if listing.price is not None and (price_changed or stock_changed or product_changed or daily):
+            self.session.add(PriceHistory(
+                listing_id=listing.id, price=listing.price, checked_at=now,
+                in_stock=listing.in_stock, product_url=listing.product_url,
+            ))
         return ImportAction.UPDATED
