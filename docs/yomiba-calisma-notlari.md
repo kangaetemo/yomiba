@@ -1,6 +1,6 @@
 # Yomiba çalışma notları
 
-Son güncelleme: 13 Ekim 2026 (dokümantasyon ve kod inceleme notları).
+Son güncelleme: 13 Ekim 2026 (tam katalog karşılaştırması ve sonuç analizi).
 
 Önceki kayıttaki son kod push bilgisi: 1 Ekim, "Slug URLs, search dialog" (main); öncesi `a906b8e`. Bu bilgi tarihsel kayıttır; güncel branch durumunu ifade etmez.
 
@@ -107,7 +107,19 @@ Son güncelleme: 13 Ekim 2026 (dokümantasyon ve kod inceleme notları).
 - **Eksik kaynak:** Liste sayfalaması tamamlanmamışsa eski seriler, cilt listesi kısmi ise fazla ciltler tahminen hatalı sayılmaz. Tekrarlayan kaynak hatası taramayı durdurur; sonuç “kısmi” olarak sunulur.
 - **Yönetici uçları:** `/catalog/audit` (başlat), `/catalog/audit/status`, `/catalog/audit/snapshot`, `/catalog/audit/report`. Tümü mevcut ADMIN yetkisi gerektirir. Kaynak verisi ve önceki DB görüntüsü JSON raporundan indirilebilir.
 - **Kontroller:** 874 backend testi geçti (gerçek yerel DB gerektiren `test_task2_identity.py` hariç); TypeScript, ESLint ve üretim derlemesi geçti. Yönetici yetkisi, salt okunur görüntü, kısmi kaynak ve özel baskı ayrımı test edildi.
-- **Canlı sonuç:** Bu araç ilk tarama tamamlanana kadar bütün kataloğun karşılaştırıldığı veya düzeltildiği anlamına gelmez. Bulgular ayrıca çalışma notlarına işlenecek; öncelikli yapılacak henüz açık.
+- **Canlı sonuç:** İlk tam tarama ve rapor analizi aşağıda kayıtlı; veri düzeltmeleri henüz uygulanmadı.
+
+### 13 Ekim: tam katalog karşılaştırmasının sonucu
+
+- **Tamamlanan:** Kullanıcının indirdiği rapor incelendi ve fark sayıları bağımsız yeniden hesaplandı. Tarama 22:18:51–22:44:26 (İstanbul): 473/473 ana seri, özel baskılarla 495 kayıt, 2.399 cilt künyesi; kaynak hatası yok. [Ayrıntılı rapor](mangakol-yomiba-karsilastirma-2026-10-13.md).
+- **Seriler:** Kaynak ve DB katalog kimlikleri eşleşiyor; eksik/fazla seri veya eksik kaynak cildi raporlanmadı.
+- **Görünür fazla kayıtlar:** Toplam 57: Fairy Tail 30, Nana 13, Beastars 12, Black Lagoon 1, City 1 numarasız kayıt. Fairy Tail kaynakta 21 yayımlanmış + 22. cilt “Yakında”; Yomiba görüntüsünde 52 görünür kayıt/63'e kadar numara.
+- **Duyurular:** 38 serideki 47 tarihsiz “Yakında” cildi normal katalogda görünür. Yayımlanmış ciltlerden ayrılmalı.
+- **Durum alanı:** Başlangıç görüntüsünde 2.470 cilt satırının hepsinde `catalog_released=None`. Kaynakla eşleşen 2.399 satır bu yüzden “yayın durumu doğrulanmadı” olarak raporlanıyor; bu sayı yanlış cilt sayısı değildir. Önceki düzeltmenin veriyle işlenmesi henüz doğrulanmış değil; karşılaştırma bir senkron değildir.
+- **ISBN:** 23 farkın 12'si boş alan, 11'i iki dolu ISBN farkı. Kaynakta 11 ISBN grubu tekrar ediyor ve 12 ISBN farkını etkiliyor. Aynı numaralı özel baskılar ortak ISBN kullanabilir; farklı cilt/eser tekrarları bağımsız ürün/yayınevi kanıtı gerektirir. Her fark Yomiba hatası kabul edilmedi.
+- **Yeni yayınlar:** One Piece 62, Naruto 62, Kahramanlık Akademim 33, Dandadan 8, Haikyu!! 22, Nana 7 ve İskelet Ejderin Küçük Kızı 3 için kaynakta 13 Ekim çıkış tarihi ve künye var; DB alanları boş. Yedi tarih ve yedi sayfa sayısı farkı bunlardan geliyor.
+- **Köken incelemesi:** Güncel mağaza importer'ı kaynakta bulunmayan yeni cilt yaratmıyor (`volume_not_found`); mevcut fazla kayıtların eski aktarım kalıntısı olmasıyla tutarlı. Rapordan hangi mağaza/hangi tarih kökeni kesin çıkarılamıyor. 14 eski numarasız kayıt zaten gizli ve korunuyor.
+- **Uygulanmadı:** Ham raporda `applied=false`; bu çalışma da DB'yi değiştirmedi. Karşılaştırma tamamlandı olarak işaretlendi, görünürlük/künye/ISBN düzeltmeleri öncelikli açık iş olarak ayrıldı.
 
 ## Sıradaki adımlar (30 Eylül push'undan sonra)
 
