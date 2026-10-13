@@ -1,6 +1,8 @@
 # Yomiba çalışma notları
 
-Son güncelleme: 1 Ekim 2026. Son push: bu günkü "Slug URLs, search dialog" commit'i (main); öncesi `a906b8e`.
+Son güncelleme: 13 Ekim 2026 (dokümantasyon ve kod inceleme notları).
+
+Önceki kayıttaki son kod push bilgisi: 1 Ekim, "Slug URLs, search dialog" (main); öncesi `a906b8e`. Bu bilgi tarihsel kayıttır; güncel branch durumunu ifade etmez.
 
 ## Sistem nasıl çalışıyor
 
@@ -11,6 +13,8 @@ Son güncelleme: 1 Ekim 2026. Son push: bu günkü "Slug URLs, search dialog" co
 
 ## Çalışma düzeni
 
+- **Dokümantasyon ayrımı:** Bekleyen talepler ve değerlendirilecek fikirler [yapılacaklar.md](../yapılacaklar.md) dosyasında tutulur. Tamamlanan işler, alınan kararlar, doğrulama sonuçları ve varsa kalan sınırlamalar bu çalışma notlarına tarihli olarak eklenir. İki dosya ayrı kalır; uzun açıklamalar kopyalanmak yerine ilgili kayda bağlantı verilir.
+- Bir iş tamamlanınca yapılacaklar listesindeki maddesi işaretlenir ve buraya sonuç kaydı eklenir. Yalnızca konuşulan öneriler tamamlanmış iş gibi yazılmaz; kodda bulunması da tek başına canlıda test edildiği anlamına gelmez.
 - Her değişiklikten sonra testleri çalıştırıyorum. Özet Türkçe veriliyor ve push ancak senin onayınla yapılıyor.
 - Backend testleri:
   - Komut: `cd backend && .venv/Scripts/python.exe -m pytest -q --ignore=tests/test_task2_identity.py`
@@ -69,6 +73,16 @@ Son güncelleme: 1 Ekim 2026. Son push: bu günkü "Slug URLs, search dialog" co
 - **Hero:** `/home?popular=24` havuzundan, kapağı ve stokta fiyatı olan serilerden her yüklemede rastgele 3 kapak; kapaklar ve fiyat kartı tıklanabilir. "Popüler seriler" ilk 8'i gösteriyor.
 - **One shot:** Sekme kalktı, "Yeni çıkanlar"ın altında ayrı bölüm.
 - **Rakamsız URL'ler:** `/series/<slug>` ve `/series/<slug>/cilt-<n>` (`cilt-numarasiz`). Slug'lar `backend/app/services/series_slugs.py` ile çalışırken türetiliyor (DB'de saklanmıyor); aynı slug'ı paylaşan seride katalogdaki/ilk id düz adı alıyor, diğerine yayınevi ekleniyor. Eski `/series/<id>` ve `/volume/<id>` linkleri kalıcı yönlendiriliyor. API yanıtlarına `slug` / `series_slug` eklendi.
+
+### 13 Ekim: yapılacaklar ve dokümantasyon düzeni
+
+- **Tamamlanan:** Kullanıcının geliştirme ve düzeltme talepleri kökteki [yapılacaklar.md](../yapılacaklar.md) dosyasına 12 ana madde olarak eklendi ve main dalına kaydedildi (`4510146`).
+- **Karar:** Yapılacaklar dosyası bekleyen işler için, bu dosya tamamlanan işler ve çalışma geçmişi için kullanılacak.
+- **Kod incelemesi:** E-posta/parola üyeliği ve kullanıcı hesabına bağlı veritabanı koleksiyon kayıtları mevcut. Google girişi ve cihazlar arası canlı doğrulama yapılacak işlerdir.
+- **Kod incelemesi:** Fiyat alarmları şu an yalnızca koşulu kaydediyor; fiyat koşulunu değerlendiren ve bildirim gönderen aşama henüz uygulanmamış.
+- **Kod incelemesi:** İndirim akışı önceki mağaza satış fiyatına göre düşüşü hesaplıyor. Geçmiş düşüşün ardından yükselen fiyatın hâlâ eski fırsat gibi sunulmaması için güncel fiyat doğrulaması gerekiyor.
+- **Yeni talep:** İndirim bölümüne “Tüm indirimler” bağlantısı ve tümünü gösteren bir sayfa eklenecek.
+- **İstişare konusu — henüz uygulanmadı:** Etiket/liste fiyatına göre indirim ile gözlemlenen satış fiyatı düşüşü farklı ölçülerdir. Örnek: etiket 240 TL, önceki satış 180 TL, güncel satış 170 TL olduğunda etiket farkı yaklaşık %29,2; son satış fiyatındaki düşüş yaklaşık %5,6'dır. Hangi ölçünün ana rozet olacağı ve etiket fiyatının veri kaynağı birlikte netleştirilecek; 180 TL sabit bir referans değildir.
 
 ## Sıradaki adımlar (30 Eylül push'undan sonra)
 
