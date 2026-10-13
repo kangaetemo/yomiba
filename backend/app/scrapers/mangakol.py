@@ -161,6 +161,7 @@ class MangakolCatalogScraper(BaseScraper):
 
     # -- catalog list -----------------------------------------------------------
     def list_manga(self) -> list[CatalogMangaRef]:
+        self.catalog_list_complete = True
         max_pages = max(1, self.settings.mangakol_max_list_pages)
         refs: list[CatalogMangaRef] = []
         seen_slugs: set[str] = set()
@@ -184,6 +185,7 @@ class MangakolCatalogScraper(BaseScraper):
                     "mangakol: list page %s failed (HTTP %s); keeping %s manga",
                     page, response.status_code, len(refs),
                 )
+                self.catalog_list_complete = False
                 break
 
             soup = self.soup(response.text)
@@ -207,6 +209,8 @@ class MangakolCatalogScraper(BaseScraper):
             # repeats the last N cards) -> no new slugs is the stop signal.
             if new_on_page == 0:
                 break
+        else:
+            self.catalog_list_complete = False
         return refs
 
     # -- manga detail -----------------------------------------------------------

@@ -99,6 +99,16 @@ Son güncelleme: 13 Ekim 2026 (dokümantasyon ve kod inceleme notları).
 - **Arayüz doğrulaması:** İzole örnek veritabanıyla gerçek tarayıcıda ana sayfanın 6 kartı, tüm 26 fırsatın iki sayfaya yayılması, sıralama değişince sayfanın sıfırlanması ve cilt sayfasında 144 TL / 36 TL / %20 ortak gösterimi doğrulandı. 320 ve 393 px mobilde yeni sayfa ile cilt sayfasında yatay taşma ve tarayıcı sayfa hatası görülmedi.
 - **Canlı adımı:** Kod ve şema yayımlandıktan sonra başarılı bir katalog senkronu gerekir. Şu anki araştırma canlı veritabanını doğrudan değiştirmedi; kaynakla son cilt sayısı kontrolü yapılacaklarda açık tutuluyor.
 
+### 13 Ekim: otomatik Mangakol–Yomiba karşılaştırma aracı
+
+- **Araç:** Yönetici paneline toplu katalog karşılaştırması eklendi. Mevcut Mangakol scraper'ı Yomiba sunucusunda çalışır; tarayıcıdan serileri tek tek incelemek gerekmez.
+- **Veri güvenliği:** Başlangıçta sabit bir katalog görüntüsü alınır; işlem DB'ye yazmaz. Kaynak seri/baskı kimlikleri, cilt numaraları ve “Yakında” durumları karşılaştırılır. Kullanıcı hesapları, oturumları ve koleksiyonları rapora alınmaz.
+- **Derin kontrol:** İsteğe bağlı ISBN/sayfa sayısı/yerel çıkış tarihi karşılaştırması her kaynak cilt sayfasını okur; seri taramasından daha uzun sürer. Hangi kapsamın çalıştırıldığı ve kaç künye okunduğu raporda belirtilir.
+- **Eksik kaynak:** Liste sayfalaması tamamlanmamışsa eski seriler, cilt listesi kısmi ise fazla ciltler tahminen hatalı sayılmaz. Tekrarlayan kaynak hatası taramayı durdurur; sonuç “kısmi” olarak sunulur.
+- **Yönetici uçları:** `/catalog/audit` (başlat), `/catalog/audit/status`, `/catalog/audit/snapshot`, `/catalog/audit/report`. Tümü mevcut ADMIN yetkisi gerektirir. Kaynak verisi ve önceki DB görüntüsü JSON raporundan indirilebilir.
+- **Kontroller:** 874 backend testi geçti (gerçek yerel DB gerektiren `test_task2_identity.py` hariç); TypeScript, ESLint ve üretim derlemesi geçti. Yönetici yetkisi, salt okunur görüntü, kısmi kaynak ve özel baskı ayrımı test edildi.
+- **Canlı sonuç:** Bu araç ilk tarama tamamlanana kadar bütün kataloğun karşılaştırıldığı veya düzeltildiği anlamına gelmez. Bulgular ayrıca çalışma notlarına işlenecek; öncelikli yapılacak henüz açık.
+
 ## Sıradaki adımlar (30 Eylül push'undan sonra)
 
 1. Railway deploy'unun bitmesini bekle.

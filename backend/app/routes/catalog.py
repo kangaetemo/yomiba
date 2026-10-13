@@ -19,7 +19,7 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
@@ -27,6 +27,7 @@ from ..auth import require_admin
 from ..services.background_import import SYNC_GATE_KEY
 from ..services import isbn_conflict_fix as isbn_fix
 from ..services.catalog_sync import CatalogSyncService
+from ..services import catalog_audit
 
 logger = logging.getLogger("yomiba.catalog.routes")
 
@@ -36,6 +37,81 @@ _state_lock = threading.Lock()
 _running = False
 _last: dict | None = None
 _sync_thread: threading.Thread | None = None
+
+_audit_lock = threading.Lock()
+_audit_running = False
+_audit_progress: dict = {}
+_audit_report: dict | None = None
+
+
+def _audit_snapshot() -> dict:
+    with SessionLocal() as session:
+        if session.get_bind().dialect.name == "sqlite":
+            session.connection().exec_driver_sql("BEGIN")
+        return catalog_audit.snapshot(session)
+
+
+def _audit_worker(db: dict, details: bool) -> None:
+    global _audit_running, _audit_report
+
+    def progress(state: dict) -> None:
+        global _audit_progress
+        with _audit_lock:
+            _audit_progress = state
+
+    try:
+        result = catalog_audit.audit(db, details=details, progress=progress)
+        with _audit_lock:
+            _audit_report = result
+    except Exception as exc:
+        logger.exception("catalog audit failed")
+        with _audit_lock:
+            _audit_report = {"complete": False, "applied": False, "errors": [{"error": str(exc)}]}
+    finally:
+        with _audit_lock:
+            _audit_running = False
+
+
+@router.get("/catalog/audit/snapshot")
+def audit_snapshot() -> dict:
+    return _audit_snapshot()
+
+
+@router.post("/catalog/audit", status_code=202)
+def start_catalog_audit(details: bool = Query(default=False)) -> dict:
+    global _audit_running, _audit_report, _audit_progress
+    with _audit_lock:
+        if _audit_running:
+            raise HTTPException(status_code=409, detail="Katalog karşılaştırması zaten çalışıyor.")
+        _audit_running = True
+        _audit_report = None
+        _audit_progress = {}
+    try:
+        db = _audit_snapshot()
+        threading.Thread(target=_audit_worker, args=(db, details),
+                         name="catalog-audit", daemon=True).start()
+    except Exception:
+        with _audit_lock:
+            _audit_running = False
+        raise
+    return {"status": "started"}
+
+
+@router.get("/catalog/audit/status")
+def catalog_audit_status() -> dict:
+    with _audit_lock:
+        report = _audit_report
+        return {"running": _audit_running, "progress": dict(_audit_progress),
+                "last": {k: v for k, v in report.items()
+                         if k not in {"db_snapshot", "source", "differences"}} if report else None}
+
+
+@router.get("/catalog/audit/report")
+def catalog_audit_report() -> dict:
+    with _audit_lock:
+        if _audit_report is None:
+            raise HTTPException(status_code=404, detail="Karşılaştırma raporu henüz hazır değil.")
+        return _audit_report
 
 
 def _last_summary() -> dict | None:

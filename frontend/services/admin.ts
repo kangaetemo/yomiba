@@ -4,6 +4,27 @@
  */
 
 import { getJson, postJson } from "@/lib/api";
+
+export type CatalogAuditStatus = {
+  running: boolean;
+  progress: { scanned?: number; total?: number; current?: string; details_checked?: number };
+  last: {
+    complete: boolean;
+    counts?: Record<string, number>;
+    source_main_series?: number;
+    source_scanned?: number;
+    details_checked?: number;
+    errors?: { slug?: string; error: string }[];
+  } | null;
+};
+
+export function getCatalogAuditStatus(): Promise<CatalogAuditStatus> {
+  return getJson<CatalogAuditStatus>("/catalog/audit/status");
+}
+
+export function startCatalogAudit(details: boolean): Promise<{ status: string }> {
+  return postJson<{ status: string }>(`/catalog/audit?details=${details}`);
+}
 import type {
   CatalogSyncStatus,
   ImportCoverage,

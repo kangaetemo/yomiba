@@ -15,6 +15,8 @@
 import { formatDateTime, serverDate } from "@/lib/time";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  getCatalogAuditStatus,
+  startCatalogAudit,
   getCatalogSyncStatus,
   getCoverStatus,
   getForeignEditions,
@@ -33,6 +35,7 @@ import {
   startMissingPriceRefresh,
   startPriceRefresh,
 } from "@/services/admin";
+import type { CatalogAuditStatus } from "@/services/admin";
 import type {
   CatalogSyncStatus,
   CoverStatus,
@@ -1209,9 +1212,73 @@ function MissingCoveragePanel() {
   );
 }
 
+function CatalogAuditPanel() {
+  const [status, setStatus] = useState<CatalogAuditStatus | null>(null);
+  const [details, setDetails] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await getCatalogAuditStatus());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Karşılaştırma durumu alınamadı.");
+    }
+  }, []);
+  useEffect(() => {
+    const timer = setTimeout(() => void refresh(), 0);
+    return () => clearTimeout(timer);
+  }, [refresh]);
+  useEffect(() => {
+    if (!status?.running) return;
+    const timer = setInterval(() => void refresh(), SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [status?.running, refresh]);
+  async function start() {
+    if (busy || status?.running) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await startCatalogAudit(details);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Karşılaştırma başlatılamadı.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="space-y-3 rounded-xl border border-line bg-surface p-5">
+      <h2 className="text-lg font-semibold text-ink">Mangakol ile katalog karşılaştırması</h2>
+      <p className="text-sm text-muted">Serileri, baskıları, ciltleri ve yayın durumlarını karşılaştırır; veritabanını değiştirmeden farkları raporlar.</p>
+      <label className="flex items-center gap-2 text-sm text-ink">
+        <input type="checkbox" checked={details} disabled={busy || status?.running} onChange={(e) => setDetails(e.target.checked)} />
+        ISBN, sayfa sayısı ve çıkış tarihini de karşılaştır (daha uzun sürer)
+      </label>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={() => void start()} disabled={busy || status?.running || !status}
+          className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-on-accent disabled:opacity-50">
+          {status?.running ? "Karşılaştırma çalışıyor" : "Karşılaştırmayı başlat"}
+        </button>
+        <a className="text-sm text-accent underline" href="/api/catalog/audit/snapshot" download="yomiba-katalog.json">Mevcut katalog verisini indir</a>
+        {status?.last ? <a className="text-sm text-accent underline" href="/api/catalog/audit/report" download="mangakol-yomiba-karsilastirma.json">Karşılaştırma raporunu indir</a> : null}
+      </div>
+      {error ? <p role="alert" className="text-sm text-bad">{error}</p> : null}
+      <div aria-live="polite" className="space-y-2 text-sm text-muted">
+        {status?.running ? <p>{status.progress.scanned ?? 0}/{status.progress.total ?? "—"} seri · {status.progress.current ?? "Kaynak listesi alınıyor"} · {status.progress.details_checked ?? 0} cilt künyesi</p> : null}
+        {status?.last ? <>
+          <p>{status.last.complete ? "Kaynak taraması tamamlandı." : "Tarama eksik kaldı; rapor kısmi sonuç içeriyor."} {status.last.source_scanned ?? 0}/{status.last.source_main_series ?? "—"} seri · {status.last.details_checked ?? 0} cilt künyesi</p>
+          <p>{status.last.counts?.extra_volume ?? 0} fazla cilt · {status.last.counts?.missing_volume ?? 0} eksik cilt · {status.last.counts?.missing_series ?? 0} eksik seri · {status.last.counts?.stale_series ?? 0} kaynakta bulunmayan seri</p>
+          {status.last.errors?.slice(0, 3).map((item, i) => <p className="text-bad" key={i}>{item.slug ? `${item.slug}: ` : ""}{item.error}</p>)}
+        </> : null}
+      </div>
+    </section>
+  );
+}
+
 export function AdminControls() {
   return (
     <div className="space-y-6">
+      <CatalogAuditPanel />
       <CoveragePanel />
       <MissingCoveragePanel />
       <CatalogSyncPanel />
