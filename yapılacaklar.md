@@ -2,11 +2,14 @@
 
 Son güncelleme: 13 Ekim 2026
 
-Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içerir. Maddeler henüz tamamlanmış sayılmaz; uygulama ayrıntıları ve öncelikleri istişare sırasında netleştirilecek.
+Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içerir. Maddeler henüz tamamlanmış sayılmaz; uygulama ayrıntıları ve öncelikleri istişare sırasında netleştirilecek. Tamamlanan işler, kararlar ve doğrulama sonuçları [Yomiba çalışma notlarına](docs/yomiba-calisma-notlari.md) tarihli olarak yazılır.
 
 ## Ana sayfa ve tasarım
 
 - [ ] **İndirim bölümünü yeniden düzenle.** Tasarımı, indirim oranlarının hesaplanmasını ve gösterimini gözden geçir. Özellikle masaüstündeki kötü görünümü düzelt.
+  - Etiket/liste fiyatına göre indirim ile gözlemlenen satış fiyatı düşüşünün nasıl sunulacağını birlikte netleştir. Önceki satış fiyatını etiket fiyatı olarak adlandırma; sabit bir fiyat referansı kullanma.
+  - Fiyat tekrar yükselmişse eski düşüşü güncel fırsat gibi gösterme; güncel stok ve fiyatı doğrula.
+- [ ] **“Tüm indirimler” bağlantısı ve sayfası ekle.** Ana sayfadaki sınırlı seçkinin dışındaki indirimler de görülebilsin.
 - [ ] **Yayın takvimini küçült.** Takvim alanı çok yer kaplıyor; daha az alan kaplayan bir düzen oluştur.
 - [ ] **“Takip edilen mağazalar” bölümünü kaldır.** Bu ayrı bölüme ihtiyaç yok.
 - [ ] **Ana sayfadaki istatistik alanını kaldır.** “Katalogdaki seri: 495”, “Takip edilen mağaza: 10” ve “Güncel fiyat: 13.314” göstergelerini içeren alana ihtiyaç yok. Sayılar, kaldırılacak alanı tanımlamak için mevcut görünümden örnektir.
