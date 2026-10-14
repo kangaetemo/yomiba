@@ -174,6 +174,8 @@ export interface SeriesDetail {
   author?: string | null;
   cover_url: string | null;
   volumes: SeriesVolume[];
+  /** Announced volumes; excluded from released counts and purchase offers. */
+  upcoming_volumes?: SeriesVolume[];
   /** Other editions of the same work; usually empty. */
   editions?: SeriesEdition[];
   /** A finished single-volume work: its series page opens the volume. */

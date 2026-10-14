@@ -21,13 +21,16 @@ from ..normalization.volume import UNNUMBERED_VOLUME
 from .covers import cover_url
 
 
-def public_volume_condition():
+def public_volume_condition(*, include_announced: bool = True):
     """Hide confirmed source placeholders, while retaining dated announcements.
 
     Unknown legacy rows are not guessed from missing ISBN/price metadata.
     They are verified on the next successful catalog sync.
     """
-    return or_(Volume.catalog_released.is_not(False), Volume.release_date.isnot(None))
+    release = Volume.catalog_released.is_not(False)
+    if include_announced:
+        release = or_(release, Volume.release_date.isnot(None))
+    return and_(Volume.catalog_present.is_not(False), release)
 
 
 def legacy_phantom_condition():
@@ -133,7 +136,7 @@ def series_offer_summary(
         select(Volume.series_id, func.count(StoreListing.id), func.min(StoreListing.price))
         .join(StoreListing, StoreListing.volume_id == Volume.id)
         .where(
-            Volume.series_id.in_(series_ids), public_volume_condition(),
+            Volume.series_id.in_(series_ids), public_volume_condition(include_announced=False),
             # Numbered volumes only: an unnumbered row that has listings is
             # by definition a legacy phantom (see legacy_phantom_condition).
             Volume.volume_number >= 0,
@@ -207,7 +210,7 @@ def search_series(session: Session, query: str) -> list[SeriesMatch]:
     series_ids = [s.id for s in series_rows]
     volumes = session.scalars(
         select(Volume)
-        .where(Volume.series_id.in_(series_ids), public_volume_condition(), not_(legacy_phantom_condition()))
+        .where(Volume.series_id.in_(series_ids), public_volume_condition(include_announced=False), not_(legacy_phantom_condition()))
         .order_by(*_volume_order())
     ).all()
 
@@ -271,7 +274,7 @@ def get_series(session: Session, series_id: int) -> SeriesDetail | None:
 
     volumes = session.scalars(
         select(Volume)
-        .where(Volume.series_id == series_id, public_volume_condition(), not_(legacy_phantom_condition()))
+        .where(Volume.series_id == series_id, public_volume_condition(include_announced=False), not_(legacy_phantom_condition()))
         .order_by(*_volume_order())
     ).all()
 
@@ -369,7 +372,7 @@ def get_volume(session: Session, volume_id: int) -> VolumeDetail | None:
     volume = session.get(Volume, volume_id)
     if volume is None or not _is_catalog_series(session, volume.series_id):
         return None
-    if volume.catalog_released is False and volume.release_date is None:
+    if volume.catalog_present is False or (volume.catalog_released is False and volume.release_date is None):
         return None
     if is_legacy_phantom(session, volume):
         return VolumeDetail(volume=volume, listings=[], unverified=True)

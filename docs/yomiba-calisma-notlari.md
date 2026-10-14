@@ -1,6 +1,6 @@
 # Yomiba çalışma notları
 
-Son güncelleme: 13 Ekim 2026 (tam katalog karşılaştırması ve sonuç analizi).
+Son güncelleme: 14 Ekim 2026 (katalog farklarını koruyarak düzeltme).
 
 Önceki kayıttaki son kod push bilgisi: 1 Ekim, "Slug URLs, search dialog" (main); öncesi `a906b8e`. Bu bilgi tarihsel kayıttır; güncel branch durumunu ifade etmez.
 
@@ -24,6 +24,16 @@ Son güncelleme: 13 Ekim 2026 (tam katalog karşılaştırması ve sonuç analiz
 - Fiyatsız seriler raporu (`fiyatsızlar.txt`): Mağaza bazındaki sebep sayıları, sorgunun döndürdüğü tüm ürünler üzerinden toplanıyor. Örneğin BKM'de büyük bir `publisher_conflict` sayısı genelde "bu mağaza o seriyi satmıyor" demektir.
 
 ## Son günlerde yapılanlar
+
+### 14 Ekim: katalog farklarının düzeltilmesi
+
+- Kullanıcı, karşılaştırmada bulunan farkların en üst önceliğe alınmasını ve uygulanmasını istedi. Düzeltme eski raporu veritabanına kopyalamıyor; senkron sırasında güncel Mangakol görüntüsünü kullanıyor.
+- `catalog_present` kaynak üyeliğini, `catalog_released` yayın durumunu temsil ediyor. Tam ve boş olmayan cilt listesinde bulunmayan eski satırlar görünür katalogdan ayrılıyor; cilt satırları, fiyat geçmişi ve kişisel referanslar korunuyor. Kısmi kaynak görüntüsü eksik görünen ciltleri pasifleştirmiyor.
+- Seri ve arama cilt sayıları yalnızca yayımlanmış ciltleri sayıyor; gerçek duyurular ayrı `upcoming_volumes` / “Yakında” alanında gösteriliyor. Kaynak dışı, tarihli eski kayıtlar cilt sayfası ve takvimde de görünmüyor.
+- Katalog senkronunun ilk çalışma zamanı her açılışta 24 saat ileri gidiyordu. Son başarılı çalışma ve son deneme zamanı SQLite'ın yanındaki kalıcı dosyada tutuluyor; açılışta geciken veya hiç doğrulanmamış senkron hemen çalışıyor, yarıda kalan/başarısız son deneme açılışta bir saatlik yeniden deneme aralığıyla hesaplanıyor. Bu dosya kişisel bilgi veya kimlik bilgisi içermiyor.
+- Yeni yayımlanmış cildin eksik künyesi yeniden okunuyor; dolu sayfa/tarih alanları ezilmiyor. Kaynak ISBN'si başka numaralı ciltte tutuluyorsa veya cildin dolu yerel ISBN'siyle çelişiyorsa mevcut bilgiler korunup inceleme kaydı üretiliyor. Aynı cildin doğrulanmış özel baskı eşleştirmesi korunuyor.
+- Canlı doğrulama yayın sonrası yapılacak; 23 ISBN farkının kanıt gerektiren bölümü açık iş olarak kalıyor. Kod/test başarısı tüm ISBN farklarının giderildiği anlamına gelmiyor.
+- Doğrulama: 881 backend testi geçti (`test_task2_identity.py` gerçek eski DB gerektirdiğinden kapsam dışı); son eklenen farklı numaralı özel baskı ISBN korumasıyla dört künye testi ayrıca geçti. TypeScript, ESLint ve Next.js üretim derlemesi başarılı. Tarihli kaynak dışı cildin seri/arama/cilt/takvimden ayrılırken koleksiyon, mağaza kaydı ve fiyat geçmişini koruduğu test edildi.
 
 ### 26–28 Eylül: eşleştirme ve fiyatsız seriler
 - Katalog cilt eşleştirmesi düzeltildi. Engellenen mağazalar kapatıldı.

@@ -135,6 +135,9 @@ class CatalogSyncReport:
     series_created: int = 0
     series_merged: int = 0
     volumes_added: int = 0
+    volumes_retired: int = 0
+    release_status_updated: int = 0
+    announced_volumes: int = 0
     covers_backfilled: int = 0
     #: Publisher rows merged into a more complete name for the same company.
     publishers_merged: int = 0
@@ -184,6 +187,8 @@ class CatalogSyncService:
             self.scraper.close()
             raise
         report.manga_total = len(refs)
+        if not getattr(self.scraper, "catalog_list_complete", True):
+            report.errors.append("Mangakol catalog list is incomplete")
         if not refs:
             report.errors.append("mangakol catalog list returned no manga")
             self.scraper.close()
@@ -212,6 +217,8 @@ class CatalogSyncService:
                     report.errors.append(f"{ref.slug}: {type(exc).__name__}: {exc}")
                     continue
                 fetched_slugs.add(ref.slug)
+                if not fetched.volumes_complete:
+                    report.errors.append(f"{ref.slug}: incomplete volume snapshot")
                 entries = [fetched, *self._variant_entries(fetched)]
                 variant_slugs.update(e.slug for e in entries[1:])
                 for manga in entries:
@@ -265,6 +272,7 @@ class CatalogSyncService:
         counts_before = (
             report.series_created, report.series_merged,
             report.volumes_added, report.covers_backfilled,
+            report.volumes_retired, report.release_status_updated, report.announced_volumes,
         )
         try:
             with self.session.begin_nested():
@@ -273,6 +281,7 @@ class CatalogSyncService:
             (
                 report.series_created, report.series_merged,
                 report.volumes_added, report.covers_backfilled,
+                report.volumes_retired, report.release_status_updated, report.announced_volumes,
             ) = counts_before
             logger.exception(
                 "catalog sync: failed to merge /manga/%s", manga.slug
@@ -354,6 +363,9 @@ class CatalogSyncService:
         if manga.volumes_complete and incoming_numbers and len(aliases) <= 1:
             for old in self.session.scalars(select(Volume).where(Volume.series_id == series.id)):
                 if old.volume_number not in incoming_numbers:
+                    if old.catalog_present is not False:
+                        report.volumes_retired += 1
+                    old.catalog_present = False
                     old.catalog_released = False
         for volume in manga.volumes:
             number = volume.number if volume.number is not None else -1
@@ -364,7 +376,14 @@ class CatalogSyncService:
                 )
             )
             covers = getattr(volume, "covers", None)
+            if not volume.released:
+                report.announced_volumes += 1
             if existing is not None:
+                if existing.catalog_released != volume.released:
+                    report.release_status_updated += 1
+                    if volume.released and (not existing.isbn or existing.page_count is None or existing.release_date is None):
+                        existing.details_checked_at = None
+                existing.catalog_present = True
                 existing.catalog_released = volume.released
                 if existing.cover_url is None and volume.cover_url:
                     existing.cover_url = volume.cover_url
@@ -379,6 +398,7 @@ class CatalogSyncService:
                     series_id=series.id,
                     volume_number=number,
                     catalog_released=volume.released,
+                    catalog_present=True,
                     cover_url=volume.cover_url,
                     covers_from=covers[0] if covers else None,
                     covers_to=covers[1] if covers else None,
@@ -440,13 +460,28 @@ class CatalogSyncService:
                 logger.warning("catalog sync: volume page failed for %s", cv.url)
                 continue
             volume.details_checked_at = utcnow()
+            isbn = details.isbn if details is not None else None
+            holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn)) if isbn else None
+            wrong_number = (holder is not None and holder.id != volume.id
+                            and holder.volume_number >= 0 and holder.volume_number != volume.volume_number)
+            existing_conflict = bool(trusted_isbn and isbn and volume.isbn != isbn)
+            if wrong_number or existing_conflict:
+                report.isbn_conflicts += 1
+                holder_series = self.session.get(Series, holder.series_id) if holder else None
+                reason = (f"{holder_series.title if holder_series else holder.series_id} Cilt {holder.volume_number} üzerinde"
+                          if wrong_number else f"mevcut ISBN {volume.isbn} ile çelişiyor")
+                if len(report.isbn_conflict_details) < 500:
+                    report.isbn_conflict_details.append(
+                        f"{series.title} Cilt {cv.number}: kaynak ISBN {isbn} {reason}; mevcut kayıt korundu"
+                    )
+                self.session.commit()
+                continue
             if details is not None:
-                if details.page_count:
+                if details.page_count and volume.page_count is None:
                     volume.page_count = details.page_count
-                if details.release_date:
+                if details.release_date and volume.release_date is None:
                     volume.release_date = details.release_date
             self.session.commit()
-            isbn = details.isbn if details is not None else None
             if not isbn or trusted_isbn or is_foreign_isbn(isbn):
                 continue
             if volume.isbn:  # foreign ISBN from an old match: drop it

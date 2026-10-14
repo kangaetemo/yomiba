@@ -51,6 +51,7 @@ class SeriesOut(BaseModel):
     author: str | None = None
     cover_url: str | None = None
     volumes: list[SeriesVolumeOut] = []
+    upcoming_volumes: list[SeriesVolumeOut] = []
     #: Other editions of the same work; empty for most series.
     editions: list[SeriesEditionOut] = []
     #: A finished single-volume work (completed in Japan and in Turkey, one

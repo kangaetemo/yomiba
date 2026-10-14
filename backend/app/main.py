@@ -94,6 +94,7 @@ def create_app(auto_init: bool = True) -> FastAPI:
             app.state.price_refresh_scheduler = price_refresh
             if auto_init and settings.catalog_sync_enabled:
                 from .services.background_import import SYNC_GATE_KEY
+                from .services.catalog_state import next_delay
 
                 scheduler = CatalogSyncScheduler(
                     lambda: try_start_sync(runner),
@@ -101,6 +102,7 @@ def create_app(auto_init: bool = True) -> FastAPI:
                     gate_wait_seconds=settings.catalog_gate_timeout_seconds,
                     poll_seconds=min(60.0, max(1.0, settings.catalog_gate_timeout_seconds / 10)),
                     announce_intent=lambda active: runner.lock.set_exclusive_intent(SYNC_GATE_KEY, active),
+                    initial_delay_seconds=next_delay(settings.catalog_sync_interval_hours * 3600.0),
                 )
                 scheduler.start()
                 logger.info("startup: catalog scheduler started")

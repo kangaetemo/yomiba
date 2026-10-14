@@ -95,7 +95,7 @@ def home(
     session: Session = Depends(get_db),
 ) -> dict:
     catalog = _catalog_ids()
-    real = (Volume.volume_number >= 0) & public_volume_condition()
+    real = (Volume.volume_number >= 0) & public_volume_condition(include_announced=False)
 
     # -- popular series ---------------------------------------------------------
     interest = reader_interest(session)
@@ -190,7 +190,7 @@ def _release_query():
         .join(Publisher, Publisher.id == Series.publisher_id)
         .outerjoin(price_sub, price_sub.c.volume_id == Volume.id)
         .where(Volume.series_id.in_(_catalog_ids()), Volume.volume_number >= 0,
-               Volume.release_date.isnot(None))
+               Volume.release_date.isnot(None), public_volume_condition())
     )
 
 
@@ -238,7 +238,7 @@ def releases(
     latest = session.scalar(
         select(func.max(Volume.release_date))
         .where(Volume.series_id.in_(_catalog_ids()), Volume.volume_number >= 0,
-               Volume.release_date <= today)
+               Volume.release_date <= today, public_volume_condition())
     )
     return {"month": month, "today": today.isoformat(),
             "latest_month": latest.isoformat()[:7] if latest else None,
@@ -255,7 +255,7 @@ def all_one_shots(
 
 
 def _one_shots(session: Session, interest: dict[int, float], limit: int) -> list[dict]:
-    real = (Volume.volume_number >= 0) & public_volume_condition()
+    real = (Volume.volume_number >= 0) & public_volume_condition(include_announced=False)
     main_catalog = select(CatalogSeries.series_id).where(~CatalogSeries.mangakol_slug.contains("~"))
     single = (
         select(Volume.series_id).where(real).group_by(Volume.series_id)

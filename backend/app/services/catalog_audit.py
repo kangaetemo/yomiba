@@ -20,7 +20,7 @@ def snapshot(session: Session) -> dict:
     links = list(session.execute(select(CatalogSeries.series_id, CatalogSeries.mangakol_slug)))
     ids = {sid for sid, _ in links}
     public_ids = set(session.scalars(select(Volume.id).where(
-        Volume.series_id.in_(ids), public_volume_condition(), ~legacy_phantom_condition()
+        Volume.series_id.in_(ids), public_volume_condition(include_announced=False), ~legacy_phantom_condition()
     )))
     slugs = defaultdict(list)
     for sid, slug in links:
@@ -31,6 +31,7 @@ def snapshot(session: Session) -> dict:
             "id": v.id, "number": v.volume_number, "isbn": v.isbn,
             "release_date": v.release_date.isoformat() if v.release_date else None,
             "page_count": v.page_count, "catalog_released": v.catalog_released,
+            "catalog_present": v.catalog_present,
             "public": v.id in public_ids,
             "covers": [v.covers_from, v.covers_to] if v.covers_from is not None else None,
         })

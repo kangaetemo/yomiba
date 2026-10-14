@@ -1365,7 +1365,7 @@ class ImportService:
         self, volume: Volume, store: Store, result: SearchResult
     ) -> ImportAction:
         # Final write boundary: every resolution path must remain catalog-only.
-        if not self._series_is_catalog(volume.series_id) or volume.catalog_released is False:
+        if not self._series_is_catalog(volume.series_id) or volume.catalog_present is False or volume.catalog_released is False:
             self.last_reason = "non_catalog_volume"
             return ImportAction.SKIPPED
         now = utcnow()

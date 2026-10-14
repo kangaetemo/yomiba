@@ -7,10 +7,9 @@ point the manual ``POST /catalog/sync`` endpoint uses, so the write-gate
 / running-flag handling has exactly one implementation.
 
 Timing contract: the first run happens one full interval after the
-scheduler starts (there is deliberately NO catch-up run at process
-start); each subsequent tick fires one interval after the previous tick.
-Restarting the process resets the countdown, which keeps the gap between
-completed syncs within ``[interval, 2*interval)``.
+scheduler starts by default. Production supplies a persisted due time
+through ``initial_delay_seconds`` so deployments can catch up; subsequent
+ticks fire one interval after the previous tick.
 
 Failure policy: a tick that raises is logged and the loop continues —
 the scheduler thread must never die silently. While a store import holds
@@ -50,11 +49,13 @@ class CatalogSyncScheduler:
         gate_wait_seconds: float = 900.0,
         poll_seconds: float = 60.0,
         announce_intent: Callable[[bool], None] | None = None,
+        initial_delay_seconds: float | None = None,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
         self._start_sync = start_sync
         self._interval_seconds = interval_seconds
+        self._initial_delay_seconds = interval_seconds if initial_delay_seconds is None else max(0, initial_delay_seconds)
         self._gate_wait_seconds = gate_wait_seconds
         self._poll_seconds = poll_seconds
         #: Called with True while the tick waits for a held catalog gate and
@@ -78,7 +79,7 @@ class CatalogSyncScheduler:
         thread.start()
         logger.info(
             "catalog scheduler started (first run in %.1fh, then every %.1fh)",
-            self._interval_seconds / 3600, self._interval_seconds / 3600,
+            self._initial_delay_seconds / 3600, self._interval_seconds / 3600,
         )
 
     def stop(self, timeout: float = 10.0) -> None:
@@ -105,9 +106,10 @@ class CatalogSyncScheduler:
 
     # -- worker ----------------------------------------------------------------
     def _loop(self) -> None:
-        # First tick after one full interval — no catch-up at startup.
-        while not self._stop_event.wait(self._interval_seconds):
+        delay = self._initial_delay_seconds
+        while not self._stop_event.wait(delay):
             self._tick()
+            delay = self._interval_seconds
 
     def _tick(self) -> None:
         try:

@@ -56,6 +56,9 @@ class Volume(Base):
     # None: not yet verified by the new catalog sync. False: "Yakında" or
     # absent from a complete source snapshot. Never delete user-owned rows.
     catalog_released: Mapped[bool | None] = mapped_column(Boolean)
+    # Source membership is separate from release state: an announced book
+    # is still present in the catalog, a retired legacy row is not.
+    catalog_present: Mapped[bool | None] = mapped_column(Boolean)
     #: When the catalog volume page was last read (ISBN + details); None =
     #: never, so the sync knows what is still to fetch.
     details_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

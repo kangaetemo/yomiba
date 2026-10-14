@@ -47,12 +47,20 @@ def get_series_detail(
     ]
 
     siblings = catalog_service.other_editions(session, detail.series.id)
+    upcoming = [SeriesVolumeOut(
+        id=v.id, number=None if v.volume_number == UNNUMBERED_VOLUME else v.volume_number,
+        cover_url=cover_url(v.cover_key), release_date=v.release_date,
+    ) for v in session.scalars(select(Volume).where(
+        Volume.series_id == detail.series.id, Volume.catalog_present.is_(True),
+        Volume.catalog_released.is_(False),
+    ).order_by(Volume.volume_number))]
     sibling_ids = [s.id for s in siblings]
     offers = catalog_service.series_offer_summary(session, sibling_ids)
     sibling_slugs = series_slugs.slugs_for(session, sibling_ids)
     volume_counts = dict(session.execute(
         select(Volume.series_id, func.count()).where(
-            Volume.series_id.in_(sibling_ids), Volume.volume_number >= 0
+            Volume.series_id.in_(sibling_ids), Volume.volume_number >= 0,
+            catalog_service.public_volume_condition(include_announced=False),
         ).group_by(Volume.series_id)
     ).all()) if sibling_ids else {}
     editions = [
@@ -76,6 +84,7 @@ def get_series_detail(
         author=detail.series.author,
         cover_url=detail.cover_url,
         volumes=volumes,
+        upcoming_volumes=upcoming,
         editions=editions,
         one_shot=(
             detail.series.jp_status == "completed"

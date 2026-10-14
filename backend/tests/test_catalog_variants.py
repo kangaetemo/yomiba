@@ -153,7 +153,7 @@ def test_variant_reclaims_its_isbn_from_the_base_series(db_session):
 
     report = CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
     assert _volume(db_session, "Soichi (Bez Cilt)").isbn == CLOTH
-    assert report.isbn_conflicts == 0
+    assert report.isbn_conflicts == 1  # base page disagrees: preserve before edition proof
     regular = _volume(db_session, "Soichi")
     # The regular page was read before the variant in this sync (it kept
     # CLOTH then); cleared now, the next sync stores the regular ISBN.

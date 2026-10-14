@@ -89,6 +89,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
   if (only !== null) redirect(volumePath(detail.slug, only));
   const user = await currentUserOrNull();
   const signedIn = Boolean(user);
+  const upcoming = detail.upcoming_volumes ?? [];
 
   const { status: rawStatus, all, sort, view, stock } = await searchParams;
   const activeFilter: Filter =
@@ -155,7 +156,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
               <p className="eyebrow">Seri</p>
               <h1 className="text-3xl leading-tight font-semibold text-ink sm:text-[2.6rem]">{detail.title}</h1>
               <p className="text-sm text-muted">
-                {[detail.author, detail.publisher, `${detail.volumes.length} cilt`].filter(Boolean).join(" · ")}
+                {[detail.author, detail.publisher, `${detail.volumes.length} cilt`, upcoming.length > 0 ? `${upcoming.length} yakında` : null].filter(Boolean).join(" · ")}
               </p>
             </div>
             <FollowMissingButton signedIn={signedIn} untrackedIds={untrackedIds} trackedCount={tracked} />
@@ -186,6 +187,18 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
           </dl>
         </div>
       </section>
+
+      {upcoming.length > 0 ? (
+        <section aria-labelledby="yakinda" className="space-y-3 rounded-xl border border-line bg-surface p-4">
+          <h2 id="yakinda" className="eyebrow">Yakında</h2>
+          <p className="text-sm text-muted">Duyurulan ciltler yayımlanmış cilt sayısına dahil değildir.</p>
+          <ul className="flex flex-wrap gap-2">
+            {upcoming.map((v) => <li key={v.id} className="rounded-lg border border-line px-3 py-2 text-sm text-ink">
+              {volumeTitle(v.number)}{v.release_date ? ` · ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(v.release_date))}` : " · Çıkış tarihi henüz belli değil"}
+            </li>)}
+          </ul>
+        </section>
+      ) : null}
 
       {/* -- other editions (e.g. Soichi <-> Soichi (Bez Cilt)) ---------------- */}
       {(detail.editions ?? []).length > 0 && (

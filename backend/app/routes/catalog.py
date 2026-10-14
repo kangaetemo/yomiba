@@ -1,4 +1,4 @@
-"""Catalog sync endpoints (operational, no auth — same as /import).
+"""Admin-only catalog sync and read-only audit endpoints.
 
 ``POST /catalog/sync``  -> starts a background Mangakol catalog sync
                            (445 manga x detail pages; several minutes).
@@ -28,6 +28,8 @@ from ..services.background_import import SYNC_GATE_KEY
 from ..services import isbn_conflict_fix as isbn_fix
 from ..services.catalog_sync import CatalogSyncService
 from ..services import catalog_audit
+from ..services import catalog_state
+from ..utils import utcnow
 
 logger = logging.getLogger("yomiba.catalog.routes")
 
@@ -115,26 +117,30 @@ def catalog_audit_report() -> dict:
 
 
 def _last_summary() -> dict | None:
-    if _last is None:
+    last = _last or catalog_state.read_state().get("last")
+    if not isinstance(last, dict) or not last.get("status"):
         return None
     return {
-        "status": _last["status"],
-        "finished_at": _last.get("finished_at"),
-        "manga_total": _last.get("manga_total"),
-        "manga_failed": _last.get("manga_failed"),
-        "series_created": _last.get("series_created"),
-        "series_merged": _last.get("series_merged"),
-        "volumes_added": _last.get("volumes_added"),
-        "covers_backfilled": _last.get("covers_backfilled"),
-        "publishers_merged": _last.get("publishers_merged"),
-        "series_absorbed": _last.get("series_absorbed"),
-        "volumes_merged": _last.get("volumes_merged"),
-        "isbn_pages": _last.get("isbn_pages"),
-        "isbns_added": _last.get("isbns_added"),
-        "isbn_conflicts": _last.get("isbn_conflicts"),
-        "isbn_conflict_details": _last.get("isbn_conflict_details") or [],
-        "isbn_phantoms_merged": _last.get("isbn_phantoms_merged"),
-        "errors": (_last.get("errors") or [])[:10],
+        "status": last["status"],
+        "finished_at": last.get("finished_at"),
+        "manga_total": last.get("manga_total"),
+        "manga_failed": last.get("manga_failed"),
+        "series_created": last.get("series_created"),
+        "series_merged": last.get("series_merged"),
+        "volumes_added": last.get("volumes_added"),
+        "volumes_retired": last.get("volumes_retired"),
+        "release_status_updated": last.get("release_status_updated"),
+        "announced_volumes": last.get("announced_volumes"),
+        "covers_backfilled": last.get("covers_backfilled"),
+        "publishers_merged": last.get("publishers_merged"),
+        "series_absorbed": last.get("series_absorbed"),
+        "volumes_merged": last.get("volumes_merged"),
+        "isbn_pages": last.get("isbn_pages"),
+        "isbns_added": last.get("isbns_added"),
+        "isbn_conflicts": last.get("isbn_conflicts"),
+        "isbn_conflict_details": last.get("isbn_conflict_details") or [],
+        "isbn_phantoms_merged": last.get("isbn_phantoms_merged"),
+        "errors": (last.get("errors") or [])[:10],
     }
 
 
@@ -146,12 +152,15 @@ def _run_sync(runner) -> None:
             report = CatalogSyncService(session).sync()
         _last = {
             "status": "success" if report.ok else "failed",
-            "finished_at": report.started_at.isoformat(),
+            "finished_at": utcnow().isoformat(),
             "manga_total": report.manga_total,
             "manga_failed": report.manga_failed,
             "series_created": report.series_created,
             "series_merged": report.series_merged,
             "volumes_added": report.volumes_added,
+            "volumes_retired": report.volumes_retired,
+            "release_status_updated": report.release_status_updated,
+            "announced_volumes": report.announced_volumes,
             "covers_backfilled": report.covers_backfilled,
             "publishers_merged": report.publishers_merged,
             "series_absorbed": report.series_absorbed,
@@ -163,6 +172,7 @@ def _run_sync(runner) -> None:
             "isbn_phantoms_merged": report.isbn_phantoms_merged,
             "errors": report.errors,
         }
+        catalog_state.record_finish(_last)
         logger.info(
             "catalog sync finished: %s (scanned=%s failed=%s "
             "series + %s / merged %s, volumes +%s, pubs merged %s, "
@@ -174,7 +184,8 @@ def _run_sync(runner) -> None:
         )
     except Exception as exc:  # noqa: BLE001 - never leave the flag stuck
         logger.exception("catalog sync crashed")
-        _last = {"status": "failed", "finished_at": None, "error": f"{type(exc).__name__}: {exc}"}
+        _last = {"status": "failed", "finished_at": utcnow().isoformat(), "error": f"{type(exc).__name__}: {exc}"}
+        catalog_state.record_finish(_last)
     finally:
         logger.info("catalog sync ended after %.1fs", time.monotonic() - started)
         runner.release_import_lock(SYNC_GATE_KEY, "catalog")
@@ -205,6 +216,7 @@ def try_start_sync(runner) -> str:
         runner.release_import_lock(SYNC_GATE_KEY, "catalog")
         raise
     try:
+        catalog_state.record_start()
         thread = threading.Thread(
             target=_run_sync, args=(runner,), name="catalog-sync", daemon=True
         )

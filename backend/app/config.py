@@ -178,8 +178,8 @@ class Settings:
     # Periodic catalog sync (scheduler). Only active when the app runs with
     # auto_init (production shape — tests run auto_init=False and never
     # start it). The first run happens one full interval AFTER process
-    # start (deliberately no catch-up at startup), so the gap between
-    # syncs always stays within [interval, 2*interval) across restarts.
+    # start in isolation. Production uses the persisted successful run
+    # time so deployments do not postpone a due sync.
     catalog_sync_enabled: bool = os.getenv(
         "CATALOG_SYNC_ENABLED", "1"
     ).strip().lower() in {"1", "true", "yes", "on"}
