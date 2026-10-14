@@ -159,7 +159,7 @@ Sayfa sayısı ve tarih farklarının **yedisinde de DB alanları boş**; kaynak
 | Nana · 7 | 9786256327740 | 200 | 2026-10-13 |
 | İskelet Ejderin Küçük Kızı · 3 | 9786259087849 | 176 | 2026-10-13 |
 
-## Uygulama için kalan işler
+## 13 Ekim başlangıç uygulama planı
 
 1. **Önce görünürlük:** 57 kaynak dışı kaydı ve 47 tarihsiz duyuruyu yayımlanmış cilt görünümünden ayır; satırları, fiyat geçmişini ve kişisel kayıtları koru. Jujutsu Kaisen 0 gibi gerçek cilt 0 kayıtlarını koru.
 2. **Yayın durumu:** Kaynakla eşleşen 2.399 cilt için kaynak durumunu işle; `None` ile “Yakında” aynı şey değildir.
@@ -167,4 +167,12 @@ Sayfa sayısı ve tarih farklarının **yedisinde de DB alanları boş**; kaynak
 4. **ISBN incelemesi:** Dolu ISBN farklarını ve kaynakta tekrarlanan ISBN’leri yayınevi/ürün barkodu kanıtıyla ayır; körlemesine güncelleme yapma. Meşru ortak ISBN’li özel baskılar ayrı tutulmalı.
 5. **Canlı doğrulama:** Fairy Tail 21 yayımlanmış + 1 yakında; Nana 7, Beastars 8 ve diğer düzeltilen serileri yeniden karşılaştır. Aynı eski satırlar mağaza taramasında yeniden görünür hale gelmemeli.
 
-**Durum:** Tüm katalog karşılaştırması ve rapor analizi tamamlandı. Veritabanı düzeltmesi uygulanmadı; kullanıcı tarafından yapılmış daha sonraki bir senkronun etkisi bu başlangıç görüntüsünden çıkarılamaz.
+**13 Ekim rapor anındaki durum:** Tüm katalog karşılaştırması ve rapor analizi tamamlandı; bu salt okunur tarama veritabanı düzeltmesi uygulamadı.
+
+## 14 Ekim uygulama sonucu
+
+Koruyucu düzeltme yayımlandı ve güncel kaynakla senkron canlıda çalıştı. Başlangıç raporundaki 495 serinin yayımlanmış cilt sayıları tamamen eşleşiyor (2.352 cilt); 38 serideki 47 duyuru ayrı listede, fark yok. Fairy Tail 21 yayımlanmış + 22. cilt yakında; Nana 7, Beastars 8, Black Lagoon 5 ve City 1. Yedi yeni ISBN/sayfa/tarih künyesi tamamlandı. Eski satırlar silinmiyor; fiyat geçmişi ve kişisel referansların korunması DB regresyon testiyle doğrulandı.
+
+Güncel kaynak listesine SEKIRO-Yan Hikâye: Ölümsüz Hanbei eklenmiş: 474 ana seri, 496 seri/baskı, 2.353 yayımlanmış cilt. Bu yeni kayıt, başlangıç raporundaki toplamların değişmesinin doğrulanmış sebebi.
+
+23 başlangıç ISBN farkının yedisi giderildi; kalan 16 fark (canlıda dört boş, 12 dolu ve farklı ISBN) kanıt incelemesine açık. Ortak ISBN kullanan baskılar ve kaynakta yanlış tekrarlanan ISBN'ler otomatik hata sayılmadı. Uygulama, testler ve canlı doğrulamanın kapsamı [14 Ekim çalışma notlarında](yomiba-calisma-notlari.md); açık işler [yapılacaklar listesinde](../yapılacaklar.md).

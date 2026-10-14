@@ -6,14 +6,9 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 
 ## Öncelikli — Katalog düzeltmeleri
 
-- [ ] **Karşılaştırmada bulunan katalog farklarını veriyi koruyarak düzelt ve canlıda doğrula.** En yüksek öncelik; 14 Ekim 2026'da uygulama başladı. Kaynakta bulunma ve yayın durumu ayrı tutuluyor; yeniden başlatmalarda senkron zamanı korunuyor. Canlı sonuç doğrulanınca alt işler tamamlandı olarak kaydedilecek.
-  - 57 görünür kaynak dışı kayıt: Fairy Tail 30, Nana 13, Beastars 12, Black Lagoon 1 ve City 1 numarasız kayıt. Satırları, fiyat geçmişini ve kullanıcı koleksiyonlarını koruyarak katalog görünümünden ayır.
-  - 38 serideki 47 tarihsiz “Yakında” cildini yayımlanmış cilt sayısından ayır. Fairy Tail için “21 yayımlanmış + 1 yakında” durumunu canlıda doğrula.
-  - Kaynakla eşleşen 2.399 cildin yayın durumunu işle; rapor görüntüsündeki `catalog_released=None` durumu giderilsin. Kısmi/başarısız kaynak okuması kayıtları yanlışlıkla pasifleştirmemeli.
-  - Yedi yeni yayımlanmış cildin boş ISBN/sayfa/çıkış bilgilerini ve diğer çakışmasız boş alanları kontrollü doldur.
-  - 23 ISBN farkını ayrı incele: 12 boş alan, 11 dolu ISBN farkı. Kaynaktaki 11 tekrarlanan ISBN grubu nedeniyle her farkı Yomiba hatası varsayma; dolu ISBN'leri ürün/yayınevi kanıtı olmadan ezme. Meşru ortak ISBN'li özel baskıları koru.
-  - Fazla satırların eski aktarım kökenini gerekirse ek kanıtla araştır; güncel mağaza importer'ı bulunmayan yeni cilt yaratmıyor. Pasif kayıtlar mağaza taramasında yeniden görünür hâle gelmemeli.
-  - Tamamlanan düzeltmeleri çalışma notlarına ekle; eski “Yayımlama sonrası katalog doğrulaması” bu kapsamda devam ediyor.
+- [ ] **Kalan 16 ISBN farkını ürün/yayınevi barkodu kanıtıyla incele.** En yüksek açık öncelik. 14 Ekim canlı kontrolünde dört ISBN boş, 12 dolu ISBN kaynakla farklı; bunların tamamı hata varsayılmamalı. Kaynak tekrarlarını ve meşru ortak ISBN'li özel baskıları ayır; dolu ISBN'leri körlemesine ezme. [Ayrıntılar ve doğrulama](docs/yomiba-calisma-notlari.md).
+- [x] **57 fazla kayıt ile 47 duyuruyu yayımlanmış katalogdan ayır ve canlıda doğrula.** 14 Ekim: başlangıç raporundaki 495 serinin cilt sayıları tamamen eşleşti; Fairy Tail 21 yayımlanmış + 1 yakında. Satırlar ve kişisel referanslar korunuyor; importer pasif cildi yeniden görünür yapamıyor.
+- [x] **Senkronun yeniden başlatmalarda ertelenmesini düzelt ve yeni künyeleri işle.** Kalıcı çalışma zamanıyla açılışta gecikmiş senkron çalışıyor; yedi yeni cildin ISBN/sayfa/tarih alanları canlıda doğrulandı. Kısmi kaynak görüntüsünde pasifleştirme yapılmıyor.
 - [x] **Mangakol kataloğu ile Yomiba veritabanını tüm seriler için karşılaştır ve farkları raporla.** 13 Ekim 2026'da tam tarama ve sonuç analizi tamamlandı: 473 ana seri / 495 seri-baskı / 2.399 cilt künyesi; kaynak hatası yok. [Ayrıntılı sonuçlar](docs/mangakol-yomiba-karsilastirma-2026-10-13.md) ve [çalışma notları](docs/yomiba-calisma-notlari.md).
 
 ## Ana sayfa ve tasarım
