@@ -25,6 +25,13 @@ Son güncelleme: 14 Ekim 2026 (katalog farklarını koruyarak düzeltme).
 
 ## Son günlerde yapılanlar
 
+### 14 Ekim: ISBN yazma yollarının zorunlu ön incelemesi
+
+- Kullanıcının isteğiyle yeni ISBN doğrulama teknik şartnamesi için kod yazmadan önce mevcut yazıcılar denetlendi. İncelenen main sürümü `33bfdc407bd26793a1ba1316aa395fec123d3dcb`; 254 kod/betik dosyasının yerel Git blob hash'i sürümle eşleşti.
+- [Ayrıntılı rapor](isbn-yazma-yollari-denetimi-2026-10-14.md): yedi dosyada 18 doğrudan ISBN yazma/temizleme/taşıma noktası; katalog senkronu, mağaza aktarımı, admin/CLI düzeltmeleri, numarasız cilt merge'ü, yabancı baskı temizliği, tarihsel SQL bakım yazmaları ve dolaylı kimlik/history etkileri.
+- Dört izole bellek DB deneyinde tek mağaza sonucuyla boş ISBN doldurma; Yakında/pasif cilde ilan atlanırken ISBN'nin commit edilmesi; checksum hatalı ISBN'nin yazılması doğrulandı. İlgili mevcut 131 test geçti. Güncel public `/search` salt okunur; eski `search_with_auto_import` işlevinin varlığı bugünkü route'un yazıcı olduğu şeklinde yorumlanmadı.
+- Uygulama kodu, migration ve canlı DB değiştirilmedi. Yeni doğrulama motoru çalıştırılmadı; ISBN kararları uygulanmadı. Yalnız rapor/dokümantasyon kaydedildi ve zorunlu ön inceleme checkbox'ı tamamlandı. **A/B/C aşamaları ve ortak onay kapısı hâlâ açık; sistemin ISBN'leri artık admin onayıyla değiştirdiği iddia edilmiyor.**
+
 ### 14 Ekim: katalog farklarının düzeltilmesi
 
 - Kullanıcı, karşılaştırmada bulunan farkların en üst önceliğe alınmasını ve uygulanmasını istedi. Düzeltme eski raporu veritabanına kopyalamıyor; senkron sırasında güncel Mangakol görüntüsünü kullanıyor.
