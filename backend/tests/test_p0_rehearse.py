@@ -25,7 +25,7 @@ def test_rehearsal_preserves_a_prior_revision_backup_and_is_idempotent(guarded, 
     assert first == second
     assert first["verified"] and first["source_unchanged"] and first["protected_rows_unchanged"]
     assert first["source_revision"] == "0014_catalog_membership"
-    assert first["restored_revision"] == "0015_isbn_safety"
+    assert first["restored_revision"] == "0017_isbn_approval"
     assert first["identity_summary"] == before["identity_summary"]
     assert source.read_bytes() == before_bytes
     assert inspect_database(source) == before

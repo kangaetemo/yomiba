@@ -1,5 +1,27 @@
 # ISBN P0 koruma paketi — 14 Ekim 2026
 
+## 15 Ekim: kullanıcı onayıyla canlıya alındı
+
+PR #4, `a4272598061abe583205f62aec3602b36b8c567a` olarak main'e birleştirildi.
+Railway `20fba45b-78b9-4c21-b3f7-44f952d74f45` SUCCESS, tek replica Online;
+uyarı/kritik hata veya bekleyen altyapı değişikliği yok. Startup logu yeni
+pre-migration yedeğini, gerçek 0014→0015 geçişini, DB readiness başarısını
+ve normal scheduler başlangıcını doğruladı. Migration içindeki yedek,
+restore, korunan tüm satırlarda önce/sonra eşitlik ve guard tanımı kontrolleri
+başarısız olsaydı startup tamamlanmayacaktı; gerçek startup/healthcheck geçti.
+
+Canlı `/ready`, `/home`, `/search?q=fairy` 200; yöneticiye özel koruma bilgisi
+anonim erişimde 401. Readiness `isbn_writes_paused: true`; frontend 200.
+Yayın öncesi güncel online yedek restore doğrulamasından geçti; şifreli ikinci
+kopyası DPAPI decrypt/hash round-trip ile doğrulandı, ara plaintext silindi.
+
+Ek bağımsız SSH audit'i (özel manifestin ayrıca okunması ve yayın öncesi yedekle
+eski kimlik/geçmiş satırlarının karşılaştırılması) tekrarlanan bağlantı ve DNS
+zaman aşımından dolayı **henüz tamamlanmadı**. Bu nedenle P0.4'ün bu son
+operasyonel kontrolü açık tutuluyor. Canlı koruma aktif; mevcut ISBN farkları
+ve bağımsız A/B/C admin sistemi bu çalışmada uygulanmadı.
+
+
 ## 15 Ekim: uygulama akışı, Linux regresyonu ve ikinci yedek doğrulandı
 
 Sonraki bağlantı başarılı oldu. Aynı paket üzerinde Linux'ta üç sentetik

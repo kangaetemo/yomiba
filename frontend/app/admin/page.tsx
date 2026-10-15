@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AdminControls } from "@/components/admin/AdminControls";
 import { currentUser } from "@/services/auth";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Admin",
@@ -22,6 +23,10 @@ export default async function AdminPage() {
           denemeleri izleyin.
         </p>
       </header>
+      <Link href="/admin/isbn" className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
+        <h2 className="font-semibold text-ink">ISBN Doğrulama / İnceleme Merkezi →</h2>
+        <p className="mt-1 text-sm text-muted">Taramayı başlatın, kaynak kanıtlarını karşılaştırın ve bekleyen ISBN kararlarını inceleyin.</p>
+      </Link>
       <AdminControls />
     </div>
   );

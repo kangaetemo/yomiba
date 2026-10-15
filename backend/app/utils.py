@@ -10,6 +10,11 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def naive_utcnow() -> datetime:
+    """UTC for SQLite audit columns, which are stored without a zone suffix."""
+    return utcnow().replace(tzinfo=None)
+
+
 def to_cents(price: float | int | str | None) -> int | None:
     """Convert a decimal price to integer cents, rounding half-up.
 

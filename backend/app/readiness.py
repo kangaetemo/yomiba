@@ -26,7 +26,9 @@ def check_database_ready(engine: Engine, *, check_foreign_keys: bool = False) ->
         if revision != expected_revision():
             raise RuntimeError("Database Alembic revision is not at head")
         for table in ("series", "catalog_series", "volumes", "store_listings",
-                      "price_history", "users", "user_sessions", "import_records"):
+                      "price_history", "users", "user_sessions", "import_records",
+                      "isbn_audit_runs", "isbn_audit_items", "isbn_audit_results", "isbn_reviews",
+                      "isbn_decisions", "isbn_approval_permits"):
             connection.execute(text(f"SELECT 1 FROM {table} LIMIT 1"))
         invalid = connection.execute(text(
             "SELECT cs.series_id FROM catalog_series cs "

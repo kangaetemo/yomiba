@@ -19,6 +19,7 @@ from .catalog_series import CatalogSeries
 from .catalog_exclusion import CatalogExclusion
 from .user import User, UserSession
 from .user_volume_collection import UserVolumeCollection
+from .isbn_review import IsbnAuditRun, IsbnAuditItem, IsbnAuditResult, IsbnReview, IsbnDecision
 
 __all__ = [
     "Publisher",
