@@ -61,6 +61,22 @@ def test_approved_change_preserves_all_relationships_and_consumes_capability(gua
     assert before["volumes"]["rows"] == after["volumes"]["rows"]
 
 
+@pytest.mark.parametrize("valid_domain", [True, False])
+def test_kitapsepeti_evidence_passes_same_approval_checks(guarded, valid_domain):
+    path, engine = guarded
+    def mutate(records):
+        records[1].update(source="kitapsepeti", independence_group="kitapsepeti",
+                          url="https://www.kitapsepeti.com/synthetic" if valid_domain else "https://other.example/synthetic")
+    args = make_review(engine, evidence_mutator=mutate)
+    before = inspect_file(path)
+    with Session(engine) as session:
+        if valid_domain:
+            assert decide(session, **args).new_isbn == ISBN
+        else:
+            with pytest.raises(DecisionError, match="ürün bağlantısı"): decide(session, **args)
+            assert inspect_file(path) == before
+
+
 @pytest.mark.parametrize("case", ["old", "conflict", "duplicate_group", "wrong_edition", "invalid_isbn", "stale_proof", "empty"])
 def test_unsafe_evidence_never_changes_catalogue_or_records_decision(guarded, case):
     path, engine = guarded

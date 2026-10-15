@@ -65,7 +65,10 @@ def control_run(session, run_id: int, action: str):
         run = session.get(IsbnAuditRun, run_id)
         if not run or run.status not in {"RUNNING", "PAUSED"}:
             raise AuditConflict("Bu tarama artık açık değil.")
-        run.status = "PAUSED" if action == "pause" else "RUNNING"
+        if action == "stop":
+            run.status, run.finished_at = "CANCELLED", naive_utcnow()
+        else:
+            run.status = "PAUSED" if action == "pause" else "RUNNING"
         session.commit()
         return run
     except Exception:
