@@ -8,7 +8,7 @@ import type { AuditStatus, DecisionAction, IsbnDetail, IsbnReview, IsbnSummary, 
 
 const labels: Record<AuditStatus, string> = {
   VERIFIED: "Doğrulandı", CONFLICT: "Çelişkili", MISSING_ISBN: "ISBN eksik",
-  INSUFFICIENT_EVIDENCE: "Kanıt yetersiz", SOURCE_ERROR: "Kaynak hatası", SKIPPED_UPCOMING: "Yayın bekliyor",
+  INSUFFICIENT_EVIDENCE: "Kanıt yetersiz", SOURCE_ERROR: "Tüm dış kaynaklar erişilemedi", SKIPPED_UPCOMING: "Yayın bekliyor",
 };
 const queueLabels: Record<ReviewQueue, string> = { APPROVAL: "ISBN onayı bekleyen", INVESTIGATE: "Çelişki incelemesi", AWAITING_EVIDENCE: "Kanıt / erişim bekleyen", REVIEWED: "İncelenen / alarm açılmayan" };
 const sourceLabels: Record<string, string> = { kitapyurdu: "Kitapyurdu", bkm: "BKM Kitap", kitapsepeti: "Kitap Sepeti", bora: "Bora Dağıtım", pandora: "Pandora", dr: "D&R", mangakol: "MangaKol (katalog kaynağı)" };
@@ -80,7 +80,8 @@ export function IsbnReviewCenter() {
       {summary?.run ? <div className="space-y-2 rounded-lg bg-surface-2 p-3 text-sm">
         <p className="font-medium text-ink">{summary.run.status === "RUNNING" ? "Tarama sürüyor" : summary.run.status === "PAUSED" ? "Tarama duraklatıldı" : summary.run.status === "COMPLETED" ? "Tarama tamamlandı" : "Tarama kesildi"} · {summary.run.processed} / {summary.run.total} cilt</p>
         <progress aria-label="ISBN tarama ilerlemesi" className="h-2 w-full accent-accent" value={summary.run.processed} max={Math.max(1, summary.run.total)} />
-        <p className="text-muted">Başlangıç: {formatDateTime(summary.run.started_at)} · Erişim hatası görülen cilt: {summary.run.errors}</p>
+        <p className="text-muted">Başlangıç: {formatDateTime(summary.run.started_at)} · En az bir kaynak sorunu olan cilt: {summary.run.errors}</p>
+        <p className="text-xs text-muted">Bu sayaç, diğer kaynaklarla doğrulanmış olsa bile en az bir kaynakta sorun görülen ciltleri içerir. Yanlış ISBN sayısı değildir.</p>
         {summary.run.error && <p className="text-warn">{summary.run.error}</p>}
         {open && <button className={button} disabled={busy} onClick={() => void runAction(() => controlIsbnAudit(summary.run!.id, summary.run!.status === "PAUSED" ? "resume" : "pause"), "Tarama durumu güncellendi. Devam eden kaynak isteği bitince uygulanacak.")}>{summary.run.status === "PAUSED" ? "Kaldığı yerden sürdür" : "Taramayı duraklat"}</button>}
         {summary.run.status === "PAUSED" && <div className="space-y-2"><p className="text-muted">Yeni kaynaklarla baştan taramak için bu çalışmayı sonlandırıp “Tüm kataloğu tara” düğmesine basın. Önceki sonuçlar ve karar geçmişi saklanır.</p><button className={button} disabled={busy} onClick={() => void runAction(() => controlIsbnAudit(summary.run!.id, "stop"), "Çalışma sonlandırıldı; sonuçlar saklandı. Yeni kaynaklarla tüm kataloğu tarayabilirsiniz.")}>Taramayı sonlandır</button></div>}

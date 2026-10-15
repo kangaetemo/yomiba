@@ -74,6 +74,26 @@ def test_missing_bibliography_is_not_a_contradiction_or_an_independent_vote(chan
     assert bad["status"] == "MISMATCH"
 
 
+@pytest.mark.parametrize("title,status", [
+    ("Death Note - Ölüm Defteri 1", "MATCH"), ("Ölüm Defteri 1", "MATCH"), ("Death Note 1", "MATCH"),
+    ("Death Note Short Stories 1", "MISMATCH"), ("Death Note Black Edition 1", "MISMATCH"),
+    ("Death Note Novel - Ölüm Defteri 1", "MISMATCH"), ("Death Note - Ölüm Defteri 2", "MISMATCH"),
+    ("Another Death Note - Ölüm Defteri 1", "MISMATCH"),
+])
+def test_declared_catalogue_names_allow_bilingual_titles_but_not_spinoffs(title,status):
+    t=target(title="Ölüm Defteri",catalog_slugs=["death-note"],original_title="death note short stories death note",volume_number=1,publisher="Akılçelen",isbn="9786055381028")
+    b=book(title=title,publisher="Akıl Çelen Kitaplar",raw_isbns=["9786055381028"])
+    assert proof("kitapsepeti","kitapsepeti",t,b)["status"]==status
+
+
+def test_canonical_slug_does_not_relax_physical_edition_checks():
+    t=target(title="Jujutsu Kaisen - Lanet Savaşları",catalog_slugs=["jujutsu-kaisen"],volume_number=3,publisher="Gerekli Şeyler")
+    b=book(title="Jujutsu Kaisen 3. Cilt",publisher="Gerekli Şeyler Yayıncılık")
+    assert proof("bkm","bkm",t,b)["status"]=="MATCH"
+    for change in [dict(publisher="Athica"),dict(language="English"),dict(binding="Hardcover"),dict(title="Jujutsu Kaisen Novel 3")]:
+        assert proof("bkm","bkm",t,b|change)["status"]=="MISMATCH"
+
+
 def test_worker_passes_listing_urls_without_changing_identity_or_listings(engine, db_session):
     from app.models import Store, StoreListing
     seed_catalog_series(db_session, "Blue Lock", "Komikşeyler", volumes=(29,))
