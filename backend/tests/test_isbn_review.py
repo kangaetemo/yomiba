@@ -37,7 +37,9 @@ def payload(review, action="KEEP", **kwargs):
 
 
 def test_queue_detail_and_history(client, review, db_session):
-    assert client.get("/admin/isbn/summary").json()["pending"] == 1
+    response = client.get("/admin/isbn/summary")
+    assert response.json()["pending"] == 1
+    assert response.headers["cache-control"] == "private, no-store"
     assert client.get("/admin/isbn/reviews?workflow=REVIEW_PENDING&q=Blue").json()["total"] == 1
     assert client.get("/admin/isbn/reviews?q=unrelated").json()["total"] == 0
     detail = client.get(f"/admin/isbn/reviews/{review.volume_id}").json()

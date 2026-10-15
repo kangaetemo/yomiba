@@ -12,7 +12,7 @@ import json
 import os
 import re
 import time
-from urllib.parse import quote_plus, urljoin, urlsplit
+from urllib.parse import parse_qs, quote_plus, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -172,15 +172,36 @@ class RetailerSource:
             if scraper.stats.get("stop_reason") in {"max_results", "max_pages", "page_error"}:
                 raise ScraperError("Kaynak araması tamamlanamadı; sonuçlar eksik olabilir.")
         elif self.code == "kitapyurdu":
-            r = self.get(f"{self.base}/index.php?route=product/search&filter_name={quote_plus(query)}")
-            soup = BeautifulSoup(r.content, "lxml")
-            for a in soup.select("a.ky-product-title[href*='/kitap/'], .product-cr .name a"):
-                title = a.get_text(" ", strip=True)
-                if self.candidate(target, title): urls[urljoin(self.base, a["href"]).split("?")[0]] = title
-            if not urls and not soup.select(".ky-product-title, .product-cr") and "uygun ürün bulunamadı" not in soup.get_text().lower():
-                raise ScraperError("Kaynak arama şablonu tanınmadı; yokluk varsayılmadı.")
-            if soup.select(".pagination a[rel='next'], a.ky-pagination-next"):
-                raise ScraperError("Kaynak araması birden fazla sayfa; tam kanıt için daha dar arama gerekli.")
+            pending = {1: f"{self.base}/index.php?route=product/search&filter_name={quote_plus(query)}"}
+            seen, signatures = set(), set()
+            while pending:
+                page = min(pending)
+                r = self.get(pending.pop(page))
+                seen.add(page)
+                soup = BeautifulSoup(r.content, "lxml")
+                products = soup.select("a.ky-product-title[href*='/kitap/'], .product-cr .name a")
+                if not products and "uygun urun bulunamadi" not in normalize_text(soup.get_text()):
+                    raise ScraperError("Kaynak arama şablonu tanınmadı; yokluk varsayılmadı.")
+                signature = tuple(sorted({urljoin(self.base, a["href"]).split("?")[0] for a in products}))
+                if signature and signature in signatures:
+                    raise ScraperError("Kaynak sayfalaması aynı ürünleri tekrarlıyor; arama tamamlanamadı.")
+                signatures.add(signature)
+                for a in products:
+                    title = a.get_text(" ", strip=True)
+                    if self.candidate(target, title): urls[urljoin(self.base, a["href"]).split("?")[0]] = title
+                # Follow actual public pagination URLs, including numeric-only
+                # links (the current site has no rel=next or pagination class).
+                for a in soup.select("a[href]"):
+                    link = urljoin(self.base, a["href"])
+                    parsed = urlsplit(link)
+                    params = parse_qs(parsed.query)
+                    number = params.get("page", [""])[0]
+                    if (parsed.scheme == "https" and parsed.hostname == "www.kitapyurdu.com"
+                            and params.get("route") == ["product/list"] and params.get("filter_name") == [query]
+                            and number.isdigit() and int(number) > 0 and int(number) not in seen):
+                        pending[int(number)] = link
+                if len(seen) + len(pending) > 1000:
+                    raise ScraperError("Kaynak araması olağan dışı uzun; tam sonuç doğrulanamadı.")
         else:
             # Discover the site's actual GET search form. Never guess/bypass a
             # blocked API. JS-only searches are explicit source errors.

@@ -4,6 +4,7 @@ import pytest
 
 from app.scrapers.base import ScraperError
 from app.services.isbn_sources import PoliteClient, RetailerSource, collect_sources
+from app.services.isbn_identity import evaluate
 from tests.test_isbn_audit import target
 
 
@@ -53,3 +54,29 @@ def test_circuit_backoff_retains_source_error_and_limits_requests():
     assert collect_sources(target(), [source])[0]["status"] == "ERROR"
     assert collect_sources(target(), [source])[0]["status"] == "ERROR"
     assert source.calls == 1
+
+
+@pytest.mark.parametrize("first_number", [28, 29])
+def test_all_search_pages_are_followed_before_absence_or_consensus(first_number):
+    calls = []
+    def respond(request):
+        calls.append(str(request.url))
+        if request.url.path == "/index.php":
+            page = request.url.params.get("page", "1")
+            if page == "1":
+                html = f'<a class="ky-product-title" href="/kitap/first/1.html">Blue Lock Cilt {first_number}</a><a href="/index.php?route=product/list&amp;filter_name=Blue+Lock+29&amp;page=2">2</a>'
+            else:
+                html = '<a class="ky-product-title" href="/kitap/second/2.html">Blue Lock Cilt 29</a>'
+        else:
+            isbn = "9786258630633" if "/first/" in request.url.path else "9786258630640"
+            html = '<h1>Blue Lock Cilt 29</h1><script type="application/ld+json">' + '{"@type":"Book","isbn":"'+isbn+'","publisher":{"name":"Komikşeyler"},"inLanguage":"tr","bookFormat":"Paperback"}</script>'
+        return httpx.Response(200, text=html)
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        records = RetailerSource("kitapyurdu", "kitapyurdu", client).collect(target())
+    assert any("page=2" in url for url in calls)
+    assert any(e["isbn"] == "9786258630640" for e in records)
+    if first_number == 29:
+        assert len(records) == 2
+        assert evaluate(target(), records)[0] == "CONFLICT"
+    else:
+        assert len(records) == 1 and records[0]["status"] == "MATCH"

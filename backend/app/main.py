@@ -166,7 +166,7 @@ def create_app(auto_init: bool = True) -> FastAPI:
         # Public search/prices can use ordinary cache policy. Any response
         # tied to a session, and all auth/personal endpoints, must not be
         # stored by a shared intermediary.
-        personal_path = request.url.path.startswith(("/auth/", "/me/")) or any(
+        personal_path = request.url.path.startswith(("/auth/", "/me/", "/admin/")) or any(
             marker in request.url.path for marker in ("/wishlist", "/price-alert", "/collection-status")
         )
         if personal_path or request.cookies.get("yomiba_session"):

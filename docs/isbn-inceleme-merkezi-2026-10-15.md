@@ -114,7 +114,7 @@ akışı kontrol edildi. Hiçbir test üretim DB'sinde CRUD işlemi yapmaz.
 güncel test komutundan ayrıdır. GitHub Actions Linux'ta gerçek POSIX dosya
 izinleri dahil arka uç testlerini, ön yüzde lint ve üretim derlemesini çalıştırır.
 
-Bu belgeye son kontrol sayıları ve PR/CI sonucu yayın hazırlığında eklenir.
+Yayın hazırlığındaki kesin test sonuçları ve CI bağlantısı PR açıklamasındadır.
 Üretim yayını ve ilk tam canlı katalog taraması ayrı doğrulama adımıdır;
 bu geliştirme sırasında canlı ISBN uygulanmamıştır. Önce güncel yedek ve
 restore provası, sonra backend migration/readiness, ardından frontend,
