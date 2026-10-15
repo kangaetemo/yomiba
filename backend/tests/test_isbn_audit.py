@@ -58,10 +58,46 @@ def test_source_errors_are_not_missing():
 @pytest.mark.parametrize("changes", [dict(title="Blue Lock Cilt 28"), dict(language="English"),
     dict(publisher="Başka Yayıncı"), dict(title="Blue Lock Novel Cilt 29"),
     dict(title="Blue Lock Cilt 29 (Varyant Kapak)"), dict(title="Blue Lock Cilt 29 Limitli"),
-    dict(title="Blue Lock 1-29 Seti"), dict(binding=None), dict(binding="https://schema.org/Hardcover"),
-    dict(binding="unknown"), dict(raw_isbns=[ISBN, "9786258630640"])])
+    dict(title="Blue Lock 1-29 Seti"), dict(binding="https://schema.org/Hardcover"),
+    dict(raw_isbns=[ISBN, "9786258630640"])])
 def test_physical_identity_and_internal_conflicts(changes):
     assert evidence(**changes)["status"] == "MISMATCH"
+
+
+@pytest.mark.parametrize("changes", [dict(binding=None), dict(binding="unknown"), dict(language=None), dict(publisher=None)])
+def test_missing_bibliography_is_not_a_contradiction_or_an_independent_vote(changes):
+    partial = evidence("partial", **changes)
+    assert partial["status"] == "INCOMPLETE"
+    assert evaluate(target(), [evidence(), partial])[0] == "INSUFFICIENT_EVIDENCE"
+    assert evaluate(target(), [evidence(), evidence("two"), partial])[0] == "VERIFIED"
+    bad = evidence("partial", raw_isbns=["9786258630634"], **changes)
+    assert bad["status"] == "MISMATCH"
+
+
+def test_worker_passes_listing_urls_without_changing_identity_or_listings(engine, db_session):
+    from app.models import Store, StoreListing
+    seed_catalog_series(db_session, "Blue Lock", "Komikşeyler", volumes=(29,))
+    volume = db_session.scalar(select(Volume))
+    volume.catalog_present = volume.catalog_released = True
+    store = Store(code="kitapsepeti", name="Kitap Sepeti")
+    db_session.add(store);db_session.flush()
+    listing = StoreListing(volume_id=volume.id,store_id=store.id,product_url="https://www.kitapsepeti.com/book",price=100)
+    db_session.add(listing);db_session.commit()
+    before=snapshot(volume)
+    create_run(db_session,1)
+    class Source:
+        code=group="kitapsepeti"
+        def collect(self,t):
+            assert t["source_product_urls"]=={"kitapsepeti":[listing.product_url]}
+            return [proof(self.code,self.group,t,book(url=listing.product_url))]
+    worker=IsbnAuditWorker(sessionmaker(bind=engine,expire_on_commit=False),source_factory=lambda:(None,[Source()]))
+    worker.run_pending()
+    db_session.expire_all()
+    result=db_session.scalar(select(IsbnAuditResult))
+    assert result.snapshot==before and "source_product_urls" not in result.snapshot
+    assert result.status=="INSUFFICIENT_EVIDENCE"
+    assert snapshot(db_session.get(Volume,volume.id))==before
+    assert db_session.get(StoreListing,listing.id).price==100
 
 
 def test_named_regressions():

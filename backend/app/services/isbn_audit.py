@@ -11,7 +11,7 @@ from sqlalchemy.orm import joinedload
 from ..utils import naive_utcnow
 
 from ..models import (CatalogSeries, IsbnAuditItem, IsbnAuditResult, IsbnAuditRun,
-                      IsbnReview, Series, Volume)
+                      IsbnReview, Series, Store, StoreListing, Volume)
 from .isbn_identity import digest, eligible, evaluate, snapshot
 from .isbn_sources import collect_sources, default_sources
 
@@ -158,7 +158,14 @@ class IsbnAuditWorker:
                         session.commit(); return
                     volume_id = item.volume_id
                     target = snapshot(session.scalar(volume_query().where(Volume.id == volume_id)))
-                evidence = collect_sources(target, sources) if eligible(target) else []
+                    source_urls = {}
+                    for code, url in session.execute(select(Store.code, StoreListing.product_url).join(
+                            StoreListing, StoreListing.store_id == Store.id).where(StoreListing.volume_id == volume_id)):
+                        if url: source_urls.setdefault(code, []).append(url)
+                # Existing listing URLs are discovery hints, not ISBN evidence.
+                # Keep them out of the immutable identity snapshot/hash; the
+                # source must fetch and validate the actual public product.
+                evidence = collect_sources({**target, "source_product_urls": source_urls}, sources) if eligible(target) else []
                 status, proposed, reason = evaluate(target, evidence)
                 with self.sessions() as session:
                     session.execute(text("BEGIN IMMEDIATE"))

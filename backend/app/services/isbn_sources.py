@@ -31,7 +31,7 @@ from .isbn_identity import base_key, bibliographic_title, canonical_isbn, editio
 
 HOSTS = {"www.kitapyurdu.com", "www.pandora.com.tr", "www.bkmkitap.com",
          "bkmkitap.com", "bkm-best.wawlabs.com", "cdn.bkmkitap.com", "www.dr.com.tr", "mangakol.com",
-         "www.kitapsepeti.com"}
+         "www.kitapsepeti.com", "boradagitim.com"}
 
 
 class PoliteClient(httpx.Client):
@@ -39,6 +39,7 @@ class PoliteClient(httpx.Client):
     def __init__(self):
         settings = get_settings()
         self.rules: dict[str, tuple[RobotFileParser | None, str | None]] = {}
+        self.rules_checked_at: dict[str, float] = {}
         self.last: dict[str, float] = {}
         self.agent = settings.http_user_agent
         self.interval = max(1.0, settings.scraper_min_request_interval_seconds)
@@ -50,7 +51,8 @@ class PoliteClient(httpx.Client):
         host = request.url.host
         if request.url.scheme != "https" or host not in HOSTS:
             raise ScraperError(f"Kaynak izin verilen alan adının dışına yönlendirdi: {host}.")
-        if host not in self.rules:
+        if host not in self.rules or (self.rules[host][0] is None
+                and time.monotonic() - self.rules_checked_at.get(host, 0) >= 60):
             try:
                 # No redirect to an unchecked host, no proxy/bot-wall workaround.
                 r = httpx.get(f"https://{host}/robots.txt", headers={"User-Agent": self.agent}, timeout=15)
@@ -65,6 +67,7 @@ class PoliteClient(httpx.Client):
                 self.rules[host] = (parser, None)
             except Exception as exc:
                 self.rules[host] = (None, str(exc)[:300])
+            self.rules_checked_at[host] = time.monotonic()
         parser, error = self.rules[host]
         if parser is None:
             raise ScraperError(error)
@@ -79,8 +82,12 @@ class PoliteClient(httpx.Client):
 
 def page_book(html: bytes | str, url: str) -> dict:
     """Only the primary product, never ISBNs in recommendation widgets."""
+    bora = urlsplit(url).hostname == "boradagitim.com"
+    # Bora's UTF-8 page has no reliable charset declaration for BS autodetect.
+    if bora and isinstance(html, bytes):
+        html = html.decode("utf-8")
     soup = BeautifulSoup(html, "lxml")
-    title = soup.find("h1")
+    title = soup.select_one("h2.h2musteri") if bora else soup.find("h1")
     book = dict(title=title.get_text(" ", strip=True) if title else "", url=url,
                 publisher=None, language=None, binding=None, raw_isbns=[])
     nodes = BaseScraper.extract_json_ld(str(soup))
@@ -111,13 +118,13 @@ def page_book(html: bytes | str, url: str) -> dict:
         elif key == "dil": book["language"] = val
         elif key == "cilt tipi": book["binding"] = val
     # Shared product-specification table used by existing store adapters.
-    for row in soup.select("table tr"):
+    for row in soup.select("table.description_table tr, #tbldetaylar tr" if bora else "table tr"):
         cells = row.find_all(["td", "th"], recursive=False)
         if len(cells) != 2:
             continue
         key, val = normalize_text(cells[0].get_text()), cells[1].get_text(" ", strip=True)
         if key in {"isbn", "isbn 13", "barkod", "barkod isbn"}: book["raw_isbns"].append(val)
-        elif key in {"dil", "yayin dili"}: book["language"] = val
+        elif key in {"dil", "yayin dili", "basim dili"}: book["language"] = val
         elif key in {"cilt tipi", "kapak turu", "kapak tipi"}: book["binding"] = val
         elif key in {"yayinevi", "yayinci"}: book["publisher"] = val
     book["raw_isbns"] = sorted(set(book["raw_isbns"]))
@@ -130,12 +137,16 @@ def proof(source: str, group: str, target: dict, book: dict, now=None) -> dict:
     reason = identity_reason(target, book)
     if not raw:
         status, reason = "NO_ISBN", "Ürün bulundu; ISBN belirtilmemiş." + (f" {reason}" if reason else "")
-    elif reason:
-        status = "MISMATCH"
     elif len(codes) > 1:
         status, reason = "MISMATCH", "Kaynağın kendi ISBN alanları birbiriyle çelişiyor."
     elif None in codes:
         status, reason = "MISMATCH", "ISBN kontrol basamağı veya biçimi geçersiz."
+    elif reason:
+        incomplete = ((reason == "Yayınevi farklı veya eksik." and not book.get("publisher"))
+            or (reason == "Türkçe baskı kanıtı eksik veya dil farklı." and not book.get("language"))
+            or reason == "Cilt/kapak türü kaynakta doğrulanamadı."
+            or (reason == "Seri başlığı farklı veya belirsiz." and not book.get("title")))
+        status = "INCOMPLETE" if incomplete else "MISMATCH"
     else:
         status, reason = "MATCH", "Seri, cilt, yayınevi, Türkçe dil ve baskı eşleşti."
     return dict(source=source, independence_group=group, status=status, isbn=next(iter(codes)) if len(codes) == 1 else None,
@@ -147,7 +158,7 @@ class RetailerSource:
         self.code, self.group, self.client = code, group, client
         self.base = {"kitapyurdu": "https://www.kitapyurdu.com", "pandora": "https://www.pandora.com.tr",
                      "bkm": "https://www.bkmkitap.com", "dr": "https://www.dr.com.tr",
-                     "kitapsepeti": "https://www.kitapsepeti.com"}[code]
+                     "kitapsepeti": "https://www.kitapsepeti.com", "bora": "https://boradagitim.com"}[code]
 
     def get(self, url):
         r = self.client.get(url)
@@ -156,11 +167,38 @@ class RetailerSource:
         return r
 
     def collect(self, target: dict) -> list[dict]:
-        query = f'{bibliographic_title(target["title"]).strip()} {target["volume_number"]}'
+        # Publisher/edition annotations belong to identity validation; search
+        # broadly and still validate every product against the full snapshot.
+        search_title = " ".join(re.sub(r"\([^)]*\)", " ", bibliographic_title(target["title"])).split())
+        query = f'{search_title} {target["volume_number"]}'
         if target.get("covers_from") is not None:
             query = f'{target["title"]} {target["covers_from"]} {target["covers_to"]}'
         urls = {}
-        if self.code in {"bkm", "dr"}:
+        for url in target.get("source_product_urls", {}).get(self.code, []):
+            try:
+                parsed = urlsplit(url)
+                port = parsed.port
+            except ValueError:
+                continue
+            if (parsed.scheme == "https" and parsed.hostname in {urlsplit(self.base).hostname,
+                    "bkmkitap.com" if self.code == "bkm" else urlsplit(self.base).hostname}
+                    and parsed.username is None and parsed.password is None and port in (None, 443)):
+                urls[url.replace("https://bkmkitap.com/", "https://www.bkmkitap.com/")] = "Önceden kayıtlı ürün bağlantısı"
+        if self.code == "bora":
+            search_url = f"{self.base}/Istem/Urun/Listele.aspx?ara={quote_plus(query)}&yazar=0&yayinEvi=0&kategori=0"
+            response = self.get(search_url)
+            soup = BeautifulSoup(response.content.decode("utf-8"), "lxml")
+            products = soup.select(".products_container .product_item a.color_dark[href*='/Istem/Urun/Detay.aspx?']")
+            all_urls = {urljoin(self.base, a["href"]) for a in products}
+            text = normalize_text(soup.get_text(" ", strip=True))
+            total = re.search(r"gosterilen (\d+) (\d+) hepsi (\d+)", text)
+            if not total or int(total[3]) != len(all_urls):
+                raise ScraperError("Bora araması eksik veya sayfalama doğrulanamadı; yokluk ve mutabakat varsayılmadı.")
+            for a in products:
+                title = a.get_text(" ", strip=True)
+                if self.candidate(target, title):
+                    urls[urljoin(self.base, a["href"])] = title
+        elif self.code in {"bkm", "dr"}:
             scraper = (BkmScraper if self.code == "bkm" else DrScraper)(client=self.client)
             # Query one volume; do not let detail enrichment silently become proof.
             scraper.settings = replace(scraper.settings, max_detail_requests=0)
@@ -258,7 +296,7 @@ class RetailerSource:
             if not urls: raise ScraperError("Pandora sonuç şablonu doğrulanamadı; yokluk varsayılmadı.")
         if not urls:
             return [dict(source=self.code, independence_group=self.group, status="NO_RESULT", isbn=None,
-                         url=None, title=None, reason="Aramada bu cilt listelenmedi.", checked_at=naive_utcnow().isoformat())]
+                         url=None, title=None, reason=f"Aramada bu cilt listelenmedi. Sorgu: {query}", checked_at=naive_utcnow().isoformat())]
         evidence = []
         # All candidates for the exact series/volume are checked, including
         # variants. No backfill budget and no dropping contradictory results.
@@ -316,7 +354,7 @@ class DiscoverySource:
 
 
 def source_groups():
-    groups = {code: code for code in ("kitapyurdu", "bkm", "kitapsepeti", "pandora", "dr")}
+    groups = {code: code for code in ("kitapyurdu", "bkm", "kitapsepeti", "bora", "pandora", "dr")}
     # Operational override for established shared upstream provenance. Two
     # pages (or domains) in one group always count as a single vote.
     override = json.loads(os.getenv("ISBN_SOURCE_GROUPS", "{}"))
@@ -334,17 +372,20 @@ def collect_sources(target, sources) -> list[dict]:
     for source in sources:
         wait_until = getattr(source, "retry_after", 0)
         if time.monotonic() < wait_until:
+            remaining = max(1, int(wait_until - time.monotonic()))
+            previous = getattr(source, "last_error_reason", "İlk hata ayrıntısı kaydedilmemiş.")
             evidence.append(dict(source=source.code, independence_group=source.group, status="ERROR", isbn=None,
-                url=None, title=None, reason="Önceki erişim hatası nedeniyle kaynak dinlendiriliyor; daha sonra yeniden denenecek.",
+                url=None, title=None, reason=f"Kaynak {remaining} sn dinlendiriliyor. Önceki hata: {previous}",
                 checked_at=naive_utcnow().isoformat()))
             continue
         try:
             collected = source.collect(target)
             evidence.extend(collected)
             if collected and all(e["status"] == "ERROR" for e in collected):
-                raise ScraperError("Ürün sayfalarına erişilemedi.")
-            source.failures = 0
+                raise ScraperError(collected[0].get("reason") or "Ürün sayfalarına erişilemedi.")
+            source.failures, source.retry_after = 0, 0
         except Exception as exc:
+            source.last_error_reason = str(exc)[:300]
             source.failures = min(getattr(source, "failures", 0) + 1, 6)
             source.retry_after = time.monotonic() + min(1800, 30 * 2**source.failures)
             if not evidence or evidence[-1].get("source") != source.code:
