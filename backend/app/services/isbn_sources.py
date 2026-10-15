@@ -241,7 +241,9 @@ class RetailerSource:
             queries = list(dict.fromkeys([q for q in (isbn_query, query) if q]))
             for search_query in queries:
                 results = scraper.search(search_query)
-                if scraper.stats.get("stop_reason") in {"max_results", "max_pages", "page_error", "no_new_items"}:
+                if scraper.stats.get("stop_reason") == "page_error":
+                    raise ScraperError("Kaynak aramasının sonraki sayfasına erişilemedi; sonuçlar eksik olabilir.")
+                if scraper.stats.get("stop_reason") in {"max_results", "max_pages", "no_new_items"}:
                     raise SearchIncompleteError("Kaynak araması tamamlanamadı; sonuçlar eksik olabilir.")
                 if any(self.candidate(target, item.title) for item in results) or urls:
                     break

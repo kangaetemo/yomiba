@@ -102,6 +102,21 @@ def test_canonical_title_query_ignores_search_only_alias_noise():
     assert calls==["jujutsu kaisen 3"]
 
 
+@pytest.mark.parametrize("stop,cooldown",[("max_results",False),("max_pages",False),("page_error",True)])
+def test_bkm_query_limits_and_network_page_failures_have_different_backoff(monkeypatch,stop,cooldown):
+    from app.services import isbn_sources
+    class Search:
+        def __init__(self,**kwargs):
+            from app.config import get_settings
+            self.settings=get_settings();self.stats={"stop_reason":stop}
+        def search(self,query):return []
+    monkeypatch.setattr(isbn_sources,"BkmScraper",Search)
+    with httpx.Client(transport=httpx.MockTransport(lambda _:httpx.Response(500))) as client:
+        source=RetailerSource("bkm","bkm",client)
+        assert collect_sources(target(),[source])[0]["status"]=="ERROR"
+    assert bool(source.retry_after)==cooldown
+
+
 def test_bkm_uses_exact_isbn_lookup_but_still_checks_the_whole_book(monkeypatch):
     from app.scrapers.search_result import SearchResult
     from app.services import isbn_sources
