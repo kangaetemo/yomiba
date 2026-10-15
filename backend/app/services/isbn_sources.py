@@ -27,11 +27,15 @@ from ..scrapers.bkm import BkmScraper
 from ..scrapers.dr import DrScraper
 from ..scrapers.mangakol import MangakolCatalogScraper
 from ..scrapers.common import has_block_marker
-from .isbn_identity import base_key, bibliographic_title, canonical_isbn, edition, identity_reason
+from .isbn_identity import bibliographic_title, canonical_isbn, catalog_search_title, edition, identity_reason, title_matches
 
 HOSTS = {"www.kitapyurdu.com", "www.pandora.com.tr", "www.bkmkitap.com",
          "bkmkitap.com", "bkm-best.wawlabs.com", "cdn.bkmkitap.com", "www.dr.com.tr", "mangakol.com",
          "www.kitapsepeti.com", "boradagitim.com"}
+
+
+class SearchIncompleteError(ScraperError):
+    """This query is incomplete; do not put the entire provider in cooldown."""
 
 
 class PoliteClient(httpx.Client):
@@ -169,7 +173,7 @@ class RetailerSource:
     def collect(self, target: dict) -> list[dict]:
         # Publisher/edition annotations belong to identity validation; search
         # broadly and still validate every product against the full snapshot.
-        search_title = " ".join(re.sub(r"\([^)]*\)", " ", bibliographic_title(target["title"])).split())
+        search_title = catalog_search_title(target)
         query = f'{search_title} {target["volume_number"]}'
         if target.get("covers_from") is not None:
             query = f'{target["title"]} {target["covers_from"]} {target["covers_to"]}'
@@ -184,7 +188,38 @@ class RetailerSource:
                     "bkmkitap.com" if self.code == "bkm" else urlsplit(self.base).hostname}
                     and parsed.username is None and parsed.password is None and port in (None, 443)):
                 urls[url.replace("https://bkmkitap.com/", "https://www.bkmkitap.com/")] = "Önceden kayıtlı ürün bağlantısı"
+        if urls:
+            known = []
+            for url in urls:
+                try:
+                    response = self.client.get(url)
+                    if response.status_code in (404, 410):
+                        continue  # A removed listing is a discovery miss, not proof.
+                    if response.status_code >= 400 or has_block_marker(response.text):
+                        raise ScraperError(f"HTTP {response.status_code}: ürün erişim hatası / koruma sayfası.")
+                    book = page_book(response.content, str(response.url))
+                    if not book["title"]:
+                        raise ScraperError("Kayıtlı ürün sayfasının künyesi okunamadı.")
+                    known.append(proof(self.code, self.group, target, book))
+                except Exception as exc:
+                    known.append(dict(source=self.code, independence_group=self.group, status="ERROR", isbn=None,
+                        title=urls[url], url=url, reason=str(exc)[:500], checked_at=naive_utcnow().isoformat()))
+            if known:
+                return known  # Keep every known contradiction and access failure.
+            urls.clear()
         if self.code == "bora":
+            code = canonical_isbn(target.get("isbn"))
+            if code:
+                lookup = self.client.get(f"{self.base}/Istem/Urun/Detay.aspx?Barcode={code}")
+                if lookup.status_code != 404:
+                    if lookup.status_code >= 400 or has_block_marker(lookup.text):
+                        raise ScraperError(f"HTTP {lookup.status_code}: Bora ürün erişim hatası.")
+                    book = page_book(lookup.content, str(lookup.url))
+                    if self.candidate(target, book["title"]):
+                        record = proof(self.code, self.group, target, book)
+                        if record["status"] in {"MATCH", "INCOMPLETE"}:
+                            return [record]
+                        urls[str(lookup.url)] = book["title"]
             search_url = f"{self.base}/Istem/Urun/Listele.aspx?ara={quote_plus(query)}&yazar=0&yayinEvi=0&kategori=0"
             response = self.get(search_url)
             soup = BeautifulSoup(response.content.decode("utf-8"), "lxml")
@@ -193,7 +228,7 @@ class RetailerSource:
             text = normalize_text(soup.get_text(" ", strip=True))
             total = re.search(r"gosterilen (\d+) (\d+) hepsi (\d+)", text)
             if not total or int(total[3]) != len(all_urls):
-                raise ScraperError("Bora araması eksik veya sayfalama doğrulanamadı; yokluk ve mutabakat varsayılmadı.")
+                raise SearchIncompleteError("Bora araması eksik veya sayfalama doğrulanamadı; yokluk ve mutabakat varsayılmadı.")
             for a in products:
                 title = a.get_text(" ", strip=True)
                 if self.candidate(target, title):
@@ -202,15 +237,22 @@ class RetailerSource:
             scraper = (BkmScraper if self.code == "bkm" else DrScraper)(client=self.client)
             # Query one volume; do not let detail enrichment silently become proof.
             scraper.settings = replace(scraper.settings, max_detail_requests=0)
-            results = scraper.search(query)
+            isbn_query = canonical_isbn(target.get("isbn")) if self.code == "bkm" else None
+            queries = list(dict.fromkeys([q for q in (isbn_query, query) if q]))
+            for search_query in queries:
+                results = scraper.search(search_query)
+                if scraper.stats.get("stop_reason") == "page_error":
+                    raise ScraperError("Kaynak aramasının sonraki sayfasına erişilemedi; sonuçlar eksik olabilir.")
+                if scraper.stats.get("stop_reason") in {"max_results", "max_pages", "no_new_items"}:
+                    raise SearchIncompleteError("Kaynak araması tamamlanamadı; sonuçlar eksik olabilir.")
+                if any(self.candidate(target, item.title) for item in results) or urls:
+                    break
             for item in results:
                 if self.candidate(target, item.title):
                     # Both are BKM's own public product hostnames. The
                     # search feed uses the apex; the current site serves www.
                     url = item.product_url.replace("https://bkmkitap.com/", "https://www.bkmkitap.com/")
                     urls[url] = item.title
-            if scraper.stats.get("stop_reason") in {"max_results", "max_pages", "page_error", "no_new_items"}:
-                raise ScraperError("Kaynak araması tamamlanamadı; sonuçlar eksik olabilir.")
         elif self.code == "kitapsepeti":
             pending = {1: f"{self.base}/arama?q={quote_plus(query)}&pg=1"}
             seen, signatures = set(), set()
@@ -315,7 +357,7 @@ class RetailerSource:
         expected, actual = edition(target["title"]), edition(title)
         if expected["kind"] != actual["kind"] or expected["variant"] != actual["variant"]:
             return False  # explicitly another product, not an ISBN vote for this edition
-        return (base_key(title) in {base_key(target["title"]), base_key(target.get("original_title") or "")}
+        return (title_matches(target, title)
                 and (parsed.volume_number == target["volume_number"] or target.get("covers_from") is not None))
 
 
@@ -386,8 +428,11 @@ def collect_sources(target, sources) -> list[dict]:
             source.failures, source.retry_after = 0, 0
         except Exception as exc:
             source.last_error_reason = str(exc)[:300]
-            source.failures = min(getattr(source, "failures", 0) + 1, 6)
-            source.retry_after = time.monotonic() + min(1800, 30 * 2**source.failures)
+            if isinstance(exc, SearchIncompleteError):
+                source.failures, source.retry_after = 0, 0
+            else:
+                source.failures = min(getattr(source, "failures", 0) + 1, 6)
+                source.retry_after = time.monotonic() + min(1800, 30 * 2**source.failures)
             if not evidence or evidence[-1].get("source") != source.code:
                 evidence.append(dict(source=source.code, independence_group=source.group, status="ERROR",
                                      isbn=None, url=None, title=None, reason=str(exc)[:500], checked_at=naive_utcnow().isoformat()))

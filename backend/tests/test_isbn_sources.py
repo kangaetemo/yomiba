@@ -3,7 +3,7 @@ import httpx
 import pytest
 
 from app.scrapers.base import ScraperError
-from app.services.isbn_sources import PoliteClient, RetailerSource, collect_sources
+from app.services.isbn_sources import PoliteClient, RetailerSource, SearchIncompleteError, collect_sources
 from app.services.isbn_identity import evaluate
 from tests.test_isbn_audit import target
 
@@ -77,8 +77,67 @@ def test_circuit_message_exposes_first_error_and_recovers(monkeypatch):
     assert source.calls==2 and source.failures==0
 
 
+def test_incomplete_query_does_not_suppress_other_volumes():
+    class Source:
+        code=group="bkm"
+        calls=0
+        def collect(self,t):
+            self.calls+=1
+            if self.calls==1:raise SearchIncompleteError("Bu sorgunun sonuçları kesildi")
+            return [dict(source=self.code,independence_group=self.group,status="NO_RESULT",isbn=None)]
+    source=Source()
+    assert collect_sources(target(),[source])[0]["status"]=="ERROR"
+    assert collect_sources(target(volume_number=30),[source])[0]["status"]=="NO_RESULT"
+    assert source.calls==2
+
+
+def test_canonical_title_query_ignores_search_only_alias_noise():
+    calls=[]
+    def respond(request):
+        calls.append(request.url.params.get("q"))
+        return httpx.Response(200,text="Arama kriterlerine uygun ürün bulunamadı")
+    t=target(title="Jujutsu Kaisen - Lanet Savaşları",original_title="jujutsu kaisen",catalog_slugs=["jujutsu-kaisen"],volume_number=3)
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        RetailerSource("kitapsepeti","kitapsepeti",client).collect(t)
+    assert calls==["jujutsu kaisen 3"]
+
+
+@pytest.mark.parametrize("stop,cooldown",[("max_results",False),("max_pages",False),("page_error",True)])
+def test_bkm_query_limits_and_network_page_failures_have_different_backoff(monkeypatch,stop,cooldown):
+    from app.services import isbn_sources
+    class Search:
+        def __init__(self,**kwargs):
+            from app.config import get_settings
+            self.settings=get_settings();self.stats={"stop_reason":stop}
+        def search(self,query):return []
+    monkeypatch.setattr(isbn_sources,"BkmScraper",Search)
+    with httpx.Client(transport=httpx.MockTransport(lambda _:httpx.Response(500))) as client:
+        source=RetailerSource("bkm","bkm",client)
+        assert collect_sources(target(),[source])[0]["status"]=="ERROR"
+    assert bool(source.retry_after)==cooldown
+
+
+def test_bkm_uses_exact_isbn_lookup_but_still_checks_the_whole_book(monkeypatch):
+    from app.scrapers.search_result import SearchResult
+    from app.services import isbn_sources
+    calls=[]
+    class Search:
+        def __init__(self,**kwargs):
+            from app.config import get_settings
+            self.settings=get_settings();self.stats={"stop_reason":"complete"}
+        def search(self,query):
+            calls.append(query)
+            return [SearchResult(store_id="bkm",store_name="BKM",title="Blue Lock 29",product_url="https://www.bkmkitap.com/book")]
+    monkeypatch.setattr(isbn_sources,"BkmScraper",Search)
+    html='''<h1>Blue Lock 29</h1><script type="application/ld+json">{"@type":"Book","isbn":"9786258630633","publisher":"Komikşeyler","inLanguage":"English","bookFormat":"Paperback"}</script>'''
+    with httpx.Client(transport=httpx.MockTransport(lambda _:httpx.Response(200,text=html))) as client:
+        records=RetailerSource("bkm","bkm",client).collect(target())
+    assert calls==[target()["isbn"]]
+    assert records[0]["status"]=="MISMATCH"
+
+
 @pytest.mark.parametrize("title,expected", [("Blue Lock 29","MATCH"),("Blue Lock 28","MISMATCH")])
-def test_existing_product_url_is_fetched_and_verified_when_search_is_empty(title,expected):
+def test_existing_product_url_is_verified_without_relying_on_search(title,expected):
     calls=[]
     def respond(request):
         calls.append(str(request.url))
@@ -88,7 +147,29 @@ def test_existing_product_url_is_fetched_and_verified_when_search_is_empty(title
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
         records=RetailerSource("kitapsepeti","kitapsepeti",client).collect(t)
     assert records[0]["status"]==expected
-    assert len(calls)==2 and "q=Blue+Lock+29" in calls[0] and calls[1]=="https://www.kitapsepeti.com/book"
+    assert calls==["https://www.kitapsepeti.com/book"]
+
+
+def test_known_product_contradictions_are_all_retained():
+    from tests.test_isbn_audit import evidence
+    def respond(request):
+        code="9786258630633" if request.url.path=="/one" else "9786258630640"
+        return httpx.Response(200,text=f'''<h1>Blue Lock 29</h1><script type="application/ld+json">{{"@type":"Book","publisher":"Komikşeyler","isbn":"{code}","inLanguage":"Turkish","bookFormat":"Paperback"}}</script>''')
+    t=target(source_product_urls={"kitapsepeti":["https://www.kitapsepeti.com/one","https://www.kitapsepeti.com/two"]})
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        records=RetailerSource("kitapsepeti","kitapsepeti",client).collect(t)
+    assert len(records)==2 and evaluate(t,records+[evidence()])[0]=="CONFLICT"
+
+
+def test_removed_product_url_falls_back_to_canonical_search():
+    calls=[]
+    def respond(request):
+        calls.append(request.url.path)
+        return httpx.Response(404) if request.url.path=="/gone" else httpx.Response(200,text="Ürün bulunamadı")
+    t=target(source_product_urls={"kitapsepeti":["https://www.kitapsepeti.com/gone"]})
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        assert RetailerSource("kitapsepeti","kitapsepeti",client).collect(t)[0]["status"]=="NO_RESULT"
+    assert calls==["/gone","/arama"]
 
 
 def test_kitapsepeti_primary_book_and_all_published_pages():

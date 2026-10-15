@@ -74,6 +74,30 @@ def base_key(title: str) -> str:
     return normalize_text(parse_volume_title(value).base_title)
 
 
+def catalog_title_keys(target: dict) -> set[str]:
+    """Exact local/canonical names; original_title is a search-only alias bag."""
+    keys = {base_key(target["title"])}
+    for slug in target.get("catalog_slugs", []):
+        if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
+            keys.add(base_key(slug.replace("-", " ")))
+    return keys - {""}
+
+
+def title_matches(target: dict, title: str) -> bool:
+    keys, actual = catalog_title_keys(target), base_key(title)
+    # Retailers may print both declared names: Death Note - Ölüm Defteri.
+    # Require the entire key, never a substring or a fuzzy title match.
+    return actual in keys or any(actual == f"{left} {right}"
+        for left in keys for right in keys if left != right)
+
+
+def catalog_search_title(target: dict) -> str:
+    for slug in target.get("catalog_slugs", []):
+        if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
+            return slug.replace("-", " ")
+    return " ".join(re.sub(r"\([^)]*\)", " ", bibliographic_title(target["title"])).split())
+
+
 def binding_kind(value: str) -> str | None:
     value = normalize_text(value)
     if re.search(r"\b(bez|cloth|clothbound)\b", value): return "cloth"
@@ -94,10 +118,7 @@ def identity_reason(target: dict, book: dict) -> str | None:
     """None means all required identity fields are supported, not merely guessed."""
     title = book.get("title") or ""
     parsed = parse_volume_title(bibliographic_title(title))
-    keys = {base_key(target["title"])}
-    if target.get("original_title"):
-        keys.add(base_key(target["original_title"]))
-    if base_key(title) not in keys:
+    if not title_matches(target, title):
         return "Seri başlığı farklı veya belirsiz."
     if target["volume_number"] < 0:
         return "Numarasız eski kayıt: fiziksel baskı elle çözülmeli."

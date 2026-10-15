@@ -134,11 +134,33 @@ bu geliştirme sırasında canlı ISBN uygulanmamıştır. Önce güncel yedek v
 restore provası, sonra backend migration/readiness, ardından frontend,
 en son admin oturumuyla salt okunur ilk tarama yapılır.
 
-Mağaza araması boş dönerse mevcut ilanın o mağazaya ait HTTPS ürün bağlantısı
-da okunur. İlanın ISBN veya fiyat bilgisi kanıt olarak kullanılmaz; gerçek
+Önce mevcut ilanların o mağazaya ait bütün geçerli HTTPS ürün bağlantıları
+okunur. İlanın ISBN veya fiyat bilgisi kanıt olarak kullanılmaz; gerçek
 ürün künyesi yeniden kontrol edilir. Bu keşif bağlantıları kimlik snapshot'ına
 eklenmez, eski denetimlerin hash'lerini değiştirmez. Kaynak dışı bağlantılar
-izlenmez; eksik arama/sayfalama veya erişim engeli yokluk/mutabakat sayılmaz.
+izlenmez. Birden fazla kayıtlı bağlantı varsa çelişkiler ve erişim hataları
+birlikte saklanır. Hepsi kaldırılmışsa (404/410) aramaya dönülür. Eksik
+arama/sayfalama veya erişim engeli yokluk/mutabakat sayılmaz.
+
+Başlık karşılaştırması yerel tam ad ile mevcut katalog üyeliğinin kanonik
+slug adını kullanır. İki tam adın birlikte yazıldığı ürünler de kabul edilir
+(Death Note - Ölüm Defteri); alt dize veya bulanık eşleşme yapılmaz. `~` içeren
+baskı ayrımları ek takma ad oluşturmaz. Arama için doldurulmuş, yan serilerin
+adlarını da içerebilen `original_title` kimlik kanıtı değildir. Cilt, yayınevi,
+dil, roman/manga, varyant, kağıt ve kapak kontrolleri aynen uygulanır.
+
+Keşifte kanonik seri adı kullanılır. BKM kayıtlı ürün bağlantısı yoksa önce
+mevcut ISBN ile arar; arama sonuçları yine tam ürün künyesiyle doğrulanır.
+Bora mevcut ISBN'nin herkese açık barkod sayfasını okuyabilir; eksik künye
+ikinci oy sayılmaz. BKM/Bora sorgu veya sayfalama sınırı o kayda `ERROR`
+yazar fakat bütün sağlayıcıyı dinlendirmez; gerçek erişim hataları bekleme
+süresini korur. Böylece tek uzun arama sonraki ciltleri engellemez.
+
+Çalışmadaki hata sayacı en az bir kaynak sorunu olan ciltleri sayar;
+başka kaynaklarla doğrulanmış bir cilt de bu sayaca dahildir. Genel
+`SOURCE_ERROR` ise bütün dış kanıtların `ERROR` olduğu sonuçtur.
+Eski çalışma sonuçları değiştirilmez; düzeltmeler yeniden denetimde yeni
+kanıt ve sonuç üretir. İki bağımsız kaynak şartı korunur.
 
 `INCOMPLETE`, ISBN okunmuş olsa da ürün künyesinin eksik olduğunu gösterir.
 Eksik bilgi çelişki veya ikinci bağımsız oy sayılmaz. Farklı baskı, yanlış dil,
