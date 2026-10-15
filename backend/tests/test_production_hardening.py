@@ -197,7 +197,7 @@ def test_real_startup_migrates_only_temporary_database(monkeypatch, tmp_path):
             with engine.connect() as connection:
                 assert connection.exec_driver_sql("PRAGMA journal_mode").scalar() == "wal"
                 assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
-                assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0014_catalog_membership"
+                assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0015_isbn_safety"
     finally:
         engine.dispose()
 
@@ -252,6 +252,7 @@ def test_online_backup_and_restore_check(tmp_path):
         connection.execute("INSERT INTO series VALUES (2, 'Latest committed')")
     report = backup_database(source, output)
     assert report["counts"]["series"] == 2
+    assert report.pop("restore_verified") is True
     assert inspect_database(output) == report
     with pytest.raises(ValueError, match="differ"):
         backup_database(source, source)

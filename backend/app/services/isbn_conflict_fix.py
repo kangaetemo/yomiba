@@ -1,28 +1,9 @@
-"""Fix catalog ISBNs our database put on the wrong volume.
-
-Found by the Mangakol ISBN sync (2026-09-29), verified against BKM:
-
-* Akame, Keser!: ISBN 9786256335523 is "Akame, Keser 3" but sits on Cilt 2
-  (Kitapseç lists that book as "Akame Keser 2"; an old title match stored it).
-* Teogonia: ISBN 9786258667103 is "Teogonia 1. Cilt - 2. Cilt (İki Cilt Bir
-  Arada)" = catalog Cilt 1, but an old import put it on Cilt 2.
-
-For each case the ISBN moves from the wrong volume to the right one. Store
-listings of the wrong volume move only with proof: the product page is
-fetched and must carry that ISBN (JSON-LD isbn/gtin13/sku or Gerekli Şeyler's
-"Stok Kodu" row). Other listings stay. Every price-history point survives; a
-store that already lists the right volume keeps one listing (the fresher
-offer). Applying backs the SQLite file up first and runs in one transaction;
-the DB must still look as inspected, so a second run is a no-op.
-
-Used by ``fix_isbn_conflicts.py`` (CLI) and ``POST /catalog/isbn-fix``.
-"""
+"""Legacy ISBN correction preview. P0 rejects every apply before DB access."""
 
 from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -125,28 +106,8 @@ def add_evidence(plan: dict, fetch: Callable[[str], str | None]) -> None:
 
 
 def apply_case(connection: sqlite3.Connection, plan: dict) -> None:
-    connection.execute("UPDATE volumes SET isbn = NULL WHERE id = ?", (plan["holder_id"],))
-    connection.execute("UPDATE volumes SET isbn = ? WHERE id = ?", (plan["isbn"], plan["target_id"]))
-    for listing in plan["listings"]:
-        if listing["action"] != "move":
-            continue
-        existing = listing["target_listing_id"]
-        if existing is None:
-            connection.execute("UPDATE store_listings SET volume_id = ? WHERE id = ?",
-                               (plan["target_id"], listing["listing_id"]))
-            continue
-        connection.execute("UPDATE price_history SET listing_id = ? WHERE listing_id = ?",
-                           (existing, listing["listing_id"]))
-        moved = connection.execute(
-            "SELECT product_url, price, in_stock, last_checked FROM store_listings WHERE id = ?",
-            (listing["listing_id"],)).fetchone()
-        kept_checked = connection.execute(
-            "SELECT last_checked FROM store_listings WHERE id = ?", (existing,)).fetchone()[0]
-        if moved[3] and (kept_checked is None or str(moved[3]) > str(kept_checked)):
-            connection.execute(
-                "UPDATE store_listings SET product_url = ?, price = ?, in_stock = ?, last_checked = ? "
-                "WHERE id = ?", (*moved, existing))
-        connection.execute("DELETE FROM store_listings WHERE id = ?", (listing["listing_id"],))
+    from .isbn_safety import reject_legacy_write
+    reject_legacy_write()
 
 
 def parse_cases(raw: list[str] | None):
@@ -164,6 +125,9 @@ def run(db_path: Path, *, cases=None, apply: bool = False,
         fetch: Callable[[str], str | None] | None = None) -> dict:
     """Inspect (and with ``apply`` fix) ``cases`` in the SQLite file ``db_path``."""
     cases = cases or DEFAULT_CASES
+    if apply:
+        from .isbn_safety import reject_legacy_write
+        reject_legacy_write()
     fetch = fetch or default_fetch()
     with sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True) as connection:
         plans = [inspect_case(connection, case) for case in cases]
@@ -171,32 +135,5 @@ def run(db_path: Path, *, cases=None, apply: bool = False,
         if plan["status"] == "ok":
             add_evidence(plan, fetch)
     result = {"mode": "apply" if apply else "dry-run", "db": str(db_path), "cases": plans,
-              "applied": False, "moved_listings": 0, "backup": None}
-    todo = [p for p in plans if p["status"] == "ok"]
-    if not apply or not todo:
-        return result
-    with sqlite3.connect(db_path) as connection:
-        connection.execute("PRAGMA foreign_keys=ON")
-        connection.execute("BEGIN IMMEDIATE")
-        try:
-            for plan in todo:  # the DB must still look exactly as inspected
-                again = inspect_case(connection, (plan["series"], plan["isbn"],
-                                                  plan["from_volume"], plan["to_volume"]))
-                if again["status"] != "ok" or [l["listing_id"] for l in again["listings"]] !=                         [l["listing_id"] for l in plan["listings"]]:
-                    raise RuntimeError(f"{plan['series']}: DB changed since inspection; nothing applied")
-            backup_path = db_path.with_name(
-                db_path.name + ".bak-isbn-fix-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
-            with sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True) as source:
-                with sqlite3.connect(backup_path) as backup:
-                    source.backup(backup)
-            for plan in todo:
-                apply_case(connection, plan)
-            if connection.execute("PRAGMA foreign_key_check").fetchone():
-                raise RuntimeError("foreign key check failed; rolled back")
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
-    result.update(applied=True, backup=str(backup_path),
-                  moved_listings=sum(1 for p in todo for l in p["listings"] if l["action"] == "move"))
+              "applied": False, "moved_listings": 0, "backup": None, "isbn_writes_paused": True}
     return result

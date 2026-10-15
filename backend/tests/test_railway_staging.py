@@ -74,10 +74,12 @@ def test_staging_first_start_restart_and_backup_use_temporary_db(monkeypatch, tm
             assert "Secure" in response.headers["set-cookie"]
         assert target.is_file()
         with sqlite3.connect(target) as connection:
-            assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0014_catalog_membership",)
+            assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0015_isbn_safety",)
             assert connection.execute("SELECT COUNT(*) FROM stores").fetchone()[0] > 0
         backup = tmp_path / "staging-backup.db"
-        assert backup_database(target, backup) == inspect_database(backup)
+        backed_up = backup_database(target, backup)
+        assert backed_up.pop("restore_verified") is True
+        assert backed_up == inspect_database(backup)
         monkeypatch.setattr(main_mod, "get_settings", lambda: replace(settings, staging_db_bootstrap=False))
         with TestClient(main_mod.create_app()) as client:
             assert client.get("/ready").status_code == 200

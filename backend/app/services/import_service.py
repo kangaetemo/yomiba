@@ -364,8 +364,7 @@ class ImportService:
             return list(pool.map(search, scrapers))
 
     def _remove_gone_listings(self, scraper: BaseScraper) -> int:
-        """Delete listings of products the store removed (``gone_urls``):
-        their link is dead and their price years old."""
+        """Mark removed products out of stock, retaining identity and history."""
         urls = set(getattr(scraper, "gone_urls", None) or ())
         if not urls:
             return 0
@@ -376,8 +375,13 @@ class ImportService:
             select(StoreListing).where(StoreListing.store_id == store.id, StoreListing.product_url.in_(urls))
         ).all()
         for listing in listings:
-            logger.info("import: %s removed %s; deleting listing %s", scraper.store_id, listing.product_url, listing.id)
-            self.session.delete(listing)
+            logger.info("import: %s removed %s; retaining history for listing %s", scraper.store_id, listing.product_url, listing.id)
+            if listing.in_stock and listing.price is not None:
+                self.session.add(PriceHistory(listing_id=listing.id, price=listing.price,
+                                             checked_at=utcnow(), in_stock=False,
+                                             product_url=listing.product_url))
+            listing.in_stock = False
+            listing.last_checked = utcnow()
         self.session.commit()
         return len(listings)
 
@@ -499,16 +503,7 @@ class ImportService:
             store = self._resolve_store(result.store_id, result.store_name)
             named = self._edition_named_in_title(proven, title)
             if named.id != proven.id:
-                # The shared ISBN once put this product on the holder.
-                for listing in self.session.scalars(
-                    select(StoreListing).where(
-                        StoreListing.store_id == store.id,
-                        StoreListing.product_url == result.product_url,
-                        StoreListing.volume_id == proven.id,
-                    )
-                ):
-                    self.session.delete(listing)
-                proven = named
+                return self._reject("identity_review_required")
             self._backfill_cover(proven, result)
             return (proven, store)
 
@@ -1178,7 +1173,7 @@ class ImportService:
         )
         if volume is not None:
             if isbn and volume.isbn is None:
-                volume.isbn = isbn  # enrich the existing volume
+                logger.info("P0: deferred store ISBN %s for volume %s", isbn, volume.id)
             elif isbn and volume.isbn != isbn:
                 return self._reject("isbn_conflict")
             self._backfill_cover(volume, result)
@@ -1340,26 +1335,8 @@ class ImportService:
         return self._resolve_volume(series, book_isbn(result.isbn), number, result, title_verified=True)
 
     def _release_misplaced_listings(self, volume: Volume, store: Store, result: SearchResult) -> None:
-        """Drop this product's listing from ANOTHER volume when the ISBN
-        proves it belongs to ``volume``: stores often title both bindings
-        plainly "Soichi", so before the catalog knew the Bez Cilt edition a
-        title match put its price on the regular volume."""
-        isbn = book_isbn(result.isbn)
-        if not isbn or volume.isbn != isbn:
-            return
-        for listing in self.session.scalars(
-            select(StoreListing).where(
-                StoreListing.store_id == store.id,
-                StoreListing.product_url == result.product_url,
-                StoreListing.volume_id != volume.id,
-            )
-        ):
-            logger.info(
-                "import: ISBN %s proves %s belongs to volume %s; removing its listing %s from volume %s",
-                isbn, result.product_url, volume.id, listing.id, listing.volume_id,
-            )
-            self.session.delete(listing)
-        self.session.flush()
+        """P0: ISBN equality cannot authorize moving/deleting another history."""
+        return
 
     def _upsert_listing(
         self, volume: Volume, store: Store, result: SearchResult
@@ -1367,6 +1344,12 @@ class ImportService:
         # Final write boundary: every resolution path must remain catalog-only.
         if not self._series_is_catalog(volume.series_id) or volume.catalog_present is False or volume.catalog_released is False:
             self.last_reason = "non_catalog_volume"
+            return ImportAction.SKIPPED
+        other = self.session.scalar(select(StoreListing.id).where(
+            StoreListing.store_id == store.id, StoreListing.product_url == result.product_url,
+            StoreListing.volume_id != volume.id))
+        if other is not None:
+            self.last_reason = "identity_review_required"
             return ImportAction.SKIPPED
         now = utcnow()
         price_cents = to_cents(result.price)

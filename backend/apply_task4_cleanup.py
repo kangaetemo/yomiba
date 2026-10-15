@@ -38,6 +38,8 @@ def chunks(ids, n=500):
 
 
 def main() -> None:
+    from app.services.isbn_safety import reject_legacy_write
+    reject_legacy_write()
     # 0) yedek ----------------------------------------------------------------
     shutil.copy2(DB, BAK)
 

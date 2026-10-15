@@ -27,6 +27,8 @@ BAK = "yomiba.db.bak-task4b"
 
 
 def main() -> None:
+    from app.services.isbn_safety import reject_legacy_write
+    reject_legacy_write()
     shutil.copy2(DB, BAK)
     con = sqlite3.connect(DB)
     con.execute("PRAGMA foreign_keys = ON")

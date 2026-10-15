@@ -116,7 +116,7 @@ def test_a_run_level_three_stores_same_isbn_one_volume(db_session):
         "history": 3,
     }
     volume = db_session.scalar(select(Volume))
-    assert volume.isbn == isbn
+    assert volume.isbn is None  # P0 defers store metadata
     prices = {
         l.store.code: l.price
         for l in db_session.scalars(
@@ -151,12 +151,14 @@ def test_a_isbn_enriches_existing_volume(import_service, db_session):
         make_result("dr", "Berserk Cilt 2", "200", isbn="9786059999999", publisher="Athica Yayınları"),
     )
     assert db_session.scalar(select(func.count()).select_from(Volume)) == 1
-    assert db_session.scalar(select(Volume)).isbn == "9786059999999"
+    assert db_session.scalar(select(Volume)).isbn is None
 
 
 def test_a_isbn_conflict_keeps_existing_and_warns(import_service, db_session, caplog):
     """series+number match with a conflicting ISBN: keep the stored one."""
     seed_catalog_series(db_session, "Berserk", "Athica Yayınları", volumes=(2,))
+    db_session.scalar(select(Volume)).isbn = "9786051111111"  # existing before the freeze
+    db_session.commit()
     do_import(
         import_service,
         db_session,
@@ -198,6 +200,8 @@ def test_a_same_isbn_conflicting_publisher_no_phantom_series(
     publisher must not create a phantom Publisher/Series row.
     """
     seed_catalog_series(db_session, "Berserk", first_publisher, volumes=(1,))
+    db_session.scalar(select(Volume)).isbn = "9786051234567"
+    db_session.commit()
     do_import(
         import_service,
         db_session,
@@ -230,6 +234,8 @@ def test_a_same_isbn_conflicting_series_title_no_phantom_series(
 ):
     """Same ISBN, conflicting publisher AND series title — both orders."""
     seed_catalog_series(db_session, "Berserk", first_publisher, volumes=(1,))
+    db_session.scalar(select(Volume)).isbn = "9786051234567"
+    db_session.commit()
     do_import(
         import_service,
         db_session,

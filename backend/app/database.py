@@ -102,6 +102,7 @@ def backup_before_migration(url: str, head: str) -> Path | None:
     the migration does not run unprotected.
     """
     import sqlite3
+    from contextlib import closing
     from datetime import datetime, timezone
 
     from sqlalchemy.engine import make_url
@@ -112,7 +113,7 @@ def backup_before_migration(url: str, head: str) -> Path | None:
     source = Path(parsed.database).resolve()
     if not source.is_file() or source.stat().st_size == 0:
         return None
-    with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as connection:
+    with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as connection:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if not tables:
             return None
@@ -122,13 +123,13 @@ def backup_before_migration(url: str, head: str) -> Path | None:
             current = row[0] if row else None
     if current == head:
         return None
+    from uuid import uuid4
+    from .services.safety_backup import copy_backup, rehearse_restore
+
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    target = source.with_name(f"{source.name}.pre-migration-{current or 'unversioned'}-{stamp}.bak")
-    with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as src, sqlite3.connect(target) as dst:
-        src.backup(dst)
-    with sqlite3.connect(target.as_uri() + "?mode=ro", uri=True) as check:
-        if check.execute("PRAGMA quick_check").fetchone() != ("ok",):
-            raise RuntimeError(f"pre-migration backup failed quick_check: {target}")
+    target = source.with_name(f"{source.name}.pre-migration-{current or 'unversioned'}-{stamp}-{uuid4().hex[:8]}.bak")
+    copy_backup(source, target)
+    rehearse_restore(target)
     logger.warning("pre-migration backup written: %s (from revision %s to %s)", target, current, head)
     return target
 
