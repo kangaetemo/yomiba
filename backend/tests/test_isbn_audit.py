@@ -1,5 +1,5 @@
 """Phase A: synthetic catalogue + recorded/fake sources only."""
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -128,9 +128,17 @@ def test_named_regressions():
         assert proof("one", "one", target(title=name, volume_number=number), book(title=wrong))["status"] == "MISMATCH"
 
 
-def test_future_and_unknown_release_never_emit_missing():
+def test_future_and_unknown_release_never_emit_missing(monkeypatch):
+    from app.services import isbn_identity
+    class FixedClock(datetime):
+        @classmethod
+        def now(cls,tz=None):
+            return datetime(2026,10,15,21,30,tzinfo=timezone.utc).astimezone(tz)
+    monkeypatch.setattr(isbn_identity,"datetime",FixedClock)
+    # It is already October 16 in Istanbul, while the UTC runner is on the 15th.
+    assert eligible(target(release_date="2026-10-16"))
     for changes in [dict(catalog_released=False), dict(catalog_released=None),
-                    dict(release_date=(date.today()+timedelta(days=1)).isoformat())]:
+                    dict(release_date="2026-10-17")]:
         t = target(isbn=None, **changes)
         assert not eligible(t)
         assert evaluate(t, [])[0] == "SKIPPED_UPCOMING"
