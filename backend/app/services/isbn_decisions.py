@@ -89,7 +89,7 @@ def validate_evidence(result, target, new_isbn):
         if source == "mangakol": continue
         if source not in groups or item.get("independence_group") != groups[source]:
             raise DecisionError("Kaynak bağımsızlık bilgisi değişti; yeniden denetleyin.")
-        if item["status"] in {"MATCH", "MISMATCH", "NO_ISBN"}:
+        if item["status"] in {"MATCH", "MISMATCH", "NO_ISBN", "INCOMPLETE"}:
             try:
                 time = datetime.fromisoformat(item["checked_at"])
                 if time.tzinfo: time = time.astimezone(timezone.utc).replace(tzinfo=None)
@@ -100,7 +100,7 @@ def validate_evidence(result, target, new_isbn):
             raw = {key: item.get(key) for key in ("title", "publisher", "language", "binding", "url", "raw_isbns")}
             domains = {"kitapyurdu": {"www.kitapyurdu.com"}, "bkm": {"www.bkmkitap.com", "bkmkitap.com"},
                        "pandora": {"www.pandora.com.tr"}, "dr": {"www.dr.com.tr"},
-                       "kitapsepeti": {"www.kitapsepeti.com"}}
+                       "kitapsepeti": {"www.kitapsepeti.com"}, "bora": {"boradagitim.com"}}
             parsed = urlsplit(raw["url"] or "")
             if parsed.scheme != "https" or parsed.hostname not in domains[source] or not isinstance(raw["raw_isbns"], list):
                 raise DecisionError("Kanıtın ürün bağlantısı eksik.")

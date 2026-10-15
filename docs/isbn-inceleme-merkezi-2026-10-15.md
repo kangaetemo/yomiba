@@ -46,6 +46,7 @@ Benzersiz ISBN indeksi korunur; ortak ISBN iddiası başka cilde uygulanmaz.
 | Kitapyurdu | Ürün başlığı, yayınevi, Türkçe dil, karton kapak ve ISBN okundu. |
 | BKM | Mevcut arama adaptörü ve BKM'nin kendi ürün sayfasından aynı künye okundu. |
 | Kitap Sepeti | Birincil Product+Book JSON-LD'sinden ISBN, yayınevi, dil ve kapak türü okundu; Jujutsu Kaisen 13 ve Solo Leveling Novel 8 gerçek ürünleriyle doğrulandı. |
+| Bora Dağıtım | Açık arama ve birincil künye tabloları kullanılır. Jujutsu Kaisen 3 tam künye ile doğrulandı. Berserk (Athica) 5'te ISBN okundu; dil/kapak eksik olduğu için `INCOMPLETE`, bağımsız doğrulama oyu değil. |
 | Pandora | robots.txt / ürün erişimi HTTP 403; koruma aşılmadı, `ERROR`. |
 | D&R | robots.txt HTTP 403; koruma aşılmadı, `ERROR`. |
 
@@ -132,6 +133,19 @@ Yayın hazırlığındaki kesin test sonuçları ve CI bağlantısı PR açıkla
 bu geliştirme sırasında canlı ISBN uygulanmamıştır. Önce güncel yedek ve
 restore provası, sonra backend migration/readiness, ardından frontend,
 en son admin oturumuyla salt okunur ilk tarama yapılır.
+
+Mağaza araması boş dönerse mevcut ilanın o mağazaya ait HTTPS ürün bağlantısı
+da okunur. İlanın ISBN veya fiyat bilgisi kanıt olarak kullanılmaz; gerçek
+ürün künyesi yeniden kontrol edilir. Bu keşif bağlantıları kimlik snapshot'ına
+eklenmez, eski denetimlerin hash'lerini değiştirmez. Kaynak dışı bağlantılar
+izlenmez; eksik arama/sayfalama veya erişim engeli yokluk/mutabakat sayılmaz.
+
+`INCOMPLETE`, ISBN okunmuş olsa da ürün künyesinin eksik olduğunu gösterir.
+Eksik bilgi çelişki veya ikinci bağımsız oy sayılmaz. Farklı baskı, yanlış dil,
+geçersiz/çelişkili ISBN `MISMATCH` kalır. Onayda bu kanıtların ham alanları da
+yeniden değerlendirilir. Geçici robots.txt erişim hatası önbelleği 60 saniye
+sonra yeniden denenebilir; robots kuralları ve kaynak bekleme süresi uygulanır.
+Bekleme mesajları ilk erişim hatasını ve kalan saniyeyi içerir.
 
 Geri dönüşte trigger veya tarihçe tabloları silinmez. ISBN onay uçları
 kapatılarak P0'nun katı `volume_update` tanımı ileri düzeltme transaction'ı

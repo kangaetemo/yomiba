@@ -8,6 +8,89 @@ from app.services.isbn_identity import evaluate
 from tests.test_isbn_audit import target
 
 
+def bora_product(*, complete=True, language="Türkçe", title="Blue Lock 29"):
+    return f'''<h2 class="h2musteri">{title}</h2>
+      <table class="description_table"><tr><td>Yayınevi:</td><td>Komikşeyler</td></tr>
+      <tr><td>Barkod:</td><td>9786258630633</td></tr></table>
+      <table id="tbldetaylar">{f'<tr><td>Basım Dili</td><td>{language}</td></tr><tr><td>Kapak Türü</td><td>Karton Kapak</td></tr>' if complete else ''}</table>
+      <table><tr><td>Barkod</td><td>9786258630640</td></tr></table>'''
+
+
+@pytest.mark.parametrize("complete,status", [(True, "MATCH"), (False, "INCOMPLETE")])
+def test_bora_reads_only_primary_utf8_bibliography_and_checks_completeness(complete, status):
+    def respond(request):
+        if request.url.path.endswith("Listele.aspx"):
+            assert request.url.params["ara"] == "Blue Lock 29"
+            return httpx.Response(200, text='''<section class="products_container"><div class="product_item">
+              <a class="color_dark" href="/Istem/Urun/Detay.aspx?Id=123">Blue Lock 29</a></div></section>
+              Gösterilen : 1 - 1 / Hepsi : 1''')
+        return httpx.Response(200, content=bora_product(complete=complete).encode("utf-8"))
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        records = RetailerSource("bora", "bora", client).collect(target())
+    assert len(records) == 1 and records[0]["status"] == status
+    assert records[0]["publisher"] == "Komikşeyler"
+    assert records[0]["isbn"] == "9786258630633"
+    assert records[0]["raw_isbns"] == ["9786258630633"]
+
+
+def test_incomplete_bora_search_never_votes_or_declares_absence():
+    body = '<section class="products_container"><div class="product_item"><a class="color_dark" href="/Istem/Urun/Detay.aspx?Id=1">Blue Lock 29</a></div></section>Gösterilen : 1 - 1 / Hepsi : 2'
+    with httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200,text=body))) as client:
+        assert collect_sources(target(), [RetailerSource("bora","bora",client)])[0]["status"] == "ERROR"
+
+
+def test_temporary_robots_failure_expires_without_bypassing_rules(monkeypatch):
+    from app.services import isbn_sources
+    now, calls = [1000], []
+    monkeypatch.setattr(isbn_sources.time, "monotonic", lambda: now[0])
+    def robots(url, **kwargs):
+        calls.append(url)
+        return httpx.Response(403 if len(calls)==1 else 200, text="User-agent: *\nAllow: /", request=httpx.Request("GET",url))
+    monkeypatch.setattr(httpx, "get", robots)
+    with PoliteClient() as client:
+        request=httpx.Request("GET","https://boradagitim.com/Istem/Urun/Detay.aspx?Id=1")
+        for _ in range(2):
+            with pytest.raises(ScraperError,match="403"):client.check_request(request)
+        assert len(calls)==1
+        now[0]+=61
+        client.check_request(request)
+        assert len(calls)==2
+
+
+def test_circuit_message_exposes_first_error_and_recovers(monkeypatch):
+    from app.services import isbn_sources
+    now=[1000]
+    monkeypatch.setattr(isbn_sources.time,"monotonic",lambda:now[0])
+    class Source:
+        code=group="bkm"
+        calls=0
+        def collect(self,t):
+            self.calls+=1
+            if self.calls==1:raise ScraperError("HTTP 429: test erişim hatası")
+            return [dict(source=self.code,independence_group=self.group,status="NO_RESULT",isbn=None)]
+    source=Source()
+    collect_sources(target(),[source])
+    assert "HTTP 429" in collect_sources(target(),[source])[0]["reason"]
+    assert source.calls==1
+    now[0]+=61
+    assert collect_sources(target(),[source])[0]["status"]=="NO_RESULT"
+    assert source.calls==2 and source.failures==0
+
+
+@pytest.mark.parametrize("title,expected", [("Blue Lock 29","MATCH"),("Blue Lock 28","MISMATCH")])
+def test_existing_product_url_is_fetched_and_verified_when_search_is_empty(title,expected):
+    calls=[]
+    def respond(request):
+        calls.append(str(request.url))
+        if request.url.path=="/arama":return httpx.Response(200,text="Arama kriterlerine uygun ürün bulunamadı")
+        return httpx.Response(200,text=f'''<h1>{title}</h1><script type="application/ld+json">{{"@type":"Book","url":"https://www.kitapsepeti.com/book","publisher":"Komikşeyler","isbn":"9786258630633","inLanguage":"Turkish","bookFormat":"Paperback"}}</script>''')
+    t=target(title="Blue Lock (Komikşeyler)",source_product_urls={"kitapsepeti":["https://www.kitapsepeti.com/book","https://internal.example/private"]})
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        records=RetailerSource("kitapsepeti","kitapsepeti",client).collect(t)
+    assert records[0]["status"]==expected
+    assert len(calls)==2 and "q=Blue+Lock+29" in calls[0] and calls[1]=="https://www.kitapsepeti.com/book"
+
+
 def test_kitapsepeti_primary_book_and_all_published_pages():
     from app.services.isbn_sources import source_groups
     calls = []

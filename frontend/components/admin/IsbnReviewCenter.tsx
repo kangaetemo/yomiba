@@ -11,8 +11,8 @@ const labels: Record<AuditStatus, string> = {
   INSUFFICIENT_EVIDENCE: "Kanıt yetersiz", SOURCE_ERROR: "Kaynak hatası", SKIPPED_UPCOMING: "Yayın bekliyor",
 };
 const queueLabels: Record<ReviewQueue, string> = { APPROVAL: "ISBN onayı bekleyen", INVESTIGATE: "Çelişki incelemesi", AWAITING_EVIDENCE: "Kanıt / erişim bekleyen", REVIEWED: "İncelenen / alarm açılmayan" };
-const sourceLabels: Record<string, string> = { kitapyurdu: "Kitapyurdu", bkm: "BKM Kitap", kitapsepeti: "Kitap Sepeti", pandora: "Pandora", dr: "D&R", mangakol: "MangaKol (katalog kaynağı)" };
-const sourceStatuses: Record<string, string> = { MATCH: "Ürün eşleşti", MISMATCH: "Uyuşmuyor", NO_RESULT: "Ürün bulunamadı", NO_ISBN: "ISBN belirtilmemiş", ERROR: "Erişilemedi", DISCOVERY: "Katalog bilgisi · bağımsız kanıt sayılmaz" };
+const sourceLabels: Record<string, string> = { kitapyurdu: "Kitapyurdu", bkm: "BKM Kitap", kitapsepeti: "Kitap Sepeti", bora: "Bora Dağıtım", pandora: "Pandora", dr: "D&R", mangakol: "MangaKol (katalog kaynağı)" };
+const sourceStatuses: Record<string, string> = { MATCH: "Ürün eşleşti", MISMATCH: "Uyuşmuyor", INCOMPLETE: "Künye eksik · doğrulama için yetersiz", NO_RESULT: "Ürün bulunamadı", NO_ISBN: "ISBN belirtilmemiş", ERROR: "Erişilemedi", DISCOVERY: "Katalog bilgisi · bağımsız kanıt sayılmaz" };
 const actions: Record<DecisionAction, string> = { KEEP: "Mevcut ISBN’yi koru", ACCEPT: "Önerilen ISBN’yi kabul et", MANUAL: "Manuel ISBN gir", DEFER: "İncelemeyi ertele" };
 const button = "rounded-lg border border-line-strong bg-surface-2 px-3 py-2 text-sm font-semibold text-ink hover:bg-line disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const primary = "rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -165,7 +165,7 @@ function ReviewDetail({ id, onChange, onDecision, onClose }: { id: number; onCha
       <div className="flex flex-wrap gap-2"><button className={button} disabled={busy} onClick={() => void recheck()}>Bu cildi yeniden denetle</button><button className={button} disabled={busy} onClick={() => { setRevision(n => n+1); onChange(); }}>Güncel kanıtları yükle</button></div>
       <div className="grid gap-3 sm:grid-cols-2">{detail.evidence.map((e, index) => <article key={`${e.source}-${index}`} className="space-y-2 rounded-lg border border-line p-3 text-sm">
         <div className="flex flex-wrap justify-between gap-2"><h4 className="font-semibold text-ink">{sourceLabels[e.source] || e.source}</h4><span className={e.status === "MATCH" ? "text-ok" : "text-warn"}>{sourceStatuses[e.status] || e.status}</span></div>
-        <p className="font-mono text-ink">{e.isbn || e.raw_isbns?.join(" / ") || "ISBN okunamadı"}</p>
+        <p className="font-mono text-ink">{e.isbn || e.raw_isbns?.join(" / ") || (e.status === "NO_RESULT" ? "Bu aramada ürün eşleşmedi" : e.status === "ERROR" ? "Kaynağa erişilemediği için ISBN kontrol edilemedi" : "ISBN belirtilmemiş")}</p>
         {e.title && <p className="text-ink">{e.title}</p>}
         <p className="text-muted">{[e.publisher, e.language, e.binding].filter(Boolean).join(" · ")}</p>
         <p className="text-muted">{e.reason}</p><p className="text-xs text-muted">Kontrol: {formatDateTime(e.checked_at)}</p>

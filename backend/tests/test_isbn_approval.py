@@ -62,11 +62,12 @@ def test_approved_change_preserves_all_relationships_and_consumes_capability(gua
 
 
 @pytest.mark.parametrize("valid_domain", [True, False])
-def test_kitapsepeti_evidence_passes_same_approval_checks(guarded, valid_domain):
+@pytest.mark.parametrize("source,host", [("kitapsepeti","www.kitapsepeti.com"),("bora","boradagitim.com")])
+def test_additional_source_evidence_passes_same_approval_checks(guarded, valid_domain,source,host):
     path, engine = guarded
     def mutate(records):
-        records[1].update(source="kitapsepeti", independence_group="kitapsepeti",
-                          url="https://www.kitapsepeti.com/synthetic" if valid_domain else "https://other.example/synthetic")
+        records[1].update(source=source, independence_group=source,
+                          url=f"https://{host}/synthetic" if valid_domain else "https://other.example/synthetic")
     args = make_review(engine, evidence_mutator=mutate)
     before = inspect_file(path)
     with Session(engine) as session:
@@ -75,6 +76,18 @@ def test_kitapsepeti_evidence_passes_same_approval_checks(guarded, valid_domain)
         else:
             with pytest.raises(DecisionError, match="ürün bağlantısı"): decide(session, **args)
             assert inspect_file(path) == before
+
+
+def test_partial_bora_bibliography_cannot_be_used_as_a_second_vote(guarded):
+    path,engine=guarded
+    def mutate(records):
+        records[1].update(source="bora",independence_group="bora",url="https://boradagitim.com/Istem/Urun/Detay.aspx?Id=123",
+                          language=None,binding=None,status="INCOMPLETE")
+    args=make_review(engine,evidence_mutator=mutate)
+    before=inspect_file(path)
+    with Session(engine) as session:
+        with pytest.raises(DecisionError,match="iki bağımsız"):decide(session,**args)
+    assert inspect_file(path)==before
 
 
 @pytest.mark.parametrize("case", ["old", "conflict", "duplicate_group", "wrong_edition", "invalid_isbn", "stale_proof", "empty"])
