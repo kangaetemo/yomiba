@@ -12,6 +12,7 @@ from . import me as me_routes
 from . import search as search_routes
 from . import series as series_routes
 from . import volume as volume_routes
+from . import isbn as isbn_routes
 
 api_router = APIRouter()
 api_router.include_router(auth_routes.router)
@@ -24,5 +25,6 @@ api_router.include_router(import_routes.router)
 api_router.include_router(me_routes.router)
 api_router.include_router(catalog_routes.router)
 api_router.include_router(covers_routes.router)
+api_router.include_router(isbn_routes.router)
 
 __all__ = ["api_router"]

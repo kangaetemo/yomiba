@@ -2,6 +2,7 @@
 from dataclasses import replace
 import importlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 
@@ -65,7 +66,9 @@ def test_activation_backup_and_restore_preserve_every_protected_row(guarded):
     assert manifest["before"] == manifest["after"] == manifest["restore"]["tables"]
     assert manifest["restore"]["verified"]
     backup = Path(manifest["backup"])
-    assert backup.is_file() and backup.stat().st_mode & 0o077 == 0
+    assert backup.is_file()
+    if os.name == "posix":
+        assert backup.stat().st_mode & 0o077 == 0
     assert rehearse_restore(backup)["tables"] == inspect_file(path)["tables"]
     with engine.connect() as connection:
         check_guards(connection.connection.driver_connection)
@@ -282,7 +285,8 @@ def test_activation_fails_closed_if_backup_or_restore_fails(tmp_path, monkeypatc
     assert len(backups) == (1 if fail_at == "restore" else 0)
     for backup in backups:
         assert inspect_file(backup) == before
-        assert backup.stat().st_mode & 0o077 == 0
+        if os.name == "posix":
+            assert backup.stat().st_mode & 0o077 == 0
 
 
 def test_backup_never_overwrites_an_existing_destination_or_source(guarded, tmp_path):

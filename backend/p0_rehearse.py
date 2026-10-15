@@ -23,8 +23,8 @@ def rehearse(backup: Path) -> dict:
     backup = backup.resolve()
     before = inspect_database(backup)
     head = expected_revision()
-    if before["revision"] not in {"0014_catalog_membership", head}:
-        raise ValueError("P0 rehearsal requires a 0014 or current-head backup")
+    if before["revision"] not in {"0014_catalog_membership", "0015_isbn_safety", "0016_isbn_audit", head}:
+        raise ValueError("ISBN rehearsal requires a 0014, protected ISBN revision or current-head backup")
     backend = Path(__file__).resolve().parent
     with TemporaryDirectory(prefix="yomiba-p0-migration-") as directory:
         restored = Path(directory) / "restored.db"
@@ -52,12 +52,14 @@ def rehearse(backup: Path) -> dict:
         engine = build_engine(f"sqlite:///{restored}")
         try:
             check_database_ready(engine, check_foreign_keys=True)
+            with engine.connect() as connection:
+                guards = connection.exec_driver_sql("SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'isbn_%'").scalar_one()
         finally:
             engine.dispose()
         if inspect_database(backup) != before:
             raise RuntimeError("Input backup changed during rehearsal")
         return {"verified": True, "source_revision": before["revision"],
-                "restored_revision": after["revision"], "database_guards": len(GUARDS),
+                "restored_revision": after["revision"], "database_guards": guards,
                 "protected_rows_unchanged": True, "source_unchanged": True,
                 "private_files_verified": private_files_verified,
                 "identity_summary": after["identity_summary"]}

@@ -54,6 +54,7 @@ def build_engine(url: str) -> Engine:
     if built.url.get_backend_name() == "sqlite":
         @event.listens_for(built, "connect")
         def _sqlite_connection_pragmas(dbapi_connection, _connection_record):
+            dbapi_connection.create_function("isbn_approval_token", 0, lambda: None)
             cursor = dbapi_connection.cursor()
             try:
                 cursor.execute("PRAGMA foreign_keys=ON")

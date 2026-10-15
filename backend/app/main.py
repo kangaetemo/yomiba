@@ -50,6 +50,7 @@ def create_app(auto_init: bool = True) -> FastAPI:
         price_refresh = None
         scheduler = None
         covers = None
+        isbn_worker = None
         try:
             logger.info("startup: begin")
             validate_runtime_settings(settings)
@@ -112,11 +113,18 @@ def create_app(auto_init: bool = True) -> FastAPI:
                 covers.start()
                 logger.info("startup: cover worker started")
             app.state.cover_worker = covers
+            if auto_init:
+                from .services.isbn_audit import IsbnAuditWorker
+                isbn_worker = IsbnAuditWorker(database.SessionLocal)
+                app.state.isbn_audit_worker = isbn_worker
+                isbn_worker.start()
             app.state.ready = auto_init
             logger.info("startup: app ready")
             yield
         finally:
             app.state.ready = False
+            if isbn_worker is not None:
+                isbn_worker.stop(timeout=5)
             if price_refresh is not None:
                 price_refresh.stop(timeout=5)
                 logger.info("shutdown: price scheduler stopped=%s", not price_refresh.is_running)
@@ -158,7 +166,7 @@ def create_app(auto_init: bool = True) -> FastAPI:
         # Public search/prices can use ordinary cache policy. Any response
         # tied to a session, and all auth/personal endpoints, must not be
         # stored by a shared intermediary.
-        personal_path = request.url.path.startswith(("/auth/", "/me/")) or any(
+        personal_path = request.url.path.startswith(("/auth/", "/me/", "/admin/")) or any(
             marker in request.url.path for marker in ("/wishlist", "/price-alert", "/collection-status")
         )
         if personal_path or request.cookies.get("yomiba_session"):

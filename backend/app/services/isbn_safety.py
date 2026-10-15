@@ -52,5 +52,14 @@ def install_guards(connection) -> None:
 
 def check_guards(connection) -> None:
     found = dict(connection.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger'"))
-    if any(found.get(name) != definition(name) for name in GUARDS):
+    tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    expected = {name: definition(name) for name in GUARDS}
+    from .isbn_approval_guards import definitions, history_definitions
+    if "isbn_audit_results" in tables:
+        expected.update(history_definitions())
+    if "isbn_approval_permits" in tables:
+        expected.update(definitions())
+        if connection.execute("SELECT 1 FROM isbn_approval_permits LIMIT 1").fetchone():
+            raise RuntimeError("Unconsumed ISBN approval permit")
+    if any(found.get(name) != sql for name, sql in expected.items()):
         raise RuntimeError("ISBN P0 database guards are incomplete")

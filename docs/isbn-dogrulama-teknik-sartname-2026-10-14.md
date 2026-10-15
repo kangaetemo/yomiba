@@ -1,6 +1,6 @@
 # Yomiba — ISBN Doğrulama ve Admin Onay Sistemi
 
-**Teknik şartname:** v1.0 · **Karar tarihi:** 14 Ekim 2026 · **Durum:** Yalnızca planlandı; kodlama ve canlı DB değişikliği yapılmadı.
+**Teknik şartname:** v1.0 · **Karar tarihi:** 14 Ekim 2026 · **Durum (15 Ekim):** A/B/C kodu ve izole doğrulaması uygulandı; üretim yayını ve ilk tam canlı tarama henüz yapılmadı. [Uygulama, kaynak erişimi ve doğrulama kaydı](isbn-inceleme-merkezi-2026-10-15.md).
 
 > **KODLAYACAK ASİSTANA ÖNEMLİ NOT — İLK ÖNCE BUNU OKU**
 >
