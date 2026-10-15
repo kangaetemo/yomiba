@@ -59,7 +59,7 @@ def test_init_db_builds_full_schema_on_fresh_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0014_catalog_membership"
+        ).fetchone()[0] == "0015_isbn_safety"
     finally:
         conn.close()
 
@@ -84,7 +84,7 @@ def test_init_db_migrates_unstamped_legacy_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0014_catalog_membership"
+        ).fetchone()[0] == "0015_isbn_safety"
     finally:
         conn.close()
 
@@ -99,7 +99,7 @@ def test_init_db_is_noop_when_already_at_head(alembic_url):
     try:
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchall() == [("0014_catalog_membership",)]
+        ).fetchall() == [("0015_isbn_safety",)]
     finally:
         conn.close()
 
@@ -143,12 +143,11 @@ def test_auth_downgrade_refuses_to_discard_user_data(alembic_url):
     database.init_db()
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
-    with pytest.raises(RuntimeError, match="discard multi-user ownership"):
+    with pytest.raises(RuntimeError, match="ISBN protection"):
         command.downgrade(config, "0004_catalog_exclusion")
     with sqlite3.connect(alembic_url) as conn:
-        # 0006 (data-only alias correction) steps down cleanly; the account
-        # migration 0005 refuses, so the user-owned schema stays in place.
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0005_user_accounts",)
+        # P0 fails before any downgrade; neither guards nor user data are removed.
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0015_isbn_safety",)
         assert conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'users'").fetchone() == (1,)
 
 

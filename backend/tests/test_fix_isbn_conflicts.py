@@ -71,39 +71,41 @@ def test_dry_run_changes_nothing(db, capsys):
         assert s.get(StoreListing, ids["wrong"]).volume_id == ids["v2"]
 
 
-def test_apply_moves_isbn_and_only_proven_listing(db, capsys):
+def test_cli_apply_is_paused_and_preserves_isbn_listing_and_history(db, capsys):
+    from app.services.isbn_safety import MutationPaused
     path, sessions, ids = db
-    assert fix.main(["--db", str(path), "--apply", *_case()], fetch=PAGES.get) == 0
+    with pytest.raises(MutationPaused):
+        fix.main(["--db", str(path), "--apply", *_case()], fetch=PAGES.get)
     with sessions() as s:
-        assert s.get(Volume, ids["v2"]).isbn is None
-        assert s.get(Volume, ids["v3"]).isbn == AKAME_3
-        assert s.get(StoreListing, ids["wrong"]).volume_id == ids["v3"]
-        assert s.get(StoreListing, ids["right"]).volume_id == ids["v2"]
-        assert s.get(StoreListing, ids["unknown"]).volume_id == ids["v2"]  # no proof: stays
+        assert s.get(Volume, ids["v2"]).isbn == AKAME_3
+        assert s.get(Volume, ids["v3"]).isbn is None
+        assert s.get(StoreListing, ids["wrong"]).volume_id == ids["v2"]
         assert s.scalar(select(PriceHistory.listing_id)) == ids["wrong"]
-    assert list(path.parent.glob("yomiba.db.bak-isbn-fix-*"))
+    assert not list(path.parent.glob("yomiba.db.bak-isbn-fix-*"))
 
 
-def test_apply_consolidates_into_existing_target_listing(db):
+def test_cli_apply_cannot_consolidate_duplicate_listings(db):
+    from app.services.isbn_safety import MutationPaused
     path, sessions, ids = db
     with sessions() as s:
         bkm = s.scalar(select(Store).where(Store.code == "bkm"))
-        s.add(StoreListing(volume_id=ids["v3"], store_id=bkm.id, product_url="https://bkm/akame-3", price=18500))
-        s.commit()
-    fix.main(["--db", str(path), "--apply", *_case()], fetch=PAGES.get)
+        target = StoreListing(volume_id=ids["v3"], store_id=bkm.id, product_url="https://bkm/akame-3", price=18500)
+        s.add(target); s.commit()
+        target_id = target.id
+    with pytest.raises(MutationPaused):
+        fix.main(["--db", str(path), "--apply", *_case()], fetch=PAGES.get)
     with sessions() as s:
-        assert s.get(StoreListing, ids["wrong"]) is None
-        kept = s.scalar(select(StoreListing).where(StoreListing.volume_id == ids["v3"]))
-        assert s.scalar(select(PriceHistory.listing_id)) == kept.id  # history kept
+        assert s.get(StoreListing, ids["wrong"]).volume_id == ids["v2"]
+        assert s.get(StoreListing, target_id).volume_id == ids["v3"]
+        assert s.scalar(select(PriceHistory.listing_id)) == ids["wrong"]
 
 
-def test_second_run_is_a_no_op(db, capsys):
+def test_repeated_cli_apply_remains_paused(db, capsys):
+    from app.services.isbn_safety import MutationPaused
     path, _, _ = db
-    fix.main(["--db", str(path), "--apply", *_case()], fetch=PAGES.get)
-    capsys.readouterr()
-    fix.main(["--db", str(path), "--apply", *_case()], fetch=PAGES.get)
-    out = capsys.readouterr().out
-    assert "already fixed?" in out and "Nothing to apply." in out
+    for _ in range(2):
+        with pytest.raises(MutationPaused):
+            fix.main(["--db", str(path), "--apply", *_case()], fetch=PAGES.get)
 
 
 def test_page_isbn_sources():
@@ -135,27 +137,17 @@ def _seed_akame(session):
     return v2.id, v3.id, listing.id
 
 
-def test_admin_endpoint_previews_then_applies(client, db_session, engine, monkeypatch):
+def test_admin_endpoint_previews_but_apply_is_paused(client, db_session, engine, monkeypatch):
     from app.services import isbn_conflict_fix
-
     v2, v3, listing = _seed_akame(db_session)
     monkeypatch.setattr(isbn_conflict_fix, "default_fetch", lambda: PAGES.get)
-
     preview = client.post("/catalog/isbn-fix")
-    assert preview.status_code == 200
-    body = preview.json()
-    assert body["mode"] == "dry-run" and body["applied"] is False
-    akame = next(c for c in body["cases"] if c["series"] == "Akame, Keser!")
-    assert akame["status"] == "ok" and akame["listings"][0]["action"] == "move"
-    teogonia = next(c for c in body["cases"] if c["series"] == "Teogonia")
-    assert teogonia["status"] == "blocked"  # not in this DB: reported, never fails the run
-
-    applied = client.post("/catalog/isbn-fix?apply=true").json()
-    assert applied["applied"] is True and applied["moved_listings"] == 1
+    assert preview.status_code == 200 and preview.json()["applied"] is False
+    assert client.post("/catalog/isbn-fix?apply=true").status_code == 409
     with sessionmaker(engine)() as s:
-        assert s.get(Volume, v3).isbn == AKAME_3
-        assert s.get(Volume, v2).isbn is None
-        assert s.get(StoreListing, listing).volume_id == v3
+        assert s.get(Volume, v2).isbn == AKAME_3
+        assert s.get(Volume, v3).isbn is None
+        assert s.get(StoreListing, listing).volume_id == v2
 
 
 def test_admin_endpoint_refused_during_catalog_sync(client, monkeypatch):

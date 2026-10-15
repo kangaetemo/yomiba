@@ -1,72 +1,9 @@
-"""Mangakol catalog sync — the identity/merge strategy, implemented.
+"""Mangakol catalog discovery and safe metadata/visibility updates.
 
-Mangakol is a CATALOG source (series + published volumes), not a price
-store. This service maps its data onto the existing ``Series``/``Volume``
-model and merges matching publisher editions instead of duplicating them.
-
-IDENTITY / MERGE STRATEGY
--------------------------
-Source identity of one mangakol manga entry: (cleaned title, local
-publisher) — nothing else (mangakol has no ISBNs).
-
-1. **Title cleaning.** Mangakol display titles may carry the local
-   publisher as a trailing parenthesized suffix: "Berserk (Athica)". The
-   suffix is stripped ONLY when its content fuzzily matches the entry's
-   own "Yerel Yayıncı" value (so meaningful parentheticals are never
-   lost). The result is normalized with :func:`normalize_text` into the
-   series key.
-2. **Publisher resolution (data-driven, no hardcoded mappings).**
-   * no "Yerel Yayıncı" on the page -> the existing "Bilinmiyor"
-     fallback publisher;
-   * otherwise exact match on ``normalize_text(name)`` against existing
-     publishers, else a prefix/containment match (both sides >= 3
-     characters: "Athica" -> "Athica Yayınları");
-   * still nothing -> a new publisher is created with the scraped name.
-   Before the manga loop runs, a consolidation pass merges publisher
-   rows that fuzzy-match each other (same real company named
-   differently by different sources, e.g. "Dex" vs "Dex Yayınevi")
-   into the most complete name — series re-pointed or, on same-title
-   collisions, merged volume-by-volume (add-only) — so every company
-   has exactly one publisher row and lookups are stable.
-3. **Series.** Primary lookup by ``(publisher_id, normalized_title)`` —
-   the database unique constraint guarantees AT MOST ONE such row, so
-   there is never an ambiguous merge and never a title-only match (a
-   "Berserk" under Dark Horse is a different row and is never touched
-   by a mangakol "Berserk (Athica)" entry). Fallbacks (mirroring
-   ``ImportService``'s single-candidate rule):
-   * no publisher-specific row, the source publisher is REAL, and
-     EXACTLY ONE series with this title exists under the reserved
-     "Bilinmiyor" publisher -> merge into it (the edition's publisher
-     was unknown; the row keeps its publisher, never rewritten);
-   * no publisher-specific row and the source has no publisher ->
-     merge when exactly one series with this title exists (any
-     publisher), otherwise create under "Bilinmiyor".
-   * found -> **merge**: only missing volumes are added;
-   * not found -> created (title = cleaned title, publisher as
-     resolved, unique slug per publisher).
-   Publisher resolution picks the most COMPLETE existing row when
-   several rows refer to the same real company (the DB can hold both
-   "Athica" and "Athica Yayınları" from different stores; the longer
-   normalized name is preferred).
-4. **Volumes.** Found by ``(series_id, volume_number)`` (unique
-   constraint). Missing numbers are created; unnumbered items map to
-   ``UNNUMBERED_VOLUME`` (-1) — at most one per series (constraint).
-   Covers are backfilled only when the volume currently has none.
-5. **Catalog scope.** Ordinary merges preserve existing series attributes
-   and volumes. Every entry returned by Mangakol is catalog-eligible.
-6. **Idempotent.** Re-running the sync re-hits the same rows (find or
-   create everywhere) and adds nothing new; the unique constraints make
-   duplicates impossible.
-7. **Isolation.** A failing manga (HTTP error, blocked page, parse
-   issue) is logged with debug info and counted; it never aborts the
-   rest of the sync — same philosophy as ``ImportService``.
-8. **Catalog manifest.** Every synced entry records its series in the
-   ``catalog_series`` table (series_id + mangakol slug). Search and detail
-   endpoints require this membership. Store imports attach listings only
-   to existing catalog editions.
-
-The service owns the database writes; the scraper
-(``app.scrapers.mangakol``) stays DB-independent.
+During P0, discovery may add series and volumes with NULL ISBNs. ISBN
+candidates are reported only: no fills, clears, transfers or identity
+merges. Publisher aliases and existing cilt/listing/history IDs survive.
+This bounded metadata pass is not the future full independent ISBN audit.
 """
 
 from __future__ import annotations
@@ -85,14 +22,9 @@ from ..models import (
     Publisher,
     PublisherAlias,
     Series,
-    StoreListing,
-    UserVolumeCollection,
-    WishlistItem,
-    PriceAlert,
     Volume,
 )
 from ..normalization import normalize_publisher, normalize_text
-from ..normalization.isbn import is_foreign_isbn
 from ..normalization.text import slugify
 from ..scrapers.mangakol import (
     CatalogManga,
@@ -100,21 +32,12 @@ from ..scrapers.mangakol import (
     MangakolCatalogScraper,
 )
 from ..utils import utcnow
-from .phantom_review import has_personal_rows, merge_volume_rows
 
 logger = logging.getLogger("yomiba.catalog")
 
 #: Manifest slug of a binding variant: "<slug>~clothbound".
 VARIANT_SEP = "~"
 
-#: ISBNs a publisher printed on two editions -> the catalog series that
-#: keeps it (an ISBN is unique here). Komikşeyler sells Solo Leveling 5
-#: "Varyant Kapak" and "Limitli Sert Kapak" under one ISBN; the stores'
-#: plain "Solo Leveling Webtoon Cilt 5" with it is the variant cover
-#: (verified against nine stores, 2026-10-03).
-SHARED_ISBN_OWNERS = {
-    "9786255607782": "Solo Leveling (Varyant Kapak)",
-}
 #: Fallback publisher for mangas without a "Yerel Yayıncı" value.
 _UNKNOWN_PUBLISHER = "Bilinmiyor"
 #: Minimum normalized-name length for prefix/containment publisher matching.
@@ -135,11 +58,12 @@ class CatalogSyncReport:
     series_created: int = 0
     series_merged: int = 0
     volumes_added: int = 0
+    isbn_candidates: list[dict] = field(default_factory=list)
     volumes_retired: int = 0
     release_status_updated: int = 0
     announced_volumes: int = 0
     covers_backfilled: int = 0
-    #: Publisher rows merged into a more complete name for the same company.
+    #: Legacy merge counters are retained for API compatibility; P0 leaves them zero.
     publishers_merged: int = 0
     #: Series absorbed into a same-title series under the merged publisher.
     series_absorbed: int = 0
@@ -149,10 +73,10 @@ class CatalogSyncReport:
     #: another volume (never moved; see ``isbn_conflict_details``).
     isbn_pages: int = 0
     isbns_added: int = 0
+    isbns_deferred: int = 0
     isbn_conflicts: int = 0
     isbn_conflict_details: list[str] = field(default_factory=list)
-    #: Legacy "Cilt -1" rows of the same series folded into the volume
-    #: whose catalog ISBN they held (not counted as conflicts).
+    #: Legacy counter: no phantom merge is permitted during P0.
     isbn_phantoms_merged: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -408,14 +332,7 @@ class CatalogSyncService:
         return series
 
     def _backfill_isbns(self, series: Series, manga: CatalogManga, report: CatalogSyncReport) -> None:
-        """Read the ISBN of released volumes that have none from their own
-        Mangakol page, within the per-sync request budget.
-
-        The ISBN is the importer's first matching key: a store product with
-        a known ISBN resolves to its volume whatever its title says. Never
-        moves an ISBN: one held by another volume (a wrong earlier match or
-        a legacy row) is only reported. Commits per volume.
-        """
+        """Read published metadata; defer every ISBN candidate during P0."""
         fetch_details = getattr(self.scraper, "fetch_volume_details", None)
         fetch_isbn = getattr(self.scraper, "fetch_volume_isbn", None)
         if fetch_details is None and fetch_isbn is None:
@@ -424,154 +341,48 @@ class CatalogSyncService:
         for cv in manga.volumes:
             if self._isbn_budget <= 0:
                 return
-            if cv.number is None or not getattr(cv, "url", None) or not getattr(cv, "released", True):
+            if cv.number is None or not cv.url or not cv.released:
                 continue
-            volume = self.session.scalar(
-                select(Volume).where(Volume.series_id == series.id, Volume.volume_number == cv.number)
-            )
-            if volume is None:
+            volume = self.session.scalar(select(Volume).where(
+                Volume.series_id == series.id, Volume.volume_number == cv.number))
+            if volume is None or volume.catalog_present is False:
                 continue
-            self._volume_urls[volume.id] = cv.url
             checked = volume.details_checked_at
             if checked is not None and checked.tzinfo is None:
                 checked = checked.replace(tzinfo=timezone.utc)
-            # Read once (ISBN + page count + release date); a page without
-            # an ISBN yet is re-read weekly. Pre-details rows that already
-            # have an ISBN are read once more for their details.
-            # A foreign ISBN (an old title match stored e.g. VIZ's English
-            # Naruto 11 on Cilt 11) does not count: the catalog's replaces it.
-            trusted_isbn = volume.isbn and not is_foreign_isbn(volume.isbn)
-            # A variant without its ISBN is re-read every sync (only a few
-            # books; until then its store products land on the base series).
-            # The same goes for a regular volume that has variants: one of
-            # them may hold the ISBN both editions share, and the regular
-            # volume takes it back below — not a week later.
-            variant = VARIANT_SEP in manga.slug or bool(getattr(manga, "variants", ()))
-            if checked is not None and (trusted_isbn or (checked > recheck and not variant)):
+            if checked is not None and checked > recheck:
                 continue
             self._isbn_budget -= 1
             report.isbn_pages += 1
             try:
-                if fetch_details is not None:
-                    details = fetch_details(cv.url)
-                else:
-                    details = CatalogVolumeDetails(isbn=fetch_isbn(cv.url))
-            except Exception:  # noqa: BLE001 - one page must not stop the sync
-                logger.warning("catalog sync: volume page failed for %s", cv.url)
+                details = (fetch_details(cv.url) if fetch_details else
+                           CatalogVolumeDetails(isbn=fetch_isbn(cv.url)))
+            except Exception:
+                logger.warning("catalog metadata unavailable: %s", cv.url)
+                continue
+            if details is None:
                 continue
             volume.details_checked_at = utcnow()
-            isbn = details.isbn if details is not None else None
-            holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn)) if isbn else None
-            wrong_number = (holder is not None and holder.id != volume.id
-                            and holder.volume_number >= 0 and holder.volume_number != volume.volume_number)
-            existing_conflict = bool(trusted_isbn and isbn and volume.isbn != isbn)
-            if wrong_number or existing_conflict:
-                report.isbn_conflicts += 1
-                holder_series = self.session.get(Series, holder.series_id) if holder else None
-                reason = (f"{holder_series.title if holder_series else holder.series_id} Cilt {holder.volume_number} üzerinde"
-                          if wrong_number else f"mevcut ISBN {volume.isbn} ile çelişiyor")
-                if len(report.isbn_conflict_details) < 500:
-                    report.isbn_conflict_details.append(
-                        f"{series.title} Cilt {cv.number}: kaynak ISBN {isbn} {reason}; mevcut kayıt korundu"
-                    )
-                self.session.commit()
-                continue
-            if details is not None:
-                if details.page_count and volume.page_count is None:
-                    volume.page_count = details.page_count
-                if details.release_date and volume.release_date is None:
-                    volume.release_date = details.release_date
+            isbn = details.isbn
+            if isbn and isbn != volume.isbn:
+                report.isbns_deferred += 1
+                holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
+                if volume.isbn or (holder is not None and holder.id != volume.id):
+                    report.isbn_conflicts += 1
+                report.isbn_conflict_details.append(
+                    f"{series.title} Cilt {cv.number}: kaynak ISBN {isbn}; P0 kilidi nedeniyle mevcut ISBN korundu")
+                report.isbn_candidates.append({
+                    "volume_id": volume.id, "current_isbn": volume.isbn,
+                    "source_isbn": isbn, "source_url": cv.url})
+                # Preserve populated conflicting metadata; never confuse different cilt numbers.
+                if volume.isbn or (holder is not None and holder.volume_number != volume.volume_number):
+                    self.session.commit()
+                    continue
+            if details.page_count and volume.page_count is None:
+                volume.page_count = details.page_count
+            if details.release_date and volume.release_date is None:
+                volume.release_date = details.release_date
             self.session.commit()
-            if not isbn or trusted_isbn or is_foreign_isbn(isbn):
-                continue
-            if volume.isbn:  # foreign ISBN from an old match: drop it
-                logger.info("catalog sync: replacing foreign ISBN %s on %s Cilt %s with %s",
-                            volume.isbn, series.title, cv.number, isbn)
-                volume.isbn = None
-                self.session.flush()
-            holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
-            if holder is None:
-                volume.isbn = isbn
-                self.session.commit()
-                report.isbns_added += 1
-                continue
-            if holder.id == volume.id:
-                continue
-            note = ""
-            if holder.series_id == series.id and holder.volume_number < 0:
-                # Legacy unnumbered row ("Cilt -1") of THIS series holding
-                # the catalog ISBN: the same book. The ISBN is the identity
-                # proof, so fold it into the real volume (listings + price
-                # history move). Personal rows keep it for manual review.
-                if not has_personal_rows(self.session, holder.id):
-                    merge_volume_rows(self.session, holder.id, volume.id)
-                    self.session.commit()
-                    report.isbns_added += 1
-                    report.isbn_phantoms_merged += 1
-                    logger.info("catalog sync: merged legacy volume %s into %s Cilt %s (ISBN %s)",
-                                holder.id, series.title, cv.number, isbn)
-                    continue
-                note = " (kullanıcı verisi var, elle birleştirilmeli)"
-            elif VARIANT_SEP not in manga.slug and holder.series_id in self._variant_series_ids(manga.slug):
-                # The regular edition's page lists an ISBN one of its own
-                # variants holds: the publisher printed both under one ISBN
-                # (Afro Samuray and its limited hardcover), or it was never
-                # the variant's. Stores sell the regular book under it, so
-                # the regular volume keeps it; the variant's products are
-                # told apart by their title words (import_service).
-                holder.isbn = None
-                self.session.flush()
-                volume.isbn = isbn
-                self.session.commit()
-                report.isbns_added += 1
-                logger.info("catalog sync: ISBN %s moved from variant volume %s to the regular %s Cilt %s",
-                            isbn, holder.id, series.title, cv.number)
-                continue
-            elif holder.series_id == self._base_series_id(manga.slug):
-                if self._page_isbn(self._volume_urls.get(holder.id)) == isbn:
-                    # Shared ISBN: the regular edition's own page lists it
-                    # too, so it stays there (see the branch above).
-                    continue
-                # A binding variant's own ISBN on its base series: stores
-                # title both bindings plainly "Soichi", so before the
-                # variant existed a title match stored the Bez Cilt ISBN on
-                # the regular volume. The variant's Mangakol page proves
-                # whose it is: move it, and let the regular volume read its
-                # own ISBN again on the next sync. Its misplaced listings
-                # move on the next store import (ISBN-first).
-                holder.isbn = None
-                holder.details_checked_at = None
-                self.session.flush()
-                volume.isbn = isbn
-                self.session.commit()
-                report.isbns_added += 1
-                logger.info("catalog sync: ISBN %s moved from %s volume %s to its variant %s Cilt %s",
-                            isbn, holder.series_id, holder.id, series.title, cv.number)
-                continue
-            holder_series = self.session.get(Series, holder.series_id)
-            owner = SHARED_ISBN_OWNERS.get(isbn)
-            if owner is not None and holder_series is not None and owner in (series.title, holder_series.title):
-                # One ISBN printed on two editions: the unique column holds
-                # it on the edition stores sell under it; the other edition
-                # is matched by its title words (import_service).
-                if owner == series.title:
-                    holder.isbn = None
-                    self.session.flush()
-                    volume.isbn = isbn
-                    self.session.commit()
-                    report.isbns_added += 1
-                    logger.info("catalog sync: shared ISBN %s moved from %s to %s Cilt %s",
-                                isbn, holder_series.title, series.title, cv.number)
-                continue
-            report.isbn_conflicts += 1
-            detail = (
-                f"{series.title} Cilt {cv.number}: ISBN {isbn} zaten "
-                f"{holder_series.title if holder_series else holder.series_id} "
-                f"Cilt {holder.volume_number} üzerinde{note}"
-            )
-            logger.warning("catalog sync: %s", detail)
-            if len(report.isbn_conflict_details) < 500:
-                report.isbn_conflict_details.append(detail)
 
     def _page_isbn(self, url: str | None) -> str | None:
         """ISBN a catalog volume page lists (None when unknown/unreadable)."""
@@ -695,211 +506,20 @@ class CatalogSyncService:
     # Publisher alias consolidation
     # ------------------------------------------------------------------
     def _consolidate_publisher_aliases(self, report: CatalogSyncReport) -> None:
-        """Merge publisher rows that refer to the same real company.
+        """P0: retain publisher/series/volume identities until separate review."""
+        logger.info("P0: publisher/series consolidation paused")
 
-        Different sources name the same company differently (store
-        imports: "Dex Yayınevi"; mangakol: "Dex"), and the database can
-        hold both rows. Left alone, the same manga can end up under two
-        publisher rows — a silent duplicate that breaks merge lookups.
-        Each fuzzy-related group is merged into its most complete
-        (longest normalized name, then lowest id) member:
+    def _merge_publisher_into(self, absorbed: Publisher, keeper: Publisher, report: CatalogSyncReport) -> None:
+        from .isbn_safety import reject_legacy_write
+        reject_legacy_write()
 
-        * series without a same-title twin under the keeper are
-          re-pointed to the keeper (slug kept unique per publisher);
-        * series whose title already exists under the keeper are merged
-          volume-by-volume (add-only: unique numbers re-pointed,
-          colliding numbers keep the keeper's volume, its listings are
-          moved to it, covers backfilled) and then deleted;
-        * the absorbed publisher row is deleted once it holds no series.
-
-        Additive with respect to data: no listing, volume number, or
-        series title is ever lost or overwritten.
-        """
-        pubs = list(self.session.scalars(select(Publisher)).all())
-        parent = list(range(len(pubs)))
-
-        def find(i: int) -> int:
-            while parent[i] != i:
-                parent[i] = parent[parent[i]]
-                i = parent[i]
-            return i
-
-        for i in range(len(pubs)):
-            for j in range(i + 1, len(pubs)):
-                a, b = pubs[i].normalized_name, pubs[j].normalized_name
-                if a != b and _names_related(a, b):
-                    ri, rj = find(i), find(j)
-                    if ri != rj:
-                        parent[rj] = ri
-
-        groups: dict[int, list[Publisher]] = {}
-        for i, pub in enumerate(pubs):
-            groups.setdefault(find(i), []).append(pub)
-
-        for members in groups.values():
-            if len(members) < 2:
-                continue
-            keeper = max(
-                members, key=lambda p: (len(p.normalized_name), -p.id)
-            )
-            for other in members:
-                if other.id == keeper.id:
-                    continue
-                self._merge_publisher_into(other, keeper, report)
-                report.publishers_merged += 1
-                logger.info(
-                    "catalog sync: merged publisher %r into %r",
-                    other.name, keeper.name,
-                )
-
-    def _merge_publisher_into(
-        self, absorbed: Publisher, keeper: Publisher, report: CatalogSyncReport
-    ) -> None:
-        keeper_series = {
-            s.normalized_title: s
-            for s in self.session.scalars(
-                select(Series).where(Series.publisher_id == keeper.id)
-            ).all()
-        }
-        for sr in list(
-            self.session.scalars(
-                select(Series).where(Series.publisher_id == absorbed.id)
-            ).all()
-        ):
-            twin = keeper_series.get(sr.normalized_title)
-            if twin is not None and twin.id != sr.id:
-                self._merge_series_into(sr, twin, report)
-                # Flush re-pointed volumes BEFORE deleting the series: the
-                # Series.volumes relationship cascades deletes, and a
-                # not-yet-flushed re-point would look "still attached" to
-                # the cascade's lazy load.
-                self.session.flush()
-                self.session.delete(sr)
-                report.series_absorbed += 1
-                keeper_series.pop(sr.normalized_title, None)
-                logger.info(
-                    "catalog sync: merged series %r (%s) into series %s",
-                    sr.title, absorbed.name, twin.id,
-                )
-            else:
-                sr.publisher_id = keeper.id
-                # delete-orphan semantics: an object removed from (or
-                # repointed away from) a loaded collection is deleted
-                # unless it is re-attached to the new parent's loaded
-                # collection in the same session — do exactly that.
-                if sr in absorbed.series:
-                    absorbed.series.remove(sr)
-                if sr not in keeper.series:
-                    keeper.series.append(sr)
-                # (publisher_id, slug) is unique: de-collide if the keeper
-                # already holds the same slug under a different title.
-                clash = self.session.scalar(
-                    select(Series.id).where(
-                        Series.publisher_id == keeper.id,
-                        Series.slug == sr.slug,
-                        Series.id != sr.id,
-                    )
-                )
-                if clash is not None:
-                    sr.slug = self._unique_slug(
-                        keeper.id, sr.normalized_title, exclude_id=sr.id
-                    )
-        self.session.flush()  # re-points must be visible to the check below
-        remaining = self.session.scalar(
-            select(Series.id).where(Series.publisher_id == absorbed.id).limit(1)
-        )
-        if remaining is None:
-            self.session.delete(absorbed)
-
-    def _merge_series_into(
-        self, absorbed: Series, keeper: Series, report: CatalogSyncReport
-    ) -> None:
-        """Fold ``absorbed``'s volumes into ``keeper`` (add-only)."""
-        # The absorbed series may already belong to the catalog. Preserve
-        # every slug before deleting it, or the merged keeper could become
-        # invisible while its volumes and listings survive.
-        for row in self.session.scalars(
-            select(CatalogSeries).where(CatalogSeries.series_id == absorbed.id)
-        ).all():
-            self._mark_catalog_series(keeper, row.mangakol_slug)
-            self.session.delete(row)
-        self.session.flush()
-        keeper_volumes = {
-            v.volume_number: v
-            for v in self.session.scalars(
-                select(Volume).where(Volume.series_id == keeper.id)
-            ).all()
-        }
-        for vol in list(
-            self.session.scalars(
-                select(Volume).where(Volume.series_id == absorbed.id)
-            ).all()
-        ):
-            target = keeper_volumes.get(vol.volume_number)
-            if target is None:
-                vol.series_id = keeper.id
-                # delete-orphan: move the volume between the two parents'
-                # loaded collections so the unit of work sees a move, not
-                # an orphan (see _merge_publisher_into above).
-                if vol in absorbed.volumes:
-                    absorbed.volumes.remove(vol)
-                if vol not in keeper.volumes:
-                    keeper.volumes.append(vol)
-                keeper_volumes[vol.volume_number] = vol
-                continue
-            # Number collision: the keeper's volume row survives. Move its
-            # listings (a store listing both editions keeps the keeper's
-            # row — the most recently imported data), backfill the cover,
-            # then delete the absorbed volume row.
-            for listing in list(vol.listings):
-                already = self.session.scalar(
-                    select(StoreListing.id).where(
-                        StoreListing.volume_id == target.id,
-                        StoreListing.store_id == listing.store_id,
-                    )
-                )
-                if already is None:
-                    listing.volume_id = target.id
-                    vol.listings.remove(listing)
-                    target.listings.append(listing)
-                else:
-                    logger.warning(
-                        "catalog sync: dropped duplicate listing %s for "
-                        "store %s during series merge (kept existing)",
-                        listing.id, listing.store_id,
-                    )
-                    self.session.delete(listing)
-                    vol.listings.remove(listing)
-            if target.cover_url is None and vol.cover_url:
-                target.cover_url = vol.cover_url
-                report.covers_backfilled += 1
-            self._move_personal_rows(vol.id, target.id)
-            self.session.delete(vol)
-            # Drop it from the absorbed series' loaded collection so the
-            # later series delete's cascade does not re-issue the DELETE.
-            if vol in absorbed.volumes:
-                absorbed.volumes.remove(vol)
-            report.volumes_merged += 1
+    def _merge_series_into(self, absorbed: Series, keeper: Series, report: CatalogSyncReport) -> None:
+        from .isbn_safety import reject_legacy_write
+        reject_legacy_write()
 
     def _move_personal_rows(self, source_id: int, target_id: int) -> None:
-        """Preserve user data when catalog dedup absorbs a volume.
-
-        An incompatible conflict is safer to roll back than to guess which
-        user's status or alert threshold should win.
-        """
-        for model in (UserVolumeCollection, WishlistItem, PriceAlert):
-            for row in self.session.scalars(select(model).where(model.volume_id == source_id)).all():
-                existing = self.session.scalar(select(model).where(
-                    model.user_id == row.user_id, model.volume_id == target_id,
-                ))
-                if existing is None:
-                    row.volume_id = target_id
-                    continue
-                if model is UserVolumeCollection and row.status != existing.status:
-                    raise ValueError("conflicting collection states during volume merge")
-                if model is PriceAlert and (row.threshold_price != existing.threshold_price or row.is_active != existing.is_active):
-                    raise ValueError("conflicting price alerts during volume merge")
-                self.session.delete(row)
+        from .isbn_safety import reject_legacy_write
+        reject_legacy_write()
 
     def _unique_slug(
         self, publisher_id: int, series_key: str, *, exclude_id: int | None = None

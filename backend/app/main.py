@@ -191,7 +191,7 @@ def create_app(auto_init: bool = True) -> FastAPI:
         except Exception:
             logger.exception("readiness check failed")
             raise HTTPException(status_code=503, detail="Database not ready") from None
-        return {"status": "ready"}
+        return {"status": "ready", "isbn_writes_paused": True}
 
     return app
 

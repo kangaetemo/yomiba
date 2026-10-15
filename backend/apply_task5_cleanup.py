@@ -73,6 +73,8 @@ def snapshot_catalog(con: sqlite3.Connection) -> dict[str, tuple[int, str]]:
 
 
 def main() -> None:
+    from app.services.isbn_safety import reject_legacy_write
+    reject_legacy_write()
     dry = "--dry-run" in sys.argv
 
     if not dry:

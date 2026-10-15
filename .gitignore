@@ -20,6 +20,8 @@ venv/
 backups/
 /yomiba-*.zip
 *.sqlite3
+*.isbn-safety.json
+*.isbn-safety.json.*.tmp
 
 # Node (frontend)
 node_modules/

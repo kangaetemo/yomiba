@@ -38,7 +38,7 @@ def test_elveda_eri_single_fallback_and_history(db_session, import_service):
     assert import_service.import_result(result) == ImportAction.UPDATED
     db_session.commit()
     volume = db_session.scalar(select(Volume).where(Volume.series_id == series.id))
-    assert volume.volume_number == 1 and volume.isbn == result.isbn
+    assert volume.volume_number == 1 and volume.isbn is None
     assert db_session.scalar(select(func.count()).select_from(Volume)) == 1
     assert db_session.scalar(select(func.count()).select_from(PriceHistory)) == 1
 
@@ -53,6 +53,8 @@ def test_multivolume_unknown_and_box_rejected(db_session, import_service, title)
 def test_isbn_priority_and_conflict(db_session, import_service):
     seed_catalog_series(db_session, "Elveda Eri", "Publisher A")
     first = make_result("bkm", "Elveda Eri", "100", isbn="9786258237559")
+    db_session.scalar(select(Volume)).isbn = first.isbn  # catalogue value before P0
+    db_session.commit()
     import_service.import_result(first)
     db_session.commit()
     exact = make_result("dr", "Incorrect title 2", "120", isbn=first.isbn, publisher="Publisher B")

@@ -24,28 +24,27 @@ def setup_pair(session, duplicate=False):
 
 
 @pytest.mark.parametrize("duplicate", [False, True])
-def test_safe_merge_preserves_history_and_is_idempotent(db_session, duplicate):
+def test_safe_merge_requires_a_new_decision_and_retains_history(db_session, duplicate):
+    from app.services.isbn_safety import MutationPaused
     source, target, evidence = setup_pair(db_session, duplicate)
-    db_session.execute(text("PRAGMA foreign_keys=ON"))
-    assert plan_merge(db_session, source, target)["action"] == "REVIEW"
     plan = plan_merge(db_session, source, target, products=evidence, catalog_confirmed=True)
-    assert plan["action"] == "SAFE_MERGE"
-    assert apply_safe_merge(db_session, source, target, products=evidence, catalog_confirmed=True)
-    db_session.commit()
-    assert not apply_safe_merge(db_session, source, target, products=evidence, catalog_confirmed=True)
-    assert db_session.scalar(select(func.count()).select_from(StoreListing)) == 1
-    assert db_session.scalar(select(func.count()).select_from(PriceHistory)) == 1 + duplicate
-    assert db_session.get(Volume, target).isbn == "9786258237559"
-    assert db_session.get(Volume, target).cover_url == "https://example.com/cover"
-    assert not db_session.execute(text("PRAGMA foreign_key_check")).all()
-
-
-def test_personal_data_blocks_merge(db_session):
-    source, target, evidence = setup_pair(db_session)
-    db_session.add(WishlistItem(user_id=1, volume_id=source)); db_session.commit()
-    with pytest.raises(ValueError, match="personal_data"):
+    assert plan["action"] == "SAFE_MERGE"  # preview remains available
+    with pytest.raises(MutationPaused):
         apply_safe_merge(db_session, source, target, products=evidence, catalog_confirmed=True)
     assert db_session.get(Volume, source) is not None
+    assert db_session.get(Volume, target).isbn is None
+    assert db_session.scalar(select(func.count()).select_from(PriceHistory)) == 1 + duplicate
+    assert db_session.scalar(select(func.count()).select_from(StoreListing)) == 1 + duplicate
+
+
+def test_personal_data_and_volume_id_survive_a_paused_merge(db_session):
+    from app.services.isbn_safety import MutationPaused
+    source, target, evidence = setup_pair(db_session)
+    db_session.add(WishlistItem(user_id=1, volume_id=source)); db_session.commit()
+    with pytest.raises(MutationPaused):
+        apply_safe_merge(db_session, source, target, products=evidence, catalog_confirmed=True)
+    assert db_session.get(Volume, source) is not None
+    assert db_session.scalar(select(WishlistItem.volume_id)) == source
 
 
 def test_audit_command_is_readonly(db_session, engine, monkeypatch, capsys):

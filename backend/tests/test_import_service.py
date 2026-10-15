@@ -125,7 +125,7 @@ def test_three_stores_same_isbn_merge_into_one_volume(import_service, db_session
     volumes = db_session.scalars(select(Volume)).all()
     assert len(volumes) == 1
     volume = volumes[0]
-    assert volume.isbn == isbn
+    assert volume.isbn is None  # P0: stores cannot fill catalogue ISBNs
 
     listings = db_session.scalars(
         select(StoreListing).where(StoreListing.volume_id == volume.id)

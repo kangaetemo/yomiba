@@ -93,9 +93,10 @@ def test_sync_backfills_isbns_of_released_volumes(db_session):
     })
     report = CatalogSyncService(db_session, scraper=fake).sync()
 
-    assert _isbns(db_session) == {1: "9786257646628", 2: "9786257646642", 3: None}
+    assert _isbns(db_session) == {1: None, 2: None, 3: None}
     assert f"{BASE}/manga/zom-100/cilt-3" not in fake.fetched  # "Yakında": never asked
-    assert (report.isbn_pages, report.isbns_added, report.isbn_conflicts) == (2, 2, 0)
+    assert (report.isbn_pages, report.isbns_added, report.isbn_conflicts) == (2, 0, 0)
+    assert report.isbns_deferred == 2
 
     # next sync: volumes that already have an ISBN are not fetched again
     fake.fetched.clear()
@@ -113,9 +114,9 @@ def test_sync_isbn_budget_spreads_over_syncs(db_session, monkeypatch):
         f"{BASE}/manga/zom-100/cilt-2": "9786257646642",
     })
     CatalogSyncService(db_session, scraper=fake).sync()
-    assert _isbns(db_session) == {1: "9786257646628", 2: None}
+    assert _isbns(db_session) == {1: None, 2: None}
     CatalogSyncService(db_session, scraper=fake).sync()
-    assert _isbns(db_session) == {1: "9786257646628", 2: "9786257646642"}
+    assert _isbns(db_session) == {1: None, 2: None}
 
 
 def test_isbn_held_by_another_volume_is_reported_not_moved(db_session):
@@ -132,7 +133,7 @@ def test_isbn_held_by_another_volume_is_reported_not_moved(db_session):
     assert zom_vol.isbn is None
     assert held.isbn == "9786257646628"
     assert report.isbn_conflicts == 1
-    assert "Başka Seri Cilt 4" in report.isbn_conflict_details[0]
+    assert "P0 kilidi" in report.isbn_conflict_details[0]
     # a conflict is a data finding, not a sync error
     assert not any("ISBN" in e for e in report.errors)
 
@@ -196,23 +197,18 @@ def _phantom_with_listing(db_session, isbn):
     return series, phantom.id, listing.id
 
 
-def test_same_series_legacy_row_is_merged_into_catalog_volume(db_session):
+def test_same_series_legacy_row_is_not_merged_without_a_decision(db_session):
     from app.models import PriceHistory
-
     isbn = "9786256031302"
     series, phantom_id, listing_id = _phantom_with_listing(db_session, isbn)
-
     report = CatalogSyncService(db_session, scraper=_look_back(
         {f"{BASE}/manga/look-back/cilt-1": isbn})).sync()
-
-    vol1 = db_session.scalar(select(Volume).where(Volume.series_id == series.id,
-                                                  Volume.volume_number == 1))
-    assert vol1.isbn == isbn
-    assert db_session.get(Volume, phantom_id) is None
-    listing = db_session.get(StoreListing, listing_id)
-    assert listing.volume_id == vol1.id  # the offer moved with its history
+    vol1 = db_session.scalar(select(Volume).where(Volume.series_id == series.id, Volume.volume_number == 1))
+    assert vol1.isbn is None
+    assert db_session.get(Volume, phantom_id).isbn == isbn
+    assert db_session.get(StoreListing, listing_id).volume_id == phantom_id
     assert db_session.scalar(select(PriceHistory.listing_id)) == listing_id
-    assert (report.isbn_phantoms_merged, report.isbn_conflicts, report.isbns_added) == (1, 0, 1)
+    assert report.isbn_phantoms_merged == report.isbns_added == 0
 
 
 def test_legacy_row_with_personal_data_is_only_reported(db_session):
@@ -232,7 +228,7 @@ def test_legacy_row_with_personal_data_is_only_reported(db_session):
     assert db_session.get(Volume, phantom_id) is not None
     assert report.isbn_phantoms_merged == 0
     assert report.isbn_conflicts == 1
-    assert "elle birleştirilmeli" in report.isbn_conflict_details[0]
+    assert "P0 kilidi" in report.isbn_conflict_details[0]
 
 
 # -- volume details: page count, local release date, credits -----------------------------
@@ -285,7 +281,7 @@ def test_sync_stores_details_and_reads_each_page_once(db_session):
     CatalogSyncService(db_session, scraper=fake).sync()
 
     vol = db_session.scalar(select(Volume))
-    assert (vol.isbn, vol.page_count, vol.release_date) == ("9786257646628", 192, date(2021, 3, 1))
+    assert (vol.isbn, vol.page_count, vol.release_date) == (None, 192, date(2021, 3, 1))
     assert vol.details_checked_at is not None
     series = db_session.scalar(select(Series))
     assert (series.author, series.illustrator) == ("Haro Aso", "Kotaro Takata")

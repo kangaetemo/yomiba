@@ -38,3 +38,6 @@ def check_database_ready(engine: Engine, *, check_foreign_keys: bool = False) ->
         if check_foreign_keys and engine.url.get_backend_name() == "sqlite":
             if connection.exec_driver_sql("PRAGMA foreign_key_check").first() is not None:
                 raise RuntimeError("SQLite foreign key integrity check failed")
+        if engine.url.get_backend_name() == "sqlite":
+            from .services.isbn_safety import check_guards
+            check_guards(connection.connection.driver_connection)

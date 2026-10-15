@@ -252,8 +252,8 @@ def test_publisher_alias_resolves_to_full_name(db_session):
     assert report.series_created == 0
     assert report.series_merged == 1
     # the empty short-name alias row was folded into the full-name row
-    assert report.publishers_merged == 1
-    assert "athica" not in _publishers(db_session)
+    assert report.publishers_merged == 0
+    assert "athica" in _publishers(db_session)
     assert "athica yayinlari" in _publishers(db_session)
     assert len([s for s in _series(db_session) if s.normalized_title == "berserk"]) == 1
     numbers = sorted(
@@ -342,14 +342,14 @@ def test_consolidation_repoints_series_and_deletes_alias(db_session):
     manga = _manga("cagaster2", "Cagaster II", pub="Dex", volumes=(1,))
     report = CatalogSyncService(db_session, scraper=FakeMangakolScraper([manga])).sync()
 
-    assert report.publishers_merged == 1
+    assert report.publishers_merged == 0
     assert report.series_created == 1  # the new manga
     pubs = _publishers(db_session)
-    assert "dex" not in pubs            # alias row deleted
+    assert "dex" in pubs            # alias row deleted
     assert "dex yayinevi" in pubs
     # the manga series was re-pointed to the keeper publisher
     cagaster = [s for s in _series(db_session) if s.normalized_title == "cagaster"][0]
-    assert cagaster.publisher_id == full.id
+    assert cagaster.publisher_id == short.id
     assert cagaster.slug == "cagaster"  # slug preserved (no clash)
     # the store listing survived on the same volume row
     from app.models import StoreListing
@@ -360,87 +360,23 @@ def test_consolidation_repoints_series_and_deletes_alias(db_session):
     assert listing is not None and listing.price == 12500
 
 
-def test_consolidation_merges_same_title_series(db_session):
-    """When both aliases hold a same-title series, the volumes are merged
-    add-only into the keeper's series: colliding numbers keep the
-    keeper's volume row (listings moved), unique numbers re-pointed,
-    covers backfilled."""
+def test_consolidation_retains_same_title_series_and_volume_ids(db_session):
     from app.models import Store, StoreListing
-
     short, full, _full_series, _full_vol = _seed_dex_alias(db_session)
-    # keeper-side edition: Cagaster vol 1 with a listing, no cover
-    keeper_series = Series(
-        publisher_id=full.id, title="Cagaster",
-        normalized_title="cagaster", slug="cagaster",
-    )
-    db_session.add(keeper_series)
-    db_session.flush()
-    keeper_vol1 = Volume(series_id=keeper_series.id, volume_number=1)
-    db_session.add(keeper_vol1)
-    db_session.flush()
-    store = Store(code="bkm", name="BKM Kitap")
-    db_session.add(store)
-    db_session.flush()
-    db_session.add(
-        StoreListing(volume_id=keeper_vol1.id, store_id=store.id,
-                     product_url="https://bkm.example/c1", price=9900)
-    )
-    # absorbed-side edition: Cagaster vols 1 (cover, no listing) and 2
-    absorbed_series = Series(
-        publisher_id=short.id, title="Cagaster",
-        normalized_title="cagaster", slug="cagaster",
-    )
-    db_session.add(absorbed_series)
-    db_session.flush()
-    absorbed_vol1 = Volume(
-        series_id=absorbed_series.id, volume_number=1,
-        cover_url="https://mk.example/cag1.webp",
-    )
-    absorbed_vol2 = Volume(series_id=absorbed_series.id, volume_number=2)
-    db_session.add_all([absorbed_vol1, absorbed_vol2])
-    db_session.add_all([
-        CatalogSeries(series_id=keeper_series.id, mangakol_slug="cagaster-full"),
-        CatalogSeries(series_id=absorbed_series.id, mangakol_slug="cagaster-old"),
-    ])
-    db_session.commit()
-
+    keep = Series(publisher_id=full.id, title="Cagaster", normalized_title="cagaster", slug="cagaster")
+    old = Series(publisher_id=short.id, title="Cagaster", normalized_title="cagaster", slug="cagaster")
+    db_session.add_all([keep, old]); db_session.flush()
+    v1 = Volume(series_id=keep.id, volume_number=1)
+    v2 = Volume(series_id=old.id, volume_number=1)
+    db_session.add_all([v1, v2]); db_session.commit()
+    before = list(db_session.execute(select(Volume.id, Volume.series_id)))
     manga = _manga("bleach-x", "Bleach X", pub="Dex", volumes=(1,))
     report = CatalogSyncService(db_session, scraper=FakeMangakolScraper([manga])).sync()
-
-    assert report.publishers_merged == 1
-    assert report.series_absorbed == 1
-    assert report.volumes_merged == 1
-    assert report.covers_backfilled == 1
-    # one Cagaster left, under the keeper publisher
-    cagasters = [s for s in _series(db_session) if s.normalized_title == "cagaster"]
-    assert len(cagasters) == 1
-    assert cagasters[0].publisher_id == full.id
-    assert {
-        row.mangakol_slug
-        for row in db_session.scalars(
-            select(CatalogSeries).where(CatalogSeries.series_id == cagasters[0].id)
-        )
-    } == {"cagaster-full", "cagaster-old"}
-    numbers = sorted(
-        v.volume_number
-        for v in db_session.scalars(
-            select(Volume).where(Volume.series_id == cagasters[0].id)
-        ).all()
-    )
-    assert numbers == [1, 2]
-    # vol 1 = keeper row: cover backfilled, exactly one listing
-    assert keeper_vol1.cover_url == "https://mk.example/cag1.webp"
-    listings = db_session.scalars(
-        select(StoreListing).where(StoreListing.volume_id == keeper_vol1.id)
-    ).all()
-    assert len(listings) == 1 and listings[0].price == 9900
-    # vol 2 was re-pointed, not recreated
-    vol2 = db_session.scalar(
-        select(Volume).where(
-            Volume.series_id == cagasters[0].id, Volume.volume_number == 2
-        )
-    )
-    assert vol2.id == absorbed_vol2.id
+    assert report.publishers_merged == report.series_absorbed == report.volumes_merged == 0
+    assert db_session.get(Series, old.id).publisher_id == short.id
+    assert db_session.get(Series, keep.id).publisher_id == full.id
+    after = dict(db_session.execute(select(Volume.id, Volume.series_id)).all())
+    assert all(after[vid] == sid for vid, sid in before)
 
 
 def test_consolidation_is_idempotent(db_session):
@@ -457,7 +393,7 @@ def test_consolidation_is_idempotent(db_session):
     first = CatalogSyncService(db_session, scraper=scraper).sync()
     second = CatalogSyncService(db_session, scraper=scraper).sync()
 
-    assert first.publishers_merged == 1
+    assert first.publishers_merged == 0
     assert (second.publishers_merged, second.series_created,
             second.volumes_added) == (0, 0, 0)
     assert second.series_merged == 1  # Cagaster II (already synced)

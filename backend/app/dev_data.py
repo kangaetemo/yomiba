@@ -63,6 +63,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fresh", action="store_true", help="wipe catalog data first")
     args = parser.parse_args()
+    if args.fresh:
+        from .services.isbn_safety import reject_legacy_write
+        reject_legacy_write()
 
     from app.models import Series, Store, Volume  # imported after models registered
 

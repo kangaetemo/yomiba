@@ -466,7 +466,8 @@ def test_m7_backup_targets_the_database_alembic_migrates(monkeypatch, tmp_path):
     monkeypatch.setattr(config_mod, "get_settings", lambda: migrate)
     monkeypatch.setattr(database, "get_settings", lambda: other)
     database.init_db()
-    assert list(tmp_path.glob("*.bak")) == []
+    assert not list(tmp_path.glob("bystander.db*.bak"))
+    assert all(p.name.startswith("target.db.p0-isbn-") for p in tmp_path.glob("*.bak"))
 
 
 # ------------------------------------ BKM real titles (2026-09-27 staging) ---
