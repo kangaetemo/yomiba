@@ -73,3 +73,48 @@ def test_reason_and_protected_routes(client, review, db_session):
         assert getattr(client, method)("/admin/isbn"+path).status_code == 403
     client.cookies.clear()
     assert client.get("/admin/isbn/summary").status_code == 401
+
+
+@pytest.mark.parametrize("status,proposed,workflow,queue", [
+    ("MISSING_ISBN", ISBN, "REVIEW_PENDING", "APPROVAL"),
+    ("CONFLICT", ISBN, "REVIEW_PENDING", "APPROVAL"),
+    ("CONFLICT", None, "REVIEW_PENDING", "INVESTIGATE"),
+    ("MISSING_ISBN", None, "REVIEW_PENDING", "AWAITING_EVIDENCE"),
+    ("INSUFFICIENT_EVIDENCE", None, "REVIEW_PENDING", "AWAITING_EVIDENCE"),
+    ("SOURCE_ERROR", None, "REVIEW_PENDING", "AWAITING_EVIDENCE"),
+    ("VERIFIED", ISBN, "REVIEW_PENDING", "REVIEWED"),
+    ("SKIPPED_UPCOMING", None, "REVIEW_PENDING", "REVIEWED"),
+    ("CONFLICT", ISBN, "REVIEWED", "REVIEWED"),
+    ("SOURCE_ERROR", None, "REVIEWED", "REVIEWED"),
+])
+def test_legacy_results_are_classified_without_rescan_or_writes(client, review, db_session, status, proposed, workflow, queue):
+    result = db_session.get(IsbnAuditResult, review.result_id)
+    result.status, result.proposed_isbn, review.workflow = status, proposed, workflow
+    db_session.commit()
+    original = (review.result_id, review.version, review.workflow, result.evidence_hash, result.snapshot_hash)
+    summary = client.get("/admin/isbn/summary").json()
+    assert summary["pending"] == int(queue == "APPROVAL")
+    assert summary["queues"][queue] == 1 and sum(summary["queues"].values()) == summary["scanned"] == 1
+    for selected in summary["queues"]:
+        data = client.get("/admin/isbn/reviews", params={"queue": selected, "q": "Blue", "limit": 1}).json()
+        assert data["total"] == int(selected == queue)
+        if data["items"]: assert data["items"][0]["queue"] == queue
+    assert client.get(f"/admin/isbn/reviews/{review.volume_id}").json()["queue"] == queue
+    db_session.refresh(review); db_session.refresh(result)
+    assert original == (review.result_id, review.version, review.workflow, result.evidence_hash, result.snapshot_hash)
+    assert db_session.scalar(select(IsbnDecision.id)) is None
+    assert db_session.get(Volume, review.volume_id).isbn is None
+
+
+def test_paused_scan_can_be_ended_and_restarted_without_losing_results(client, review, db_session):
+    run = db_session.get(IsbnAuditRun, db_session.get(IsbnAuditResult, review.result_id).run_id)
+    run.status = "PAUSED"
+    db_session.commit()
+    old_result = review.result_id
+    assert client.post(f"/admin/isbn/runs/{run.id}/stop").json()["status"] == "CANCELLED"
+    assert client.post(f"/admin/isbn/runs/{run.id}/resume").status_code == 409
+    new = client.post("/admin/isbn/runs")
+    assert new.status_code == 202 and new.json()["id"] != run.id
+    assert db_session.get(IsbnReview, review.volume_id).result_id == old_result
+    assert db_session.get(IsbnAuditResult, old_result) is not None
+    assert db_session.get(Volume, review.volume_id).isbn is None

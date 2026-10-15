@@ -30,7 +30,8 @@ from ..scrapers.common import has_block_marker
 from .isbn_identity import base_key, bibliographic_title, canonical_isbn, edition, identity_reason
 
 HOSTS = {"www.kitapyurdu.com", "www.pandora.com.tr", "www.bkmkitap.com",
-         "bkmkitap.com", "bkm-best.wawlabs.com", "cdn.bkmkitap.com", "www.dr.com.tr", "mangakol.com"}
+         "bkmkitap.com", "bkm-best.wawlabs.com", "cdn.bkmkitap.com", "www.dr.com.tr", "mangakol.com",
+         "www.kitapsepeti.com"}
 
 
 class PoliteClient(httpx.Client):
@@ -145,7 +146,8 @@ class RetailerSource:
     def __init__(self, code, group, client):
         self.code, self.group, self.client = code, group, client
         self.base = {"kitapyurdu": "https://www.kitapyurdu.com", "pandora": "https://www.pandora.com.tr",
-                     "bkm": "https://www.bkmkitap.com", "dr": "https://www.dr.com.tr"}[code]
+                     "bkm": "https://www.bkmkitap.com", "dr": "https://www.dr.com.tr",
+                     "kitapsepeti": "https://www.kitapsepeti.com"}[code]
 
     def get(self, url):
         r = self.client.get(url)
@@ -169,8 +171,45 @@ class RetailerSource:
                     # search feed uses the apex; the current site serves www.
                     url = item.product_url.replace("https://bkmkitap.com/", "https://www.bkmkitap.com/")
                     urls[url] = item.title
-            if scraper.stats.get("stop_reason") in {"max_results", "max_pages", "page_error"}:
+            if scraper.stats.get("stop_reason") in {"max_results", "max_pages", "page_error", "no_new_items"}:
                 raise ScraperError("Kaynak araması tamamlanamadı; sonuçlar eksik olabilir.")
+        elif self.code == "kitapsepeti":
+            pending = {1: f"{self.base}/arama?q={quote_plus(query)}&pg=1"}
+            seen, signatures = set(), set()
+            while pending:
+                page = min(pending)
+                response = self.get(pending.pop(page))
+                seen.add(page)
+                soup = BeautifulSoup(response.content, "lxml")
+                products = soup.select("div.product-item a.product-title[href]")
+                text = normalize_text(soup.get_text(" ", strip=True))
+                if not products and not any(phrase in text for phrase in (
+                    "urun bulunamadi", "sonuc bulunamadi", "urun bulunmamaktadir"
+                )):
+                    raise ScraperError("Kitap Sepeti arama şablonu tanınmadı; yokluk varsayılmadı.")
+                signature = tuple(sorted({urljoin(self.base, a["href"]).split("?")[0] for a in products}))
+                if signature and signature in signatures:
+                    raise ScraperError("Kitap Sepeti sayfalaması ürünleri tekrarlıyor; arama tamamlanamadı.")
+                signatures.add(signature)
+                for a in products:
+                    title = a.get_text(" ", strip=True)
+                    if self.candidate(target, title):
+                        urls[urljoin(self.base, a["href"]).split("?")[0]] = title
+                # Follow published search pagination; never request an out-of-range
+                # page (the live site returns an ambiguous blank shell for those).
+                for a in soup.select("a[href]"):
+                    link = urljoin(self.base, a["href"])
+                    parsed = urlsplit(link)
+                    params = parse_qs(parsed.query)
+                    number = params.get("pg", [""])[0]
+                    if (parsed.scheme == "https" and parsed.hostname == "www.kitapsepeti.com"
+                            and parsed.path == "/arama" and params.get("q") == [query]
+                            and number.isdigit() and int(number) > 0 and int(number) not in seen):
+                        pending[int(number)] = link
+                if len(products) >= 32 and not pending:
+                    raise ScraperError("Kitap Sepeti sonuç sayfası dolu; sayfalama doğrulanamadı.")
+                if len(seen) + len(pending) > 1000:
+                    raise ScraperError("Kitap Sepeti araması olağan dışı uzun; tam sonuç doğrulanamadı.")
         elif self.code == "kitapyurdu":
             pending = {1: f"{self.base}/index.php?route=product/search&filter_name={quote_plus(query)}"}
             seen, signatures = set(), set()
@@ -277,7 +316,7 @@ class DiscoverySource:
 
 
 def source_groups():
-    groups = {code: code for code in ("kitapyurdu", "bkm", "pandora", "dr")}
+    groups = {code: code for code in ("kitapyurdu", "bkm", "kitapsepeti", "pandora", "dr")}
     # Operational override for established shared upstream provenance. Two
     # pages (or domains) in one group always count as a single vote.
     override = json.loads(os.getenv("ISBN_SOURCE_GROUPS", "{}"))

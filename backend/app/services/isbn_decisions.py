@@ -99,7 +99,8 @@ def validate_evidence(result, target, new_isbn):
                 raise DecisionError("Kaynak kanıtı güncel değil; yeniden denetleyin.")
             raw = {key: item.get(key) for key in ("title", "publisher", "language", "binding", "url", "raw_isbns")}
             domains = {"kitapyurdu": {"www.kitapyurdu.com"}, "bkm": {"www.bkmkitap.com", "bkmkitap.com"},
-                       "pandora": {"www.pandora.com.tr"}, "dr": {"www.dr.com.tr"}}
+                       "pandora": {"www.pandora.com.tr"}, "dr": {"www.dr.com.tr"},
+                       "kitapsepeti": {"www.kitapsepeti.com"}}
             parsed = urlsplit(raw["url"] or "")
             if parsed.scheme != "https" or parsed.hostname not in domains[source] or not isinstance(raw["raw_isbns"], list):
                 raise DecisionError("Kanıtın ürün bağlantısı eksik.")

@@ -7,6 +7,18 @@
 duraklatma/sürdürme, sonuç ve iş akışı filtreleri, seri araması, sayfalama,
 ürün kanıtları ve karar geçmişi aynı ekrandadır.
 
+Kuyruklar sonuçlardan anlık hesaplanır; önceki denetim sonuçları veya yönetici
+kararları değiştirilmez. **ISBN onayı bekleyen**, ortak ISBN önerisi olan
+eksik/farklı ISBN kayıtlarıdır. Ortak önerisi olmayan çelişkiler **Çelişki
+incelemesi** bölümündedir. Erişim hataları, yetersiz kanıt ve önerisiz eksik
+ISBN **Kanıt / erişim bekleyen** bölümündedir; bunlar için tek tek yönetici
+kararı gerekmez. Doğrulanan, Yakında veya daha önce karara bağlanan kayıtlar
+ayrı görüntülenir. Filtreler sayfalama öncesi uygulanır; sayaç ve liste aynı
+sınıflandırmayı kullanır.
+
+Duraklatılan çalışma **Taramayı sonlandır** ile kapatılıp yeni kaynaklarla
+baştan taranabilir. Sonuçlar ve karar geçmişi saklanır. Bu işlem ISBN yazmaz.
+
 Tarama yalnız yeni denetim tablolarına yazar. Etkin katalogdaki tüm ciltler
 kalıcı çalışma listesine alınır; backfill bütçesi kullanılmaz. Yayımlandığı
 doğrulanmayan veya gelecekte tarihli ciltler dış kaynak sorgulanmadan atlanır.
@@ -33,6 +45,7 @@ Benzersiz ISBN indeksi korunur; ortak ISBN iddiası başka cilde uygulanmaz.
 |---|---|
 | Kitapyurdu | Ürün başlığı, yayınevi, Türkçe dil, karton kapak ve ISBN okundu. |
 | BKM | Mevcut arama adaptörü ve BKM'nin kendi ürün sayfasından aynı künye okundu. |
+| Kitap Sepeti | Birincil Product+Book JSON-LD'sinden ISBN, yayınevi, dil ve kapak türü okundu; Jujutsu Kaisen 13 ve Solo Leveling Novel 8 gerçek ürünleriyle doğrulandı. |
 | Pandora | robots.txt / ürün erişimi HTTP 403; koruma aşılmadı, `ERROR`. |
 | D&R | robots.txt HTTP 403; koruma aşılmadı, `ERROR`. |
 

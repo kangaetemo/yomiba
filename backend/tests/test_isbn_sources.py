@@ -8,6 +8,45 @@ from app.services.isbn_identity import evaluate
 from tests.test_isbn_audit import target
 
 
+def test_kitapsepeti_primary_book_and_all_published_pages():
+    from app.services.isbn_sources import source_groups
+    calls = []
+    def respond(request):
+        calls.append(str(request.url))
+        if request.url.path == "/arama":
+            if request.url.params.get("pg") == "1":
+                return httpx.Response(200, text='<div class="product-item"><a class="product-title" href="/wrong-volume">Blue Lock Cilt 28</a></div><a href="/arama?q=Blue+Lock+29&amp;pg=2">2</a>')
+            return httpx.Response(200, text='<div class="product-item"><a class="product-title" href="/book">Blue Lock Cilt 29</a></div>')
+        return httpx.Response(200, text='''<h1>Blue Lock Cilt 29</h1><script type="application/ld+json">{"@graph":[
+          {"@type":["Product","Book"],"@id":"https://www.kitapsepeti.com/book#product","isbn":"9786258630633",
+           "publisher":{"name":"Komikşeyler"},"inLanguage":"Turkish","bookFormat":"http://schema.org/Paperback"},
+          {"@type":"Product","url":"https://www.kitapsepeti.com/recommendation","isbn":"9786258630640"}]}</script>''')
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        evidence = RetailerSource("kitapsepeti", "kitapsepeti", client).collect(target())
+    assert len(evidence) == 1 and evidence[0]["status"] == "MATCH" and evidence[0]["isbn"] == target()["isbn"]
+    assert evidence[0]["independence_group"] == "kitapsepeti"
+    assert len(calls) == 3 and "pg=2" in calls[1]
+    assert source_groups()["kitapsepeti"] not in {source_groups()["kitapyurdu"], source_groups()["bkm"]}
+
+
+@pytest.mark.parametrize("body,expected", [
+    ("<h1>Bakım çalışması</h1>", "ERROR"),
+    ("<div>Aramanız için ürün bulunamadı</div>", "NO_RESULT"),
+    ('<div class="product-item"><a class="product-title" href="/wrong-volume">Blue Lock Cilt 28</a></div>', "NO_RESULT"),
+])
+def test_kitapsepeti_absence_requires_recognized_template(body, expected):
+    with httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200, text=body))) as client:
+        evidence = collect_sources(target(), [RetailerSource("kitapsepeti", "kitapsepeti", client)])
+    assert evidence[0]["status"] == expected
+
+
+def test_kitapsepeti_repeated_pagination_is_source_error():
+    body = '<div class="product-item"><a class="product-title" href="/book">Blue Lock Cilt 29</a></div><a href="/arama?q=Blue+Lock+29&amp;pg=2">2</a>'
+    with httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200, text=body))) as client:
+        evidence = collect_sources(target(), [RetailerSource("kitapsepeti", "kitapsepeti", client)])
+    assert evidence[0]["status"] == "ERROR"
+
+
 def test_robot_failure_is_cached_and_never_becomes_no_result(monkeypatch):
     calls = []
     def robots(url, **_kwargs):
