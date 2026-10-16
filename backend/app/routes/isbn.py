@@ -1,5 +1,5 @@
 """Authenticated ISBN review centre; audit triggers never mutate the catalogue."""
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -46,9 +46,19 @@ def start(request: Request, user: User = Depends(require_admin), session: Sessio
     return start_run(request, session, user.id)
 
 
-def start_run(request, session, admin_id, volume_id=None):
+class ConflictRunBody(BaseModel):
+    model_config = {"extra": "forbid"}
+    volume_ids: list[Annotated[int, Field(strict=True, gt=0)]] | None = Field(default=None, min_length=1, max_length=5000)
+
+
+@router.post("/runs/conflicts", status_code=202)
+def start_conflicts(body: ConflictRunBody, request: Request, user: User = Depends(require_admin), session: Session = Depends(get_db)):
+    return start_run(request, session, user.id, conflicts_only=True, volume_ids=body.volume_ids)
+
+
+def start_run(request, session, admin_id, volume_id=None, *, conflicts_only=False, volume_ids=None):
     try:
-        run = create_run(session, admin_id, volume_id=volume_id)
+        run = create_run(session, admin_id, volume_id=volume_id, conflicts_only=conflicts_only, volume_ids=volume_ids)
     except AuditConflict as exc:
         raise HTTPException(409, str(exc)) from None
     worker = getattr(request.app.state, "isbn_audit_worker", None)
