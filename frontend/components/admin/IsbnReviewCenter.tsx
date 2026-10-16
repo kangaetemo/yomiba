@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/time";
-import { controlIsbnAudit, decideIsbn, getIsbnDetail, getIsbnReviews, getIsbnSummary, recheckIsbn, startIsbnAudit } from "@/services/isbn";
+import { controlIsbnAudit, decideIsbn, getIsbnDetail, getIsbnReviews, getIsbnSummary, recheckIsbn, recheckIsbnConflicts, startIsbnAudit } from "@/services/isbn";
 import type { AuditStatus, DecisionAction, IsbnDetail, IsbnReview, IsbnSummary, ReviewQueue } from "@/services/isbn";
 
 const labels: Record<AuditStatus, string> = {
@@ -30,6 +30,7 @@ export function IsbnReviewCenter() {
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
+  const [checked, setChecked] = useState<number[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -52,6 +53,7 @@ export function IsbnReviewCenter() {
         const [nextSummary, list] = await Promise.all([getIsbnSummary(controller.signal), getIsbnReviews(params, controller.signal)]);
         if (controller.signal.aborted) return;
         setSummary(nextSummary); setRows(list.items); setTotal(list.total); setError(""); setLoading(false);
+        setChecked(ids => ids.filter(id => !list.items.some(row => row.volume_id === id && row.status !== "CONFLICT")));
         timer = setTimeout(load, nextSummary.run?.status === "RUNNING" ? 4000 : 30000);
       } catch (e) {
         if (!controller.signal.aborted) { setError(message(e)); setLoading(false); timer = setTimeout(load, 15000); }
@@ -69,13 +71,22 @@ export function IsbnReviewCenter() {
   }
 
   const open = summary?.run && ["RUNNING", "PAUSED"].includes(summary.run.status);
+  const conflicts = summary?.counts.CONFLICT ?? 0;
+  const pageConflicts = rows.filter(row => row.status === "CONFLICT").map(row => row.volume_id);
+  async function bulkRecheck(ids?: number[]) {
+    await runAction(async () => { await recheckIsbnConflicts(ids); if (alive.current) setChecked([]); },
+      "Çelişkili kayıtlar toplu denetime alındı. İlerleme burada güncellenecek; ISBN değişikliği uygulanmaz.");
+  }
   if (summary && !summary.queues) return <p role="status" className="text-sm text-muted">İnceleme merkezi güncelleniyor. Yeni sayaçlar hazır olduğunda sayfa yenilenecek.</p>;
   return <div className="space-y-6">
     <section className="space-y-4 rounded-xl border border-line bg-surface p-5" aria-labelledby="isbn-scan-title">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h2 id="isbn-scan-title" className="font-semibold text-ink">Katalog denetimi</h2>
           <p className="mt-1 text-sm text-muted">İlk tarama tüm etkin kataloğu kapsar. Yakında olan ciltlerde ISBN alarmı açılmaz.</p></div>
-        <button className={primary} disabled={busy || !summary || !!open} onClick={() => void runAction(startIsbnAudit, "Tarama başlatıldı. İlerleme burada güncellenecek.")}>Tüm kataloğu tara</button>
+        <div className="flex flex-wrap gap-2">
+          <button className={button} disabled={busy || !summary || !!open || conflicts === 0} onClick={() => void bulkRecheck()}>Çelişkilileri yeniden denetle ({conflicts})</button>
+          <button className={primary} disabled={busy || !summary || !!open} onClick={() => void runAction(startIsbnAudit, "Tarama başlatıldı. İlerleme burada güncellenecek.")}>Tüm kataloğu tara</button>
+        </div>
       </div>
       {summary?.run ? <div className="space-y-2 rounded-lg bg-surface-2 p-3 text-sm">
         <p className="font-medium text-ink">{summary.run.status === "RUNNING" ? "Tarama sürüyor" : summary.run.status === "PAUSED" ? "Tarama duraklatıldı" : summary.run.status === "COMPLETED" ? "Tarama tamamlandı" : "Tarama kesildi"} · {summary.run.processed} / {summary.run.total} cilt</p>
@@ -105,13 +116,22 @@ export function IsbnReviewCenter() {
         <label className="space-y-1 text-xs text-muted">Denetim sonucu<select className={input} value={status} onChange={e => { setStatus(e.target.value); setOffset(0); }}><option value="">Tüm sonuçlar</option>{Object.entries(labels).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
         <form className="flex items-end gap-2" onSubmit={e => { e.preventDefault(); setQuery(draftQuery); setOffset(0); }}><label className="flex-1 space-y-1 text-xs text-muted">Seri ara<input className={input} value={draftQuery} onChange={e => setDraftQuery(e.target.value)} maxLength={200} /></label><button className={button} type="submit">Ara</button></form>
       </div>
+      {(pageConflicts.length > 0 || checked.length > 0) && <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3">
+        <button className={button} disabled={busy || !!open || pageConflicts.length === 0} onClick={() => setChecked(ids => [...new Set([...ids, ...pageConflicts])])}>Bu sayfadaki çelişkilileri seç</button>
+        <button className={primary} disabled={busy || !!open || checked.length === 0} onClick={() => void bulkRecheck(checked)}>Seçilenleri denetle ({checked.length})</button>
+        {checked.length > 0 && <button className={button} disabled={busy} onClick={() => setChecked([])}>Seçimi temizle</button>}
+        <p className="w-full text-xs text-muted">Seçimler sayfalar arasında korunur. Üstteki “Çelişkilileri yeniden denetle” düğmesi tüm çelişkili kayıtları kapsar.</p>
+      </div>}
       {loading ? <p role="status" className="text-sm text-muted">İncelemeler yükleniyor…</p> : rows.length === 0 ? <p className="rounded-xl border border-line bg-surface p-6 text-sm text-muted">{!summary?.scanned ? "İlk taramanın sonuçları henüz oluşmadı." : queue === "APPROVAL" ? "Bu filtrelerde ISBN değişikliği için onay bekleyen kayıt yok. Diğer sonuçları kuyruk seçicisinden inceleyebilirsiniz." : "Bu filtrelerde inceleme bulunamadı."}</p> : <ul className="space-y-2">{rows.map(row => <li key={row.volume_id}>
-        <button className={`w-full rounded-xl border p-4 text-left transition-colors hover:bg-surface-2 ${selected === row.volume_id ? "border-accent bg-accent-soft" : "border-line bg-surface"}`} onClick={() => setSelected(row.volume_id)} aria-expanded={selected === row.volume_id}>
+        <div className="flex items-start gap-3">
+        {row.status === "CONFLICT" && <input className="mt-5 size-4 shrink-0 accent-accent" type="checkbox" aria-label={`${volumeTitle(row)} kaydını seç`} disabled={busy || !!open} checked={checked.includes(row.volume_id)} onChange={e => setChecked(ids => e.target.checked ? [...ids, row.volume_id] : ids.filter(id => id !== row.volume_id))} />}
+        <button className={`w-full min-w-0 rounded-xl border p-4 text-left transition-colors hover:bg-surface-2 ${selected === row.volume_id ? "border-accent bg-accent-soft" : "border-line bg-surface"}`} onClick={() => setSelected(row.volume_id)} aria-expanded={selected === row.volume_id}>
           <span className="flex flex-wrap justify-between gap-2"><span className="font-semibold text-ink">{volumeTitle(row)}</span><span className={`text-xs font-medium ${row.status === "VERIFIED" ? "text-ok" : "text-warn"}`}>{labels[row.status]}</span></span>
           <span className="mt-1 block text-sm text-muted">{row.snapshot.publisher} · Mevcut: {row.current_isbn || "Boş"} · Öneri: {row.proposed_isbn || "Yok"}</span>
           <span className="mt-1 block text-xs text-muted">{row.reason} · {formatDateTime(row.checked_at)}</span>
           <span className="mt-2 block text-sm font-medium text-new">Kanıtları ve karar geçmişini incele →</span>
         </button>
+        </div>
         {selected === row.volume_id && <ReviewDetail key={row.volume_id} id={row.volume_id} onChange={refresh} onDecision={decisionSaved} onClose={() => setSelected(null)} />}
       </li>)}</ul>}
       {total > 30 && <nav aria-label="İnceleme sayfaları" className="flex items-center justify-between"><button className={button} disabled={offset === 0} onClick={() => { setOffset(Math.max(0, offset-30)); setSelected(null); }}>Önceki</button><span className="text-sm text-muted">{offset+1}–{Math.min(total, offset+30)} / {total}</span><button className={button} disabled={offset+30 >= total} onClick={() => { setOffset(offset+30); setSelected(null); }}>Sonraki</button></nav>}

@@ -40,6 +40,8 @@ export const getIsbnReviews = (params: URLSearchParams, signal?: AbortSignal) =>
   getJson<{ total: number; items: IsbnReview[] }>(`/admin/isbn/reviews?${params}`, signal);
 export const getIsbnDetail = (id: number, signal?: AbortSignal) => getJson<IsbnDetail>(`/admin/isbn/reviews/${id}`, signal);
 export const startIsbnAudit = () => postJson<AuditRun>("/admin/isbn/runs");
+export const recheckIsbnConflicts = (volumeIds?: number[]) =>
+  postJson<AuditRun>("/admin/isbn/runs/conflicts", volumeIds ? { volume_ids: volumeIds } : {});
 export const controlIsbnAudit = (id: number, action: "pause" | "resume" | "stop") => postJson<AuditRun>(`/admin/isbn/runs/${id}/${action}`);
 export const recheckIsbn = (id: number) => postJson<AuditRun>(`/admin/isbn/reviews/${id}/recheck`);
 export const decideIsbn = (id: number, body: { version: number; result_id: number; action: DecisionAction; reason: string; isbn?: string }) =>

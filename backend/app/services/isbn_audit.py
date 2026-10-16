@@ -30,20 +30,30 @@ def tracked():
     return exists().where(CatalogSeries.series_id == Volume.series_id)
 
 
-def create_run(session, admin_id: int | None, *, volume_id: int | None = None, due_only=False):
+def create_run(session, admin_id: int | None, *, volume_id: int | None = None, due_only=False,
+               conflicts_only=False, volume_ids: list[int] | None = None):
     session.rollback()
     session.execute(text("BEGIN IMMEDIATE"))
     try:
         if session.scalar(select(IsbnAuditRun.id).where(IsbnAuditRun.status.in_(["RUNNING", "PAUSED"]))):
             raise AuditConflict("Açık bir tarama var. Önce onu sürdürün veya tamamlayın.")
         query = select(Volume.id).where(tracked(), Volume.catalog_present.is_not(False))
+        if conflicts_only:
+            query = query.join(IsbnReview, IsbnReview.volume_id == Volume.id).join(
+                IsbnAuditResult, IsbnAuditResult.id == IsbnReview.result_id).where(IsbnAuditResult.status == "CONFLICT")
+        if volume_ids is not None:
+            query = query.where(Volume.id.in_(volume_ids))
         if volume_id is not None:
             query = query.where(Volume.id == volume_id)
         if due_only:
             query = query.outerjoin(IsbnReview, Volume.id == IsbnReview.volume_id).where(
                 (IsbnReview.volume_id.is_(None)) | (IsbnReview.next_check_at <= naive_utcnow()))
         ids = list(session.scalars(query.order_by(Volume.id)))
+        if volume_ids is not None and set(ids) != set(volume_ids):
+            raise AuditConflict("Seçilen kayıtlardan bazıları artık etkin katalogda çelişkili değil. Listeyi yenileyip yeniden seçin.")
         if not ids:
+            if conflicts_only:
+                raise AuditConflict("Yeniden denetlenecek çelişkili kayıt bulunamadı. Listeyi yenileyin.")
             if volume_id is not None:
                 raise AuditConflict("Cilt etkin katalogda bulunamadı.")
             session.rollback()

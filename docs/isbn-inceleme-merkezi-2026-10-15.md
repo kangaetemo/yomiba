@@ -112,6 +112,27 @@ kira bulunur. Süreç ölürse kira dolunca başka süreç kayıtlı ilerlemeden
 sürdürür. Duraklatma devam eden kaynak isteği bittiğinde etkili olur.
 Bir açık tarama varken ikinci tarama başlatılmaz.
 
+## Çelişkilileri topluca yeniden denetleme
+
+“Çelişkilileri yeniden denetle” tüm etkin katalogdaki güncel `CONFLICT`
+sonuçlarını, liste sayfalamasından ve arama filtresinden bağımsız olarak
+tek kalıcı çalışmaya alır. Alternatif olarak satır kutucuklarıyla seçim
+yapılıp “Seçilenleri denetle” kullanılabilir; seçimler sayfalar arasında
+korunur. “Bu sayfadaki çelişkilileri seç” yalnız görünen sayfayı ekler.
+
+`POST /admin/isbn/runs/conflicts` boş nesneyle tüm çelişkilileri, dolu
+`volume_ids` listesiyle seçilen alt kümeyi ister. Yetki ve istek doğrulaması
+diğer yönetici uçlarıyla aynıdır. Kimlikler tekilleştirilir. Sunucu tek yazma
+kilidi altında yalnız `IsbnReview.result_id` ile işaret edilen güncel
+sonucu kontrol eder; tarihsel çelişkiler, çözülmüş, katalogdan çıkmış ve
+takip edilmeyen kayıtlar dahil edilmez. Seçilenlerden biri artık uygun
+değilse çalışma hiç oluşturulmadan 409 döner. Boş seçim veya geçersiz
+istek tüm katalog taramasına dönüşmez. Açık/duraklatılmış çalışma varken
+yeni çalışma engellenir; mevcut duraklatma/sürdürme ve ilerleme kullanılır.
+
+Bu işlem yalnız yeni denetim kanıtı üretir. ISBN, yönetici kararı ve eski
+sonuçlar değiştirilmez; iki kaynak ve gerekçeli ISBN onay kapısı korunur.
+
 ## Doğrulama ve yayın
 
 Sentetik testler checksum/ISBN-10 eşdeğerliği, yanlış cilt, novel/webtoon,
