@@ -8,7 +8,13 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 
 Ölçüm: Mevcut ISBN doğrulama sistemi Railway koşullarında 40 ciltten hiçbirini doğrulayamadı; P0 kilidi yeni ciltlere ISBN yazılmasını ve yanlış eşleşme kaldırmayı durdurdu. [Rapor](docs/kesif-kaynaklari-arastirmasi-2026-10-16.md).
 
-- [ ] **Sistemin genel taraması:** ISBN'lerin karışması/eksik kalması ve yanlış listelemelerin kök nedenleri; düzeltme ve geliştirme planı (17 Ekim, sıradaki iş).
+- [x] **Sistemin genel taraması (17 Ekim):** Kök nedenler: (1) ISBN'in tek kaynağı Mangakol, kökeni kaydedilmiyor; (2) eşleştirmede ISBN başlıktaki cilt numarasını eziyor, yanlış ISBN iki sayfayı birden bozuyor (`import_service.py` ISBN yolu + `isbn_conflict`); (3) ISBN'siz ciltte baskılar karışıyor; (4) cilt başına tek, global benzersiz ISBN; (5) yanlış ilan taşınamıyor/silinemiyor; (6) ilan, ürünün başlığını/ISBN'ini ve eşleşme kuralını saklamıyor; (7) mağaza kanıtı kataloğu düzeltmek için kullanılmıyor.
+  - **Kararlar:** Mağaza kanıtı katalog ISBN'ini sadece kesin durumlarda otomatik düzeltir (kayma hatası; en az 2 mağaza aynı başlık+ISBN, karşı kanıt yok), gerisi kuyruğa; her düzeltme kayıtlı ve geri alınabilir. Şüpheli ilan ziyaretçiye gösterilmez (yanlış fiyat, eksik fiyattan kötü).
+- [ ] **1. Salt okunur ISBN sağlık raporu (admin):** ISBN'siz ciltler, aynı ISBN'i isteyen ciltler, fiyatı aykırı ilanlar, kayma şüphesi. Kullanıcı canlıda açıp sonuçları paylaşacak.
+- [ ] **2. Gözlem kaydı:** her mağaza ürünü için başlık, ISBN, çıkarılan seri/cilt, yayınevi, ilk/son görülme, bağlandığı cilt ve kural. P0 kilidini kaldır; ilanlar her taramada yeniden değerlendirilip kanıtla taşınabilsin.
+- [ ] **3. ISBN uzlaşısı:** Mangakol + mağaza gözlemleri; kayma tespiti; kesin durumlarda otomatik düzeltme.
+- [ ] **4. Eşleştirme:** ISBN ve başlıktaki cilt numarası çelişirse bağlama, çelişki kaydet. Fiyat aykırılığı olan ilanı gizle.
+- [ ] **5. Admin:** cilt sayfasında "bu ilan neden burada" (ürün başlığı, ISBN, kural) ve "şüpheli ciltler" listesi.
 - [ ] **ISBN yazmayı geri aç:** Çelişki yoksa (boş alan, benzersiz, geçerli checksum) ISBN otomatik yazılsın; çelişkiler kuyruğa düşsün.
 - [ ] **P0 trigger kilidini kaldır;** yerine her ISBN değişikliği için değişiklik kaydı (eski/yeni, kaynak, zaman) + yedek + geri alma.
 - [ ] **Admin elle ISBN girişi:** checksum ve benzersizlik kontrolü, gerekçe yeterli.
