@@ -1,8 +1,21 @@
 # Yomiba — Yapılacaklar
 
-Son güncelleme: 14 Ekim 2026
+Son güncelleme: 17 Ekim 2026
 
 Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içerir. Maddeler henüz tamamlanmış sayılmaz; uygulama ayrıntıları ve öncelikleri istişare sırasında netleştirilecek. Tamamlanan işler, kararlar ve doğrulama sonuçları [Yomiba çalışma notlarına](docs/yomiba-calisma-notlari.md) tarihli olarak yazılır.
+
+## Yeni yön (16–17 Ekim kararları) — aşağıdaki P0/A/B/C planının yerini alır
+
+Ölçüm: Mevcut ISBN doğrulama sistemi Railway koşullarında 40 ciltten hiçbirini doğrulayamadı; P0 kilidi yeni ciltlere ISBN yazılmasını ve yanlış eşleşme kaldırmayı durdurdu. [Rapor](docs/kesif-kaynaklari-arastirmasi-2026-10-16.md).
+
+- [ ] **Sistemin genel taraması:** ISBN'lerin karışması/eksik kalması ve yanlış listelemelerin kök nedenleri; düzeltme ve geliştirme planı (17 Ekim, sıradaki iş).
+- [ ] **ISBN yazmayı geri aç:** Çelişki yoksa (boş alan, benzersiz, geçerli checksum) ISBN otomatik yazılsın; çelişkiler kuyruğa düşsün.
+- [ ] **P0 trigger kilidini kaldır;** yerine her ISBN değişikliği için değişiklik kaydı (eski/yeni, kaynak, zaman) + yedek + geri alma.
+- [ ] **Admin elle ISBN girişi:** checksum ve benzersizlik kontrolü, gerekçe yeterli.
+- [ ] **Yanlış eşleşme kaldırma ve kalkan ürün temizliğini geri aç.**
+- [ ] **Cilt cilt arama yapan ISBN denetimini kaldır;** yerine liste taramasına dayalı "künye haritası" (ISBN → yayınevi, başlık, cilt, tarih, kaynak).
+- [ ] **Mangakol bağımlılığını bitir:** Mangakol bir besleme olarak kalsın; yeni cilt/seri keşfi kendi kaynaklarımızdan, otomatik. "Yakında" için Mangakol + admin elle giriş. Kaynak seçimi (Bora, Destek Dükkan, idefix, Instagram) şimdilik beklemede.
+- [ ] **Bilinen hatalı ISBN'ler:** Skip and Loafer 4, Huzurlu Kamp 3, Happiness 6 (Mangakol önceki cildin barkodunu vermiş).
 
 ## P0 — Acil ISBN yazma güvenliği ve veri bütünlüğü (ilk iş)
 

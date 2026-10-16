@@ -1,8 +1,8 @@
 # Yomiba çalışma notları
 
-Son güncelleme: 14 Ekim 2026 (katalog farklarını koruyarak düzeltme).
+Son güncelleme: 17 Ekim 2026 (ISBN sisteminin ölçümü ve keşif kaynakları araştırması).
 
-Önceki kayıttaki son kod push bilgisi: 1 Ekim, "Slug URLs, search dialog" (main); öncesi `a906b8e`. Bu bilgi tarihsel kayıttır; güncel branch durumunu ifade etmez.
+Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fazla cihazdan çalışıldığı için yerel kopya yerine her zaman main'deki sürüm esastır.
 
 ## Sistem nasıl çalışıyor
 
@@ -24,6 +24,26 @@ Son güncelleme: 14 Ekim 2026 (katalog farklarını koruyarak düzeltme).
 - Fiyatsız seriler raporu (`fiyatsızlar.txt`): Mağaza bazındaki sebep sayıları, sorgunun döndürdüğü tüm ürünler üzerinden toplanıyor. Örneğin BKM'de büyük bir `publisher_conflict` sayısı genelde "bu mağaza o seriyi satmıyor" demektir.
 
 ## Son günlerde yapılanlar
+
+### 16–17 Ekim: ISBN sisteminin ölçümü ve keşif kaynakları araştırması
+
+- Kod değişmedi; sadece ölçüm ve araştırma. [Ayrıntılı rapor](kesif-kaynaklari-arastirmasi-2026-10-16.md).
+- **ISBN doğrulama sistemi (PR #4–#10) pratikte çalışmıyor.** GitHub'daki denetim kodu 40 rastgele ciltte gerçek kaynaklarla çalıştırıldı. Railway koşullarında (Kitapyurdu 403) **0 doğrulandı**, 39 "yetersiz kanıt". Sebepler: BKM araması her zaman sonuç sınırına ulaştığı için hep `ERROR` sayılıyor; arama sorgusu Mangakol slug'ının romaji adıyla yapılıyor ("hori san to miyamura kun 15"); Pandora ve D&R hep 403; Bora 24'ten fazla sonuçta hata veriyor. Bir cilt ~31 sn, tam katalog ~20 saat.
+- **P0 kilidinin yan etkileri:** Katalog senkronu ve mağaza aktarımı yeni ciltlere ISBN yazmıyor (14 Ekim'den beri yeni ciltler sadece başlıkla eşleşiyor); trigger'lar ilan silmeyi engellediği için admin'in "yanlış eşleşmeyi kaldır" düğmesi çalışmıyor.
+- **Mangakol ISBN'leri bir cilt kayabiliyor:** Skip and Loafer 4, Huzurlu Kamp 3 ve Happiness 6'da (Kayıp Kıta) Mangakol önceki cildin barkodunu vermiş; Bora barkod sayfası ve Kitapyurdu ile doğrulandı.
+- **Kapsama:** Bugün taranan 9 mağaza Mangakol'daki çıkmış ciltlerin %92'sini, son 90 günde çıkanların %87'sini listeliyor.
+- **Kullanıcı kararları:** Mangakol'a bağımlılık bitirilecek, Mangakol tek bir besleme olarak kalacak. ISBN çelişki yoksa otomatik yazılacak; trigger'lı P0 kilidi yerine hafif değişiklik kaydı + yedek; admin gerekçeyle ISBN girebilecek; keşfedilenler otomatik eklenecek. Cilt cilt arayan eski denetim kaldırılacak. "Yakında" için Mangakol + elle giriş.
+- **Sırada:** Tüm sistemin ISBN ve eşleştirme açısından taranması ve düzeltme planı (kullanıcı 17 Ekim'de istedi). Bora/Instagram/e-posta yolları şimdilik beklemede.
+
+### 1–2 Ekim: stok kuralı, baskılar, hız (özet)
+
+- **Stok kuralı:** Ziyaretçiye stokta olmayan teklif gösterilmez; cilt ya "N mağazada stokta" ya "Stokta yok" (`a72d8fa`). Kitapseç adı düzeltildi.
+- **Yeni mağazalar:** Büyülü Dükkan ve İstanbul Kitapçısı (`244453c`); admin mağaza erişim testi (`3730b8d`).
+- **T-Soft stok okuması** (İstanbul Kitapçısı, Kitap Sepeti) ürün sayfasından, 60 ürüne kadar (`f1ba8eb`). Cilt araması ("one piece 47"), koleksiyon sayfası.
+- **Paralel tarama:** Bir serinin mağazaları aynı anda taranıyor; tam güncelleme ~2 saatten ~1 saat 20 dk'ya indi (`df52800`).
+- **Baskılar:** Mangakol'daki her sekme ayrı seri (`<slug>~clothbound`). Solo Leveling için ortak ISBN `SHARED_ISBN_OWNERS` ile varyanta verildi, ISBN'siz ürünler başlıktaki etiket kelimesinden eşleniyor. Afro Samuray: normal sayfası da aynı ISBN'i gösteriyorsa ISBN normal baskıda kalır (`26e46fb`, `bc3074b`, `10e6d47`).
+- **Derin arama:** Gerekli Şeyler, Kitapbulan ve Büyülü Dükkan sonuç sınırları uzun seriler için artırıldı (One Piece 51).
+- **Diğer:** One shot yönlendirmesi, seri seri koleksiyon, admin "kaydı olmayan mağazalar" kutusu, tüm saatler Türkiye saati, hero kapakları ve puantiye arka plan.
 
 ### 14 Ekim: ISBN yazma yollarının zorunlu ön incelemesi
 
@@ -145,15 +165,9 @@ Son güncelleme: 14 Ekim 2026 (katalog farklarını koruyarak düzeltme).
 - **Köken incelemesi:** Güncel mağaza importer'ı kaynakta bulunmayan yeni cilt yaratmıyor (`volume_not_found`); mevcut fazla kayıtların eski aktarım kalıntısı olmasıyla tutarlı. Rapordan hangi mağaza/hangi tarih kökeni kesin çıkarılamıyor. 14 eski numarasız kayıt zaten gizli ve korunuyor.
 - **Uygulanmadı:** Ham raporda `applied=false`; bu çalışma da DB'yi değiştirmedi. Karşılaştırma tamamlandı olarak işaretlendi, görünürlük/künye/ISBN düzeltmeleri öncelikli açık iş olarak ayrıldı.
 
-## Sıradaki adımlar (30 Eylül push'undan sonra)
+## Sıradaki adımlar
 
-1. Railway deploy'unun bitmesini bekle.
-2. **Katalog güncellemesi:** JP/TR durumları dolar ve One Shot sekmesi görünür. Varyantlar kendi ISBN'lerini alır.
-3. **Katalog güncellemesi, ikinci kez:** Normal ciltler kendi ISBN'lerini okur (Soichi → …101).
-4. **Fiyat güncellemesi:** Yanlış yerdeki bez cilt fiyatları varyantlara taşınır.
-5. **Kontrol:**
-   - Normal Soichi sayfasında Kitapseç'in 385 TL'lik bez cilt fiyatı gitmiş olmalı; Soichi (Bez Cilt) fiyat almalı.
-   - Fiyatsız seriler panelinde varyantlar yeni açıklamalarla görünmeli.
+Bekleyen işler [yapılacaklar.md](../yapılacaklar.md) dosyasında.
 
 ## Veri kaynakları araştırması (1 Ekim)
 
