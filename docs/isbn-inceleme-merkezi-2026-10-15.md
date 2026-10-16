@@ -149,6 +149,23 @@ baskı ayrımları ek takma ad oluşturmaz. Arama için doldurulmuş, yan serile
 adlarını da içerebilen `original_title` kimlik kanıtı değildir. Cilt, yayınevi,
 dil, roman/manga, varyant, kağıt ve kapak kontrolleri aynen uygulanır.
 
+Tek ciltli eserlerde mağaza başlığının numarasız olması kabul edilebilir:
+Japonya ve Türkiye durumu `completed`, hedef yayımlanmış normal 1. cilt,
+ana katalog üyeliği ve tam olarak bir etkin katalog cildi gereklidir.
+Sayım duyurulmuş, belirsiz ve numarasız diğer ciltleri de içerir; yalnız
+bir cildi çevrilmiş seri bu kurala girmez. Bu koşul kimlik snapshot'ında
+`single_volume_work` olarak saklanır ve onay anında yeniden hesaplanır.
+Koşulları sağlamayan numarasız ürün `INCOMPLETE` olur; 1. cilt varsayılmaz.
+Açıkça farklı numara, set, omnibus ve baskı çelişkileri reddedilir.
+
+İncelenmiş alternatif adlar katalog slug'ı, tam yerel ad ve yayıneviyle
+sınırlandırılır. `hagane-no-renkinjutsushi` / Metal Simyacı / Akılçelen
+için Fullmetal Alchemist ve Çelik Simyacı adları, aynı fiziksel cilt ve
+yayınevi kontrolleriyle tanınır. Kaynak: [Bora ürün künyesi](https://boradagitim.com/Istem/Urun/Detay.aspx?Id=60601).
+ISBN eşitliği veya arama metni yeni bir ad eşleştirmesi öğretmez.
+Tek cilt koşulu eklenen eski incelemeler önce yeniden denetlenmelidir;
+eski kanıtlar ve kararlar değiştirilmez.
+
 Keşifte kanonik seri adı kullanılır. BKM kayıtlı ürün bağlantısı yoksa önce
 mevcut ISBN ile arar; arama sonuçları yine tam ürün künyesiyle doğrulanır.
 Bora mevcut ISBN'nin herkese açık barkod sayfasını okuyabilir; eksik künye

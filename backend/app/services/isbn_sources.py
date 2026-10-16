@@ -27,7 +27,7 @@ from ..scrapers.bkm import BkmScraper
 from ..scrapers.dr import DrScraper
 from ..scrapers.mangakol import MangakolCatalogScraper
 from ..scrapers.common import has_block_marker
-from .isbn_identity import bibliographic_title, canonical_isbn, catalog_search_title, edition, identity_reason, title_matches
+from .isbn_identity import bibliographic_title, canonical_isbn, catalog_search_title, edition, identity_reason, title_matches, unnumbered_single_volume
 
 HOSTS = {"www.kitapyurdu.com", "www.pandora.com.tr", "www.bkmkitap.com",
          "bkmkitap.com", "bkm-best.wawlabs.com", "cdn.bkmkitap.com", "www.dr.com.tr", "mangakol.com",
@@ -149,10 +149,13 @@ def proof(source: str, group: str, target: dict, book: dict, now=None) -> dict:
         incomplete = ((reason == "Yayınevi farklı veya eksik." and not book.get("publisher"))
             or (reason == "Türkçe baskı kanıtı eksik veya dil farklı." and not book.get("language"))
             or reason == "Cilt/kapak türü kaynakta doğrulanamadı."
+            or reason == "Cilt numarası kaynakta doğrulanamadı."
             or (reason == "Seri başlığı farklı veya belirsiz." and not book.get("title")))
         status = "INCOMPLETE" if incomplete else "MISMATCH"
     else:
         status, reason = "MATCH", "Seri, cilt, yayınevi, Türkçe dil ve baskı eşleşti."
+        if unnumbered_single_volume(target, parse_volume_title(bibliographic_title(book["title"]))):
+            reason = "Katalogda tamamlanmış tek cilt; kaynaktaki başlık, yayınevi, Türkçe dil ve baskı eşleşti."
     return dict(source=source, independence_group=group, status=status, isbn=next(iter(codes)) if len(codes) == 1 else None,
                 reason=reason, checked_at=(now or naive_utcnow()).isoformat(), **book)
 
@@ -358,7 +361,8 @@ class RetailerSource:
         if expected["kind"] != actual["kind"] or expected["variant"] != actual["variant"]:
             return False  # explicitly another product, not an ISBN vote for this edition
         return (title_matches(target, title)
-                and (parsed.volume_number == target["volume_number"] or target.get("covers_from") is not None))
+                and (parsed.volume_number == target["volume_number"] or target.get("covers_from") is not None
+                     or unnumbered_single_volume(target, parsed)))
 
 
 class DiscoverySource:

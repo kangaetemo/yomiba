@@ -102,6 +102,15 @@ def test_canonical_title_query_ignores_search_only_alias_noise():
     assert calls==["jujutsu kaisen 3"]
 
 
+def test_numberless_search_candidates_require_a_confirmed_single_volume_work():
+    t=target(title="Look Back",volume_number=1)
+    assert not RetailerSource.candidate(t,"Look Back")
+    assert RetailerSource.candidate(t|dict(single_volume_work=True),"Look Back")
+    assert not RetailerSource.candidate(t|dict(single_volume_work=True),"Look Back 2")
+    assert not RetailerSource.candidate(t|dict(single_volume_work=True),"Look Back 1-2 Seti")
+    assert not RetailerSource.candidate(t|dict(single_volume_work=True),"Look Back Novel")
+
+
 @pytest.mark.parametrize("stop,cooldown",[("max_results",False),("max_pages",False),("page_error",True)])
 def test_bkm_query_limits_and_network_page_failures_have_different_backoff(monkeypatch,stop,cooldown):
     from app.services import isbn_sources
