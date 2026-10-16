@@ -19,11 +19,19 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - Backend testleri:
   - Komut: `cd backend && .venv/Scripts/python.exe -m pytest -q --ignore=tests/test_task2_identity.py`
   - `test_task2_identity.py` gerçek bir veritabanı istediği için yerelde her zaman hata verir; bu bir regresyon değil.
+  - Windows'ta `tzdata` paketi gerekir (Europe/Istanbul saat dilimi); yoksa ~47 test `ModuleNotFoundError: tzdata` ile düşer. Venv'de pip yok: `uv pip install --python .venv/Scripts/python.exe -r requirements.txt`.
 - Frontend kontrolleri: `cd frontend && npx tsc --noEmit -p . && npx eslint .`
 - `test_rate_limit_keeps_per_store_interval` Windows'ta ara sıra zamanlama yüzünden düşüyor; eskiden beri var.
 - Fiyatsız seriler raporu (`fiyatsızlar.txt`): Mağaza bazındaki sebep sayıları, sorgunun döndürdüğü tüm ürünler üzerinden toplanıyor. Örneğin BKM'de büyük bir `publisher_conflict` sayısı genelde "bu mağaza o seriyi satmıyor" demektir.
 
 ## Son günlerde yapılanlar
+
+### 17 Ekim: ISBN sağlık raporu (salt okunur)
+
+- Admin paneline **ISBN Sağlık Raporu** eklendi (`/admin/isbn/saglik`, API `GET /admin/isbn/health`). Hiçbir kaydı değiştirmez.
+- Kontroller: kayma şüphesi (Mangakol'un önerdiği ISBN komşu ciltte), adresi başka cildi gösteren ilanlar, serinin diğer ciltlerinden çok farklı fiyatlı ciltler (baskı karışması), diğer mağazalardan çok farklı fiyatlı ilanlar, Mangakol'un önerip yazılmayan ISBN'leri (son senkron), ISBN'siz çıkmış ciltler, geçersiz ISBN'ler, birden fazla ciltte duran ürün.
+- "Raporu indir (JSON)" düğmesi var; kullanıcı canlıda açıp dosyayı paylaşacak, düzeltmelerin önceliği buna göre belirlenecek.
+- `tzdata` gereksinimlere eklendi (Windows'ta testler için). Backend 1.088 test geçti; TypeScript, ESLint ve üretim derlemesi başarılı.
 
 ### 16–17 Ekim: ISBN sisteminin ölçümü ve keşif kaynakları araştırması
 

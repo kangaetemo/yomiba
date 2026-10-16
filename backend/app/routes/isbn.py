@@ -11,6 +11,7 @@ from ..database import get_db
 from ..models import IsbnAuditResult, IsbnAuditRun, IsbnDecision, IsbnReview, Series, User, Volume
 from ..services.isbn_audit import AuditConflict, control_run, create_run, tracked, volume_query
 from ..services.isbn_decisions import DecisionError, decide
+from ..services.isbn_health import build_report
 from ..services.isbn_identity import digest, snapshot
 from ..services.isbn_triage import QUEUES, Queue, queue_expression, queue_for
 
@@ -34,6 +35,12 @@ def summary(session: Session = Depends(get_db)):
     latest = session.scalar(select(IsbnAuditRun).order_by(IsbnAuditRun.id.desc()).limit(1))
     return dict(counts=counts, queues=queues, pending=queues["APPROVAL"], scanned=sum(counts.values()), total=total,
                 run=run_json(latest), approval_enabled=approval_enabled(session))
+
+
+@router.get("/health")
+def health(session: Session = Depends(get_db)):
+    """Read-only ISBN health report (sizes wrong / missing ISBN problems)."""
+    return build_report(session)
 
 
 def approval_enabled(session):

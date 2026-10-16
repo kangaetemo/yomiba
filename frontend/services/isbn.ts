@@ -46,3 +46,27 @@ export const controlIsbnAudit = (id: number, action: "pause" | "resume" | "stop"
 export const recheckIsbn = (id: number) => postJson<AuditRun>(`/admin/isbn/reviews/${id}/recheck`);
 export const decideIsbn = (id: number, body: { version: number; result_id: number; action: DecisionAction; reason: string; isbn?: string }) =>
   postJson<{ id: number; old_isbn: string | null; new_isbn: string | null }>(`/admin/isbn/reviews/${id}/decisions`, body);
+
+export type HealthVolume = {
+  volume_id: number; series_id: number; series_slug: string | null; series: string;
+  publisher: string | null; volume_number: number; isbn: string | null;
+};
+export type HealthOffer = { store: string; url: string; in_stock: boolean; price: number | null };
+export type HealthRow = HealthVolume & Partial<HealthOffer> & {
+  listings?: number; in_stock?: number;
+  source_isbn?: string; source_url?: string; kind?: string;
+  holder?: { volume_id: number; series: string | null; volume_number: number; series_slug: string | null } | null;
+  url_number?: number; ratio?: number; others_median?: number;
+  volume_median?: number; series_median?: number; offers?: HealthOffer[];
+  problem?: string; volumes?: Partial<HealthVolume>[];
+};
+export type HealthCheckKey = "missing_isbn" | "deferred_catalog_isbn" | "off_by_one" | "url_volume_mismatch"
+  | "listing_price_outlier" | "volume_price_outlier" | "invalid_isbn" | "shared_product";
+export type IsbnHealth = {
+  generated_at: string; last_sync_finished_at: string | null;
+  totals: { catalog_volumes: number; released_volumes: number; released_with_isbn: number;
+    released_without_isbn: number; without_isbn_but_listed: number; listings: number };
+  checks: Record<HealthCheckKey, { count: number; items: HealthRow[] }>;
+};
+
+export const getIsbnHealth = (signal?: AbortSignal) => getJson<IsbnHealth>("/admin/isbn/health", signal);
