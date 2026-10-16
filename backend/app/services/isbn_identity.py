@@ -11,6 +11,13 @@ from ..normalization.text import normalize_text, publisher_family_key
 from ..normalization.volume import parse_volume_title, parse_volume_range
 
 
+# Reviewed work/edition aliases, never learned from an ISBN match or a search bag.
+# Fullmetal Alchemist / Çelik Simyacı: https://boradagitim.com/Istem/Urun/Detay.aspx?Id=60601
+CATALOG_TITLE_ALIASES = {
+    ("hagane-no-renkinjutsushi", "metal simyaci", "akilcelen"): ("fullmetal alchemist", "celik simyaci"),
+}
+
+
 def canonical_isbn(value: str | None) -> str | None:
     if not value or re.search(r"[^0-9xX\s-]", value):
         return None
@@ -37,11 +44,11 @@ def snapshot(volume) -> dict:
     series = volume.series
     from sqlalchemy import select
     from sqlalchemy.orm import object_session
-    from ..models import CatalogSeries
+    from ..models import CatalogSeries, Volume
     session = object_session(volume)
     slugs = list(session.scalars(select(CatalogSeries.mangakol_slug).where(
         CatalogSeries.series_id == series.id).order_by(CatalogSeries.mangakol_slug))) if session else []
-    return dict(volume_id=volume.id, series_id=series.id, title=series.title,
+    target = dict(volume_id=volume.id, series_id=series.id, title=series.title,
                 catalog_slugs=slugs,
                 original_title=series.original_title, volume_number=volume.volume_number,
                 publisher_id=series.publisher_id, publisher=series.publisher.name,
@@ -49,6 +56,16 @@ def snapshot(volume) -> dict:
                 page_count=volume.page_count, catalog_present=volume.catalog_present,
                 catalog_released=volume.catalog_released,
                 release_date=volume.release_date.isoformat() if volume.release_date else None)
+    if (session and slugs and all("~" not in slug for slug in slugs)
+            and series.jp_status == series.tr_status == "completed"
+            and volume.volume_number == 1 and volume.covers_from is None and eligible(target)):
+        # Count announced/unknown/unnumbered catalogue rows too: one released
+        # volume of an unfinished or multi-volume work is not a one-shot.
+        ids = list(session.scalars(select(Volume.id).where(
+            Volume.series_id == series.id, Volume.catalog_present.is_not(False))))
+        if ids == [volume.id]:
+            target["single_volume_work"] = True
+    return target
 
 
 def eligible(target: dict, today: date | None = None) -> bool:
@@ -80,6 +97,8 @@ def catalog_title_keys(target: dict) -> set[str]:
     for slug in target.get("catalog_slugs", []):
         if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
             keys.add(base_key(slug.replace("-", " ")))
+        keys.update(CATALOG_TITLE_ALIASES.get((slug, normalize_text(target["title"]),
+                    publisher_family_key(target.get("publisher"))), ()))
     return keys - {""}
 
 
@@ -89,6 +108,12 @@ def title_matches(target: dict, title: str) -> bool:
     # Require the entire key, never a substring or a fuzzy title match.
     return actual in keys or any(actual == f"{left} {right}"
         for left in keys for right in keys if left != right)
+
+
+def unnumbered_single_volume(target: dict, parsed) -> bool:
+    return (target.get("single_volume_work") is True and target["volume_number"] == 1
+            and target.get("covers_from") is None and parsed.volume_number is None
+            and not parsed.is_collection and parsed.evidence is None)
 
 
 def catalog_search_title(target: dict) -> str:
@@ -128,8 +153,11 @@ def identity_reason(target: dict, book: dict) -> str | None:
             return "Omnibus kapsamı doğrulanamadı."
     elif parsed.is_collection or span:
         return "Set veya omnibus, tek ciltle eşleşmiyor."
+    missing_number = False
     if not span and parsed.volume_number != target["volume_number"]:
-        return "Cilt numarası farklı veya belirsiz."
+        if parsed.volume_number is not None:
+            return "Cilt numarası farklı veya belirsiz."
+        missing_number = not unnumbered_single_volume(target, parsed)
     if not book.get("publisher") or publisher_family_key(book["publisher"]) != publisher_family_key(target["publisher"]):
         return "Yayınevi farklı veya eksik."
     if normalize_text(book.get("language")) not in {"tr", "tur", "turkish", "turkce"}:
@@ -147,7 +175,7 @@ def identity_reason(target: dict, book: dict) -> str | None:
     expected_binding = binding_kind(target["title"]) or "soft"
     if actual_binding != expected_binding:
         return "Kapak/cilt türü katalog baskısıyla aynı değil."
-    return None
+    return "Cilt numarası kaynakta doğrulanamadı." if missing_number else None
 
 
 def evaluate(target: dict, evidence: list[dict]) -> tuple[str, str | None, str]:

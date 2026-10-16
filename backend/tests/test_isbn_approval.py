@@ -19,11 +19,11 @@ from tests.test_isbn_safety import guarded
 from tests.test_isbn_audit import ISBN
 
 
-def make_review(engine, *, evidence_mutator=None, age=0, volume_id=2, isbn=ISBN):
+def make_review(engine, *, evidence_mutator=None, age=0, volume_id=2, isbn=ISBN, book_title=None):
     with Session(engine, expire_on_commit=False) as session:
         volume = session.get(Volume, volume_id)
         target = snapshot(volume)
-        book = dict(title=f"Berserk Cilt {volume.volume_number}", publisher="Athica Yayınları", language="Türkçe",
+        book = dict(title=book_title or f"Berserk Cilt {volume.volume_number}", publisher="Athica Yayınları", language="Türkçe",
                     binding="Karton Kapak", url="https://example.com/product", raw_isbns=[isbn])
         records = [proof(code, code, target, book) for code in ("kitapyurdu", "bkm")]
         records[0]["url"] = "https://www.kitapyurdu.com/kitap/synthetic/1.html"
@@ -84,6 +84,39 @@ def test_partial_bora_bibliography_cannot_be_used_as_a_second_vote(guarded):
         records[1].update(source="bora",independence_group="bora",url="https://boradagitim.com/Istem/Urun/Detay.aspx?Id=123",
                           language=None,binding=None,status="INCOMPLETE")
     args=make_review(engine,evidence_mutator=mutate)
+    before=inspect_file(path)
+    with Session(engine) as session:
+        with pytest.raises(DecisionError,match="iki bağımsız"):decide(session,**args)
+    assert inspect_file(path)==before
+
+
+@pytest.mark.parametrize("change",[None,"ongoing","new_volume"])
+def test_unnumbered_one_shot_approval_revalidates_catalogue_context(guarded,change):
+    from tests.test_import_service import seed_catalog_series
+    path,engine=guarded
+    with Session(engine) as session:
+        series=seed_catalog_series(session,"Synthetic One Shot","Athica Yayınları",volumes=(1,))
+        series.jp_status=series.tr_status="completed"
+        volume=session.scalar(select(Volume).where(Volume.series_id==series.id))
+        volume.catalog_present=volume.catalog_released=True
+        session.commit();vid,sid=volume.id,series.id
+    args=make_review(engine,volume_id=vid,book_title="Synthetic One Shot")
+    with Session(engine) as session:
+        if change=="ongoing":session.get(Volume,vid).series.tr_status="ongoing"
+        if change=="new_volume":session.add(Volume(series_id=sid,volume_number=2,catalog_present=True,catalog_released=False))
+        session.commit()
+        before=inspect_file(path)
+        if change:
+            with pytest.raises(DecisionError,match="Katalog bilgileri değişti"):decide(session,**args)
+            assert inspect_file(path)==before
+        else:
+            assert decide(session,**args).new_isbn==ISBN
+            assert session.scalar(text("SELECT count(*) FROM isbn_approval_permits"))==0
+
+
+def test_numberless_multi_volume_products_cannot_authorize_isbn_change(guarded):
+    path,engine=guarded
+    args=make_review(engine,book_title="Berserk")
     before=inspect_file(path)
     with Session(engine) as session:
         with pytest.raises(DecisionError,match="iki bağımsız"):decide(session,**args)

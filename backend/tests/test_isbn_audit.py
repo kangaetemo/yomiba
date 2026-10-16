@@ -94,6 +94,65 @@ def test_canonical_slug_does_not_relax_physical_edition_checks():
         assert proof("bkm","bkm",t,b|change)["status"]=="MISMATCH"
 
 
+@pytest.mark.parametrize("title",["Elveda Eri","Look Back","Eriyen Sınıf"])
+def test_confirmed_single_volume_work_accepts_numberless_title_with_full_bibliography(title):
+    t=target(title=title,volume_number=1,single_volume_work=True)
+    b=book(title=title)
+    records=[proof(code,code,t,b) for code in ("bkm","kitapsepeti")]
+    assert all(r["status"]=="MATCH" for r in records)
+    assert evaluate(t,records)[0]=="VERIFIED"
+    assert proof("bkm","bkm",t,book(title=title+" 2"))["status"]=="MISMATCH"
+    assert proof("bkm","bkm",t,book(title=title+" Novel"))["status"]=="MISMATCH"
+    assert proof("bkm","bkm",t,b|dict(language="English"))["status"]=="MISMATCH"
+    assert proof("bkm","bkm",t,b|dict(publisher="Başka Yayınevi"))["status"]=="MISMATCH"
+    assert proof("bkm","bkm",t,b|dict(binding=None))["status"]=="INCOMPLETE"
+    assert evaluate(t,records[:1])[0]=="INSUFFICIENT_EVIDENCE"
+
+
+def test_missing_number_does_not_become_a_first_volume_or_an_isbn_conflict():
+    t=target(volume_number=1)
+    records=[proof(code,code,t,book(title="Blue Lock")) for code in ("bkm","kitapsepeti")]
+    assert all(r["status"]=="INCOMPLETE" for r in records)
+    assert evaluate(t,records)[0]=="INSUFFICIENT_EVIDENCE"
+    assert proof("bkm","bkm",t,book(title="Blue Lock",language="English"))["status"]=="MISMATCH"
+    assert proof("bkm","bkm",target(volume_number=2,single_volume_work=True),book(title="Blue Lock"))["status"]=="INCOMPLETE"
+
+
+@pytest.mark.parametrize("change",[None,"jp_ongoing","tr_unknown","second_announced","legacy_unnumbered","omnibus","variant","unreleased","future"])
+def test_single_volume_snapshot_requires_completed_work_and_exactly_one_catalogue_volume(db_session,change):
+    from app.models import CatalogSeries
+    series=seed_catalog_series(db_session,"Elveda Eri","Gerekli Şeyler",volumes=(1,))
+    series.jp_status=series.tr_status="completed"
+    volume=db_session.scalar(select(Volume).where(Volume.series_id==series.id))
+    volume.catalog_present=volume.catalog_released=True
+    if change=="jp_ongoing":series.jp_status="ongoing"
+    if change=="tr_unknown":series.tr_status=None
+    if change in {"second_announced","legacy_unnumbered"}:
+        db_session.add(Volume(series_id=series.id,volume_number=2 if change=="second_announced" else -1,catalog_present=True,catalog_released=False))
+    if change=="omnibus":volume.covers_from,volume.covers_to=1,2
+    if change=="variant":db_session.scalar(select(CatalogSeries).where(CatalogSeries.series_id==series.id)).mangakol_slug+="~special"
+    if change=="unreleased":volume.catalog_released=False
+    if change=="future":volume.release_date=date(2099,1,1)
+    db_session.flush()
+    before=snapshot(volume)
+    assert before.get("single_volume_work",False)==(change is None)
+    if change is None:
+        series.tr_status="ongoing";db_session.flush()
+        assert digest(before)!=digest(snapshot(volume))
+
+
+@pytest.mark.parametrize("title,expected",[("Fullmetal Alchemist - Çelik Simyacı 1","MATCH"),("Çelik Simyacı 1","MATCH"),
+    ("Fullmetal Alchemist 1","MATCH"),("Fullmetal Alchemist Novel 1","MISMATCH"),("Fullmetal Alchemist Fullmetal Edition 1","MISMATCH"),
+    ("Fullmetal Alchemist - Çelik Simyacı 2","MISMATCH"),("Another Fullmetal Alchemist 1","MISMATCH")])
+def test_reviewed_metal_simyaci_alias_is_exact_and_edition_scoped(title,expected):
+    t=target(title="Metal Simyacı",catalog_slugs=["hagane-no-renkinjutsushi"],publisher="Akılçelen",volume_number=1)
+    b=book(title=title,publisher="Akıl Çelen Kitaplar")
+    assert proof("bkm","bkm",t,b)["status"]==expected
+    if expected=="MATCH":
+        assert proof("bkm","bkm",t|dict(publisher="Athica"),b)["status"]=="MISMATCH"
+        assert proof("bkm","bkm",t|dict(catalog_slugs=["another-series"]),b)["status"]=="MISMATCH"
+
+
 def test_worker_passes_listing_urls_without_changing_identity_or_listings(engine, db_session):
     from app.models import Store, StoreListing
     seed_catalog_series(db_session, "Blue Lock", "Komikşeyler", volumes=(29,))
