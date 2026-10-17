@@ -26,6 +26,19 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 17 Ekim: ISBN sağlık raporunun canlı sonucu
+
+- Canlı rapor (08:42 UTC): 2.359 çıkmış ciltten **27'si ISBN'siz** (%1), ilanı olan 8. Bunların 4'ü bu hafta çıkan ciltler (Mashle 8, Vatansever Moriarty 6, Mavi Kutu 5, Kaiju No. 8 9); Mangakol ISBN'leri "güvenle yazılabilir", P0 yüzünden yazılmamış. Baskı karışması (seriye göre fiyat aykırılığı) **0**.
+- **Happiness 6 canlıda doğru** (…324050); Mangakol şimdi 5. cildin barkodunu öneriyor, P0 ezilmesini önlemiş.
+- **Adresi başka cildi gösteren 30 ilan** canlı ürün sayfalarıyla kontrol edildi; çoğu yanlış alarm: mağazalar eski ürünü düzenleyip yeni cilde çeviriyor, adres eski kalıyor ("naruto-18-cilt-kopya" → Naruto 54; "derin-tarih-…-sayi-153" → Vinland 6, ISBN aynı). Gerçek yanlış eşleşmeler:
+  - **Yubooh Uyurken 1↔2:** Gerekli Şeyler ve Büyülü Dükkan stok kodlarını karıştırmış ("Cilt 2" ürününde …431). Bora, Mangakol ve bizim DB …431 = Cilt 1. ISBN başlığı ezdiği için ürünler ters ciltlere düşmüş.
+  - **Akame Keser 3** ← Kitapseç'in "Akame Keser 2" ürünü (mağazanın ISBN'i 3. cildin).
+  - Kamisama Kiss 8 (Komikşeyler) doğrulanamadı: site 503.
+- **Yüksek fiyat aykırılıkları:** Monster 9'a Gerekli Şeyler'in **İngilizce VIZ Perfect Edition**'ı (1.265 TL) bağlanmış: kartta ISBN yok, başlık "MONSTER 09" ile eşleşmiş, yabancı ISBN detay sayfasında. Komünist Manifesto'ya başka yayınevinin baskısı başlıkla bağlanmış. Madoka Magica 1 (Kitapbulan 502 TL) ISBN'i doğru.
+- **Düşük fiyat aykırılıkları** çoğunlukla gerçek indirim (BKM'de Beta Byou kitapları 99 TL); otomatik gizlenmemeli.
+- 4 özel baskıda ISBN yerine mağaza barkodu duruyor (Solo Leveling Limitli/Varyant, Titana Saldırı: Kayıp Kızlar Limitli). Yıldızların Sesi (5 mağaza) ve Komünist Manifesto ilanları ayrıca eski kopya ciltlere (2439, 2451) de bağlı.
+- **Sonuç:** Canlıda en çok zarar veren iki yol: (1) mağazanın yanlış ISBN'i başlıktaki cilt numarasını eziyor; (2) ISBN'siz mağaza kartı sadece başlıkla eşleşiyor, yabancı/başka yayınevi baskısı sızıyor. Adres kontrolü gürültülü; mağaza başlığı saklanınca onunla değiştirilmeli.
+
 ### 17 Ekim: ISBN sağlık raporu (salt okunur)
 
 - Admin paneline **ISBN Sağlık Raporu** eklendi (`/admin/isbn/saglik`, API `GET /admin/isbn/health`). Hiçbir kaydı değiştirmez.
