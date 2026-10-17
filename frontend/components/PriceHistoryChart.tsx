@@ -13,6 +13,7 @@
 import { useMemo, useRef, useState } from "react";
 import { TIME_ZONE, serverDate } from "@/lib/time";
 import { formatPrice } from "@/components/PriceBadge";
+import { formatTL } from "@/components/ui";
 import type { LowestPricePoint } from "@/types";
 
 const W = 720;
@@ -118,20 +119,19 @@ export function PriceHistoryChart({
 
   return (
     <div className="space-y-4 rounded-xl border border-line bg-surface p-4 shadow-card">
-      <dl className="grid grid-cols-3 gap-2 text-sm">
-        <div className="min-w-0">
-          <dt className="text-xs text-faint">Şu an</dt>
-          <dd className="tabular text-lg font-bold text-ink">{nowPrice !== null ? formatPrice(nowPrice) : "Stokta yok"}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-xs text-faint">{range.days === Infinity ? "En düşük" : `${range.days} günün en düşüğü`}</dt>
-          <dd className="tabular text-lg font-bold text-ink">{lowestStep ? formatPrice(lowestStep.price) : "—"}</dd>
-          {lowestStep && <dd className="truncate text-xs text-muted">{fmtDay(lowestStep.t)}</dd>}
-        </div>
-        <div className="min-w-0">
-          <dt className="text-xs text-faint">Tipik fiyat</dt>
-          <dd className="tabular text-lg font-bold text-ink">{typical !== null ? formatPrice(typical) : "—"}</dd>
-        </div>
+      {/* Same three lines per column: label, value, one short caption. */}
+      <dl className="grid grid-cols-3 gap-3">
+        {[
+          { label: "Şu an", value: nowPrice !== null ? formatTL(nowPrice) : "Stokta yok", note: current?.store ?? "" },
+          { label: "En düşük", value: lowestStep ? formatTL(lowestStep.price) : "—", note: lowestStep ? fmtDay(lowestStep.t) : "" },
+          { label: "Tipik", value: typical !== null ? formatTL(typical) : "—", note: range.days === Infinity ? "tüm geçmiş" : `son ${range.days} gün` },
+        ].map((stat) => (
+          <div key={stat.label} className="min-w-0">
+            <dt className="text-xs text-faint">{stat.label}</dt>
+            <dd className="tabular truncate text-base font-bold text-ink sm:text-lg">{stat.value}</dd>
+            <dd className="truncate text-xs text-muted">{stat.note || " "}</dd>
+          </div>
+        ))}
       </dl>
 
       {ranges.length > 1 && (
@@ -165,14 +165,17 @@ export function PriceHistoryChart({
           {typical !== null && (
             <g>
               <line x1={PAD.left} x2={W - PAD.right} y1={y(typical)} y2={y(typical)} stroke="var(--ink-2)" strokeWidth={1} strokeDasharray="4 4" />
-              <text x={W - PAD.right + 6} y={y(typical) + 4} fontSize={12} fill="var(--muted)">tipik</text>
+              {/* The end price label wins when the two would touch. */}
+              {(last.price === null || Math.abs(y(typical) - y(last.price)) >= 16) && (
+                <text x={W - PAD.right + 6} y={y(typical) + 4} fontSize={12} fill="var(--muted)">tipik</text>
+              )}
             </g>
           )}
           <path d={d} fill="none" stroke="var(--accent)" strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
           {last.price !== null && (
             <g>
               <circle cx={x(t1)} cy={y(last.price)} r={4.5} fill="var(--accent)" stroke="var(--surface)" strokeWidth={2} />
-              <text x={x(t1) + 8} y={y(last.price) + (typical !== null && Math.abs(y(typical) - y(last.price)) < 14 ? 16 : 4)} fontSize={13} fontWeight={700} fill="var(--ink)" className="tabular">{Math.round(last.price)} ₺</text>
+              <text x={x(t1) + 8} y={y(last.price) + 4} fontSize={13} fontWeight={700} fill="var(--ink)" className="tabular">{Math.round(last.price)} ₺</text>
             </g>
           )}
           {at && (

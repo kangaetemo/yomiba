@@ -21,7 +21,7 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
   - [x] Admin: cilt sayfasında "ISBN ve eşleşmeler" paneli (bu ilan neden burada, oylar, geçmiş, elle ISBN / ortak / taşı / otomatiğe bırak); yanlış eşleşme kaldırma geri açıldı; sağlık raporu yeni kontrollerle.
   - [x] Codex'in cilt cilt dış kaynak arayan denetimi ve inceleme merkezi kaldırıldı (`/admin/isbn` → sağlık raporu).
 - [ ] **Canlıda doğrula (yayından sonra):** 4 senkron içinde Mangakol ISBN'leri okunmuş olacak (`catalog_isbn` sayacı raporda). Sonra sağlık raporunu tekrar al: Blue Lock 28/29, Yubooh, Monster 9, Happiness 6 ve "çözülemeyen çelişkiler" listesi.
-- [ ] **Özel baskılardaki mağaza barkodları:** Solo Leveling Limitli/Varyant 1–3 ve Titana Saldırı: Kayıp Kızlar Limitli'de ISBN alanında barkod duruyor; raporda "geçersiz ISBN". Eşleşmeye etkisi yok (barkod hiçbir ürünü bağlamaz); admin panelinden temizlenebilir.
+- [x] **Özel baskılardaki mağaza barkodları:** 18 Ekim: dokunulmayacak. Yayınevi bazı özel varyantlara ISBN yerine barkod veriyor; mağazalar da aynı kodla satıyor, bu yüzden ürün doğru baskıya bağlanıyor. Solo Leveling Limitli/Varyant 1–3 ve Titana Saldırı: Kayıp Kızlar Limitli'de ISBN alanında barkod duruyor; raporda "geçersiz ISBN". Eşleşmeye etkisi yok (barkod hiçbir ürünü bağlamaz); admin panelinden temizlenebilir.
 - [x] **Eski kopya ciltler:** Yıldızların Sesi (2439) ve Komünist Manifesto (2451) ilanları; ürünler bir sonraki taramada doğru cilde taşınıyor, eski satırlar kalıyor. 17 Ekim: #2439 bir sonraki katalog senkronunda #1847'ye birleşir. #2451 başka bir kitap (Kırmızı Kedi baskısı), gizli olarak kalır; Yordam mangasındaki kopya ilanı fiyat taramasında silinir.
 - [ ] **Mangakol bağımlılığını bitir:** Mangakol bir besleme olarak kalsın; yeni cilt/seri keşfi kendi kaynaklarımızdan, otomatik. "Yakında" için Mangakol + admin elle giriş. Kaynak seçimi (Bora, Destek Dükkan, idefix, Instagram) şimdilik beklemede.
 
@@ -48,11 +48,14 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 - [x] **Ana sayfadaki istatistik alanını kaldır.** “Katalogdaki seri: 495”, “Takip edilen mağaza: 10” ve “Güncel fiyat: 13.314” göstergelerini içeren alana ihtiyaç yok. Sayılar, kaldırılacak alanı tanımlamak için mevcut görünümden örnektir.
 - [x] **Ana sloganı daha doğal bir dille yeniden yaz.** Yeni slogan: “Aynı cilt, en uygun fiyat.” “Rafına eklenecek bir sonraki cilt, en uygun fiyatıyla.” sloganı yapay duruyor. Alanın genel fikri ve aşağıdaki açıklama beğeniliyor; yeni slogan birlikte değerlendirilecek.
 
-  > Aynı cildin fiyatını Türkiye'deki kitapçılarda yan yana gör, stokta olanı tek bakışta bul. Koleksiyonunu tut, istek listeni oluştur, fiyat düşünce haberin olsun.
+  > Aynı cildin fiyatını kitapçılarda yan yana gör, stokta olanı tek bakışta bul. Koleksiyonunu tut, istek listeni oluştur, fiyat düşünce haberin olsun.
 
 - [x] **Popüler seriler bölümünü gözden geçir.** Bölümün sunumu ve hangi serilerin gösterileceği birlikte netleştirilecek. 17 Ekim: mağaza çok satan listeleri (idefix, BKM) + yeni cilt + okur ilgisi; yalnız stokta olan seriler.
 - [x] **Yeni çıkanlardaki mobil taşmayı düzelt.** Mobilde en soldaki cilt alanın dışına taşıyor. 17 Ekim: yapıldı ([çalışma notları](docs/yomiba-calisma-notlari.md)).
 - [x] **Fiyat geçmişini yeniden düzenle.** Mevcut görünüm anlaşılır ve kullanışlı değil; grafik ve sunum biçimi gözden geçirilecek. 17 Ekim: tek çizgi, en düşük stoklu fiyat.
+- [x] **Koyu tema anahtarı.** Başlıkta ay/güneş düğmesi; seçim tarayıcıda hatırlanıyor, yoksa cihaz ayarı geçerli. 18 Ekim: yapıldı ([çalışma notları](docs/yomiba-calisma-notlari.md)).
+- [x] **Mobil düzeltmeler (18 Ekim ekran görüntüleri).** Fiyat geçmişi değerleri, en düşük fiyat kutusu, istek listesi/koleksiyon kutusu, öne çıkan seri kartı, hero yazısı, seri sayfası araç çubuğu. 18 Ekim: yapıldı ([çalışma notları](docs/yomiba-calisma-notlari.md)).
+- [x] **Tek ciltlik serilerde cilt seçme sayfası olmasın.** Seri sayfası doğrudan cildin fiyatlarını açıyor. 18 Ekim: yapıldı ([çalışma notları](docs/yomiba-calisma-notlari.md)).
 
 ## Koleksiyon ve istek listesi
 

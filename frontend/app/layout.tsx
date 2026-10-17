@@ -6,6 +6,7 @@ import "./globals.css";
 import { currentUserOrNull } from "@/services/auth";
 import { LogoutButton } from "@/components/LogoutButton";
 import { SearchDialogButton } from "@/components/SearchDialog";
+import { THEME_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
 
 // Turkish needs latin-ext (ş, ğ, ı, İ).
 const body = Figtree({
@@ -39,7 +40,8 @@ function Logo() {
       >
         読
       </span>
-      <span className="font-display text-[1.45rem] leading-none font-semibold tracking-tight text-ink">
+      {/* Under 360px the seal alone carries the brand, so the header fits. */}
+      <span className="font-display text-[1.45rem] leading-none font-semibold tracking-tight text-ink max-[359px]:sr-only">
         yomiba
       </span>
     </Link>
@@ -60,7 +62,12 @@ export default async function RootLayout({
   const user = await currentUserOrNull();
   const navLink = "rounded-md px-1 py-2 text-ink-2 transition-colors hover:text-accent";
   return (
-    <html lang="tr" data-theme="light" className="scroll-smooth">
+    // data-theme is set before paint by THEME_SCRIPT, so it differs from the
+    // server render by design.
+    <html lang="tr" className="scroll-smooth" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className={`${body.variable} ${display.variable} flex min-h-dvh flex-col font-sans text-[1rem] antialiased`}>
         <a
           href="#icerik"
@@ -79,7 +86,8 @@ export default async function RootLayout({
                 </Link>
               ))}
             </nav>
-            <nav aria-label="Hesap" className="flex items-center gap-3 text-sm">
+            <nav aria-label="Hesap" className="flex items-center gap-1.5 text-sm sm:gap-3">
+              <ThemeToggle />
               {user?.role === "ADMIN" && (
                 <Link href="/admin" className={`${navLink} hidden sm:inline`}>
                   Admin
@@ -94,7 +102,8 @@ export default async function RootLayout({
                     Koleksiyonum
                   </Link>
                   <span className="hidden text-muted lg:inline">{user.display_name}</span>
-                  <LogoutButton />
+                  {/* Phones: on the Koleksiyonum page, the header has no room. */}
+                  <LogoutButton className="hidden sm:inline" />
                 </>
               ) : (
                 <>

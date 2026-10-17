@@ -24,7 +24,6 @@ export async function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; sign
     <section id="ara" aria-labelledby="hero-title" className="scroll-mt-28">
       <div className="grid items-center gap-10 lg:grid-cols-[1.25fr_1fr] lg:gap-14">
         <div className="space-y-6">
-          <p className="eyebrow">Manga fiyat karşılaştırma · koleksiyon takibi</p>
           <h1
             id="hero-title"
             className="text-[2.35rem] leading-[1.05] font-semibold text-ink sm:text-[3.4rem]"
@@ -36,8 +35,7 @@ export async function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; sign
             .
           </h1>
           <p className="max-w-xl text-[1.05rem] leading-relaxed text-muted">
-            Aynı cildin fiyatını Türkiye&apos;deki kitapçılarda yan yana gör, stokta olanı tek
-            bakışta bul. Koleksiyonunu tut, istek listeni oluştur, fiyat düşünce haberin olsun.
+            Aynı cildin fiyatını kitapçılarda yan yana gör, stokta olanı tek bakışta bul. Koleksiyonunu tut, istek listeni oluştur, fiyat düşünce haberin olsun.
           </p>
 
           <SearchSection syncUrl />

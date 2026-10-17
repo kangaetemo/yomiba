@@ -9,14 +9,15 @@ export function volumePath(seriesSlug: string, number: number | null): string {
   return `${seriesPath(seriesSlug)}/${number === null ? "cilt-numarasiz" : `cilt-${number}`}`;
 }
 
-/** The only volume of a one shot, when its series page has nothing else
- * to show (no other editions): links go straight to the prices. */
+/** The only volume of a series with a single volume and none announced:
+ * its series page would offer nothing to choose, so links go straight to
+ * the prices (other editions are listed on the volume page). A second
+ * volume — released or announced — brings the series page back. */
 export function oneShotVolumeNumber(series: {
-  one_shot?: boolean;
-  editions?: unknown[];
   volumes: { number: number | null }[];
+  upcoming_volumes?: unknown[];
 }): number | null {
-  if (!series.one_shot || (series.editions ?? []).length > 0) return null;
+  if ((series.upcoming_volumes ?? []).length > 0) return null;
   const numbered = series.volumes.filter((v) => v.number !== null && v.number >= 0);
   return numbered.length === 1 ? numbered[0].number : null;
 }

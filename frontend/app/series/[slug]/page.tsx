@@ -4,6 +4,8 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { FollowMissingButton } from "@/components/FollowMissingButton";
 import { Cover, formatTL, volumeTitle } from "@/components/ui";
 import { SortBar } from "@/components/SortBar";
+import { Segmented } from "@/components/Segmented";
+import { EditionLinks } from "@/components/EditionLinks";
 import { VolumeCard } from "@/components/VolumeCard";
 import { VolumeTile } from "@/components/VolumeTile";
 import { ApiError } from "@/lib/api";
@@ -205,106 +207,50 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
       ) : null}
 
       {/* -- other editions (e.g. Soichi <-> Soichi (Bez Cilt)) ---------------- */}
-      {(detail.editions ?? []).length > 0 && (
-        <section aria-labelledby="baskilar" className="space-y-3">
-          <h2 id="baskilar" className="eyebrow">
-            Bu serinin başka baskıları
-          </h2>
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {(detail.editions ?? []).map((e) => (
-              <li key={e.id}>
-                <Link
-                  href={seriesPath(e.slug)}
-                  className="group flex items-center justify-between gap-4 rounded-xl border border-line bg-surface px-4 py-3 shadow-card transition-colors hover:border-line-strong"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-ink group-hover:text-accent">{e.title}</p>
-                    <p className="truncate text-sm text-muted">
-                      {e.publisher} · {e.volume_count} cilt
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right text-sm">
-                    {e.lowest_price !== null ? (
-                      <span className="tabular font-bold text-ink">
-                        {formatTL(e.lowest_price)}
-                        <span className="font-normal text-muted">&apos;den</span>
-                      </span>
-                    ) : (
-                      <span className="text-faint">Stokta yok</span>
-                    )}
-                    <span aria-hidden className="ml-2 text-ink-2">→</span>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <EditionLinks editions={detail.editions ?? []} />
 
       {/* -- volumes ------------------------------------------------------ */}
       <section aria-labelledby="ciltler" className="space-y-4">
         <div className="rule" aria-hidden />
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="ciltler" className="text-2xl font-semibold text-ink">
-            Ciltler{" "}
-            <span className="font-sans text-sm font-normal text-muted">
-              {activeFilter === "all" && !stockOnly ? `${detail.volumes.length} cilt` : `${stockOnly ? "Stokta" : activeLabel} · ${volumes.length}`}
-            </span>
-          </h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <div role="group" aria-label="Görünüm" className="flex overflow-hidden rounded-lg border border-line">
-              {[
-                { key: null, label: "Izgara", icon: "▦" },
-                { key: "list", label: "Liste", icon: "☰" },
-              ].map((opt) => {
-                const active = (opt.key === "list") === listView;
-                return (
-                  <Link
-                    key={opt.label}
-                    href={hrefWith({ view: opt.key })}
-                    scroll={false}
-                    aria-label={`${opt.label} görünümü`}
-                    aria-current={active ? "true" : undefined}
-                    className={`grid min-h-9 w-10 place-items-center text-base transition-colors ${
-                      active ? "bg-accent text-on-accent" : "bg-surface text-muted hover:text-ink"
-                    }`}
-                  >
-                    <span aria-hidden>{opt.icon}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <h2 id="ciltler" className="text-2xl font-semibold text-ink">
+          Ciltler{" "}
+          <span className="font-sans text-sm font-normal text-muted">
+            {activeFilter === "all" && !stockOnly ? `${detail.volumes.length} cilt` : `${stockOnly ? "Stokta" : activeLabel} · ${volumes.length}`}
+          </span>
+        </h2>
 
         <SortBar
           sorts={SORTS}
           active={activeSort}
           stockOnly={stockOnly}
           hrefFor={(c) => hrefWith({ ...c, all: null })}
-        />
+        >
+          <Segmented
+            label="Görünüm"
+            items={[
+              { key: "grid", label: "Izgara", icon: <GridIcon /> },
+              { key: "list", label: "Liste", icon: <ListIcon /> },
+            ].map((opt) => ({
+              key: opt.key,
+              href: hrefWith({ view: opt.key === "list" ? "list" : null }),
+              active: (opt.key === "list") === listView,
+              ariaLabel: `${opt.label} görünümü`,
+              children: opt.icon,
+            }))}
+          />
+        </SortBar>
 
         {signedIn && (
-          <nav aria-label="Ciltleri koleksiyon durumuna göre filtrele" className="flex flex-wrap gap-2">
-            {FILTERS.map((f) => {
-              const active = f.value === activeFilter;
-              return (
-                <Link
-                  key={f.value}
-                  href={hrefWith({ status: f.value === "all" ? null : f.value, all: null })}
-                  scroll={false}
-                  aria-current={active ? "page" : undefined}
-                  className={`${chip} ${
-                    active
-                      ? "border-accent bg-accent font-semibold text-on-accent"
-                      : "border-line bg-surface text-ink-2 hover:border-line-strong"
-                  }`}
-                >
-                  {f.label}
-                </Link>
-              );
-            })}
-          </nav>
+          <Segmented
+            label="Ciltleri koleksiyon durumuna göre filtrele"
+            current="page"
+            items={FILTERS.map((f) => ({
+              key: f.value,
+              href: hrefWith({ status: f.value === "all" ? null : f.value, all: null }),
+              active: f.value === activeFilter,
+              children: f.label,
+            }))}
+          />
         )}
 
         {volumes.length === 0 ? (
@@ -371,5 +317,23 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
         Fiyatlar mağazaların son kontrol edilen verilerini gösterir; stok bilgisi gecikmeli olabilir.
       </p>
     </div>
+  );
+}
+
+
+function GridIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="4" y="4" width="6.5" height="6.5" rx="1.2" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2" />
+      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2" />
+    </svg>
+  );
+}
+
+function ListIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <path d="M5 7h14M5 12h14M5 17h14" />
+    </svg>
   );
 }

@@ -84,7 +84,7 @@ export function HeroShelf({ series }: { series: PopularSeries[] }) {
           <p className="truncate font-display text-base text-ink">{front.title}</p>
           <div className="mt-1 flex items-baseline justify-between gap-3">
             <span className="text-xs text-muted">
-              {front.volume_count} cilt · {front.in_stock_offers} stokta fiyat
+              {front.volume_count} cilt
             </span>
             <span className="tabular text-sm font-bold text-ink">
               {formatTL(front.lowest_price)}

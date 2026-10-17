@@ -1,6 +1,6 @@
 # Yomiba çalışma notları
 
-Son güncelleme: 17 Ekim 2026 (fiyat alarmları, ana sayfa, koleksiyon, fiyat geçmişi, popüler seriler).
+Son güncelleme: 18 Ekim 2026 (koyu tema, mobil düzeltmeler, tek ciltlik seriler).
 
 Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fazla cihazdan çalışıldığı için yerel kopya yerine her zaman main'deki sürüm esastır.
 
@@ -25,6 +25,30 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - Fiyatsız seriler raporu (`fiyatsızlar.txt`): Mağaza bazındaki sebep sayıları, sorgunun döndürdüğü tüm ürünler üzerinden toplanıyor. Örneğin BKM'de büyük bir `publisher_conflict` sayısı genelde "bu mağaza o seriyi satmıyor" demektir.
 
 ## Son günlerde yapılanlar
+
+### 18 Ekim: koyu tema, mobil düzeltmeler, tek ciltlik seriler
+
+- **Koyu tema:**
+  - Başlıkta ay/güneş düğmesi (`components/ThemeToggle.tsx`).
+  - Seçim `localStorage`'da (`yomiba-theme`) tutuluyor; seçim yoksa cihaz ayarı (`prefers-color-scheme`) geçerli.
+  - `<head>`'deki küçük betik temayı ilk çizimden önce uyguluyor; açık temanın bir an görünüp koyuya dönmesi yok.
+  - İki ikon da sunucuda çiziliyor, CSS `dark:` (`@custom-variant dark` = `[data-theme="dark"]`) doğru olanı gösteriyor.
+  - Koyu renkler `globals.css`'te zaten tanımlıydı.
+- **Dar telefonlar:**
+  - Giriş yapılmışken başlık 375px'te bölünüyor, 320px'te taşıyordu. Telefonda "Çıkış Yap" Koleksiyonum sayfasına taşındı.
+  - 360px'ten dar ekranda logoda yalnız 読 mührü kalıyor.
+- **Mobil düzeltmeler** (kullanıcının ekran görüntülerinden):
+  - Fiyat geçmişinde üç değer aynı yapıda (etiket, fiyat, tek satırlık not), kuruşsuz. "tipik" yazısı son fiyat etiketine binmiyor.
+  - En düşük fiyat kutusu `BestPriceCard`'a ayrıldı ve sıkıştırıldı. İndirim satırı tek satır: "₺12 ucuzladı · önceki en düşük ₺280".
+  - İstek listesi/koleksiyon kutusundaki başlık ve boş satır kalktı. "Bende var" (✓) ve "Bende yok" (✕) artık ayrı, çerçeveli düğmeler.
+  - Öne çıkan seri kartında yalnız "N cilt" yazıyor.
+  - Hero'daki küçük başlık yazısı ve "Türkiye'deki" kalktı.
+  - Seri ve one-shot sayfalarında sıralama tek bir açılır menü (`SortSelect`). "Sadece stokta" yeşil bir anahtar. Izgara/liste ve koleksiyon filtreleri sade bölmeli kontrol (`Segmented`).
+- **Tek ciltlik seriler:** Serinin tek cildi varsa ve duyurulmuş yeni cilt yoksa, seri sayfası geçici yönlendirmeyle cildin sayfasını açıyor. Eskiden ayrıca JP/TR "tamamlandı" ve başka baskı olmaması gerekiyordu. Başka baskılar artık cilt sayfasında da listeleniyor (`EditionLinks`).
+- **Doğrulama:**
+  - `tsc`, `eslint` ve `npm run build` temiz.
+  - Görünüm 375/360/320px'te, sahte backend ve yalnız yerelde kullanılıp silinen geçici bir önizleme sayfasıyla kontrol edildi.
+  - Koleksiyonum sayfasındaki çıkış satırı ekranda görülmedi.
 
 ### 17 Ekim gecesi: kesin ISBN'de başka kitabın ilanı silinir, eski kopyalar birleşir
 

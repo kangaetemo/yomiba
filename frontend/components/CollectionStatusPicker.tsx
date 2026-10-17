@@ -14,16 +14,18 @@ import { useState } from "react";
 import { setVolumeCollectionStatus } from "@/services/catalog";
 import type { CollectionStatus } from "@/types";
 
-const OPTIONS: { value: CollectionStatus; label: string; activeClass: string }[] = [
+const OPTIONS: { value: CollectionStatus; label: string; activeClass: string; icon: string }[] = [
   {
     value: "owned",
     label: "Bende var",
     activeClass: "border-ok/50 bg-ok-soft text-ok",
+    icon: "M5 12.5 10 17.5 19 7",
   },
   {
     value: "missing",
     label: "Bende yok",
     activeClass: "border-bad/40 bg-bad-soft text-bad",
+    icon: "M7 7l10 10M17 7 7 17",
   },
 ];
 
@@ -55,8 +57,9 @@ export function CollectionStatusPicker({
   }
 
   return (
-    <div className="space-y-2">
-      <div role="group" aria-label="Koleksiyon durumu" className="grid grid-cols-2 gap-1.5 rounded-xl bg-surface-2 p-1">
+    <div className="space-y-1">
+      {/* Two separate buttons (not a fused segment): each is its own state. */}
+      <div role="group" aria-label="Koleksiyon durumu" className="grid grid-cols-2 gap-2">
         {OPTIONS.map((opt) => {
           const active = status === opt.value;
           return (
@@ -66,19 +69,23 @@ export function CollectionStatusPicker({
               aria-pressed={active}
               disabled={pending}
               onClick={() => pick(active ? null : opt.value)}
-              className={`min-h-11 rounded-lg border text-sm font-semibold transition-colors disabled:opacity-60 ${
-                active ? `${opt.activeClass} shadow-card` : "border-transparent text-muted hover:bg-surface hover:text-ink"
+              title={active ? "Tekrar basınca kaldırılır" : undefined}
+              className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-2 text-sm font-semibold transition-colors disabled:opacity-60 ${
+                active ? opt.activeClass : "border-line-strong bg-surface text-ink-2 hover:border-ink/40 hover:text-ink"
               }`}
             >
+              <svg viewBox="0 0 24 24" aria-hidden className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d={opt.icon} />
+              </svg>
               {opt.label}
             </button>
           );
         })}
       </div>
-      <div className="flex min-h-5 items-center justify-between text-xs">
-        <span className="text-muted">{pending ? "Kaydediliyor…" : status ? "Aynı düğmeye tekrar basınca kaldırılır." : ""}</span>
-        {error && <span className="text-bad">{error}</span>}
-      </div>
+      {/* Only when there is something to say: no reserved empty row. */}
+      {(pending || error) && (
+        <p className={`text-xs ${error ? "text-bad" : "text-muted"}`}>{error ?? "Kaydediliyor…"}</p>
+      )}
     </div>
   );
 }

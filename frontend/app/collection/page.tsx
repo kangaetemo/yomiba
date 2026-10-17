@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Badge, type BadgeTone, Cover, SectionHeading, formatTL } from "@/components/ui";
 import { volumeLabel } from "@/lib/volumeLabel";
 import { currentUser } from "@/services/auth";
+import { LogoutButton } from "@/components/LogoutButton";
 import { getMyCollection, getMyPriceAlerts, getMyWishlist } from "@/services/me";
 import type { CollectionStatus, MyCollectionItem, MyVolume } from "@/types";
 
@@ -175,6 +176,10 @@ export default async function CollectionPage() {
         <h1 className="text-3xl font-semibold text-ink sm:text-4xl">Koleksiyonum</h1>
         <p className="max-w-2xl text-sm text-muted sm:text-base">
           İşaretlediğin ciltler, istek listen ve fiyat alarmların.
+        </p>
+        {/* Phones: the header has no room for it (see layout). */}
+        <p className="text-sm text-muted sm:hidden">
+          {user.display_name} · <LogoutButton className="font-semibold text-ink-2" />
         </p>
         {collection.length > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">

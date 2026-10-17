@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
-import { DealSummary } from "@/components/DealSummary";
+import { BestPriceCard } from "@/components/BestPriceCard";
+import { EditionLinks } from "@/components/EditionLinks";
 import { StoreListingCard } from "@/components/StoreListingCard";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { CollectionStatusPicker } from "@/components/CollectionStatusPicker";
@@ -169,14 +170,11 @@ export default async function VolumePage({ params }: VolumePageProps) {
             eager
             className="mx-auto w-52 sm:w-60 lg:w-full"
           />
-          <div className="space-y-3 rounded-2xl border border-line bg-surface p-4 shadow-card">
+          <div className="space-y-2 rounded-2xl border border-line bg-surface p-3 shadow-card">
             {user ? (
               <>
                 <WishlistToggle volumeId={numId} initial={wishlist?.wishlisted ?? false} />
-                <div className="space-y-1.5">
-                  <p className="eyebrow">Koleksiyonum</p>
-                  <CollectionStatusPicker volumeId={numId} initial={detail.collection_status} />
-                </div>
+                <CollectionStatusPicker volumeId={numId} initial={detail.collection_status} />
               </>
             ) : (
               <div className="space-y-2 text-sm text-muted">
@@ -233,23 +231,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
           </header>
 
           {best && (
-            <a
-              href="#magazalar"
-              className="group flex flex-wrap items-end justify-between gap-4 rounded-2xl border border-accent/25 bg-accent-soft/60 px-5 py-4 transition-colors hover:border-accent/50"
-            >
-              <div>
-                <p className="text-sm text-accent">En düşük fiyat</p>
-                <p className="tabular font-sans text-4xl font-bold tracking-tight text-ink">{formatTL(best.price)}</p>
-                <p className="mt-1 text-sm text-muted">{best.stores.join(" · ")}</p>
-                {deal ? <div className="mt-3"><DealSummary deal={deal} /></div>
-                  : alternative !== null && <p className="mt-2 text-sm font-semibold text-accent">
-                    Diğer mağazaların en ucuz teklifinden {formatTL(alternative - best.price)} daha uygun
-                  </p>}
-              </div>
-              <span className="inline-flex min-h-11 items-center gap-1 font-semibold text-ink-2 group-hover:text-accent">
-                Mağazaları karşılaştır <span aria-hidden>↓</span>
-              </span>
-            </a>
+            <BestPriceCard price={best.price} stores={best.stores} deal={deal} alternative={alternative} />
           )}
           {!best && !detail.unverified && (
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface px-5 py-4">
@@ -407,6 +389,9 @@ export default async function VolumePage({ params }: VolumePageProps) {
           </div>
         </div>
       </div>
+
+      {/* A single volume's series page redirects here: its editions live here. */}
+      {isOneShot && <EditionLinks editions={series.editions ?? []} />}
 
       {related.length > 1 && (
         <section aria-labelledby="seri-title" className="space-y-5">

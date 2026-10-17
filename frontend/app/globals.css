@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* `dark:` follows the page theme attribute (ThemeToggle), not the OS alone. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /*
  * Yomiba design tokens — "editorial manga paper".
  * Warm paper surfaces, ink text, a hanko-red accent (deals, primary actions)
