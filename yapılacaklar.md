@@ -1,8 +1,42 @@
 # Yomiba — Yapılacaklar
 
-Son güncelleme: 17 Ekim 2026
+Son güncelleme: 18 Ekim 2026
 
 Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içerir. Maddeler henüz tamamlanmış sayılmaz; uygulama ayrıntıları ve öncelikleri istişare sırasında netleştirilecek. Tamamlanan işler, kararlar ve doğrulama sonuçları [Yomiba çalışma notlarına](docs/yomiba-calisma-notlari.md) tarihli olarak yazılır.
+
+## Halka açılmadan önce (18 Ekim)
+
+- [ ] **Yomiba + Filminibul'u bir VPS'e taşı.** Sebep: Vercel ve Railway ücretsiz plan uyarıları; Vercel Hobby ticari kullanıma izin vermiyor.
+  - Plan: Docker Compose, önde Caddy (alan adına göre yönlendirme, otomatik HTTPS).
+  - Yomiba backend tek süreç olarak, SQLite ve kapaklar yerel diskte (`backend/PRODUCTION.md`).
+  - Filminibul (Next 14 + Supabase + Firebase + OpenAI + TMDB; GitHub Actions işleri): Next uygulaması VPS'e geçer.
+  - Supabase şimdilik kalabilir; ama ücretsiz kotası dolmak üzere (2 Ekim: 393/500 MB), bu yüzden Postgres + pgvector'ü VPS'te çalıştırmak da seçenek.
+  - Güncellemeler otomatik:
+    - işletim sistemi güvenlik yamaları + gece yeniden başlatma (unattended-upgrades),
+    - push'ta GitHub Actions ile deploy,
+    - haftalık imaj yenileme,
+    - gece sunucu dışı yedek (DB + kapaklar),
+    - erişilebilirlik takibi.
+  - **Önce:** Yeni sunucuda `backend/outbound_smoke.py` ile mağaza erişimini test et. Bazı mağazalar yurt dışı veri merkezi IP'lerini engelleyebilir; sorun çıkarsa Türkiye'de bir VPS düşün.
+  - Sunucu: Hetzner düşünülüyor (stok sorunu; başka konum ya da ARM/CAX denenebilir).
+  - Ziyaretçi sayacı: `@vercel/analytics` yerine kendi sunucumuzda çalışan bir sayaç (ör. Umami).
+- [ ] **Yomiba alan adı.** .com ve .app alınmış; karar bekliyor (ör. .com.tr / .tr / .net). VPS'te HTTPS ve alarm mailleri (Resend) için gerekli.
+- [ ] **SEO çalışmaları.** 18 Ekim tespiti: site haritası, `robots.txt` ve yapılandırılmış veri (JSON-LD) yok. Yapılacaklar:
+  - `sitemap.xml` (seri + cilt sayfaları) ve `robots.txt`
+  - cilt sayfalarına schema.org `Book` + `Offer` (ISBN, fiyat, stok, mağaza), seri sayfalarına `BookSeries`, gezinti için `BreadcrumbList`
+  - sayfa başlığı ve açıklamaları ("Solo Leveling 5. Cilt fiyatları — N mağazada ₺X'den"), canonical adresler, paylaşım önizlemeleri (Open Graph görselleri)
+  - Google Search Console ve Bing Webmaster kaydı. Bing, ChatGPT gibi yapay zekâ aramalarını da besliyor; sayfaların yapay zekâ cevaplarında kaynak gösterilmesi için temiz, taranabilir sayfalar ve yapılandırılmış veri önemli.
+- [ ] **Mağaza bağlantılarına kaynak etiketi.** Şu an mağaza linkleri `rel="noopener noreferrer"` ile açılıyor; `noreferrer` yüzünden mağaza ziyaretçinin Yomiba'dan geldiğini hiç görmüyor.
+  - `noreferrer` kaldırılacak (`noopener` kalır).
+  - `utm_source=yomiba&utm_medium=referral` eklenecek.
+  - Her mağazanın adresi parametreyle hâlâ açılıyor mu, kontrol edilecek.
+  - SEO'ya doğrudan etkisi yok. Amaç, mağazaların Yomiba trafiğini kendi istatistiklerinde görmesi; ortaklık ya da komisyon görüşmesinde kanıt olur.
+- [ ] **Filminibul ↔ Yomiba çapraz yönlendirme.**
+  - Filminibul'da mangadan uyarlanan film ve animelerin sayfasına "Mangası Yomiba'da: ₺X'den" kartı (TMDB "based on manga" anahtar kelimesi + Yomiba arama API'si).
+  - Filminibul'un "Tarif et" aramasında manga ya da fiyat soran bir cümle algılanırsa Yomiba'ya yönlendirme.
+- [ ] **Mobil uygulama (iki proje).** İlk adım PWA olabilir (ana ekrana eklenebilir site), sonra React Native / Expo.
+  - Yomiba'nın çerezle çalışan girişine mobil için token girişi gerekecek.
+  - Fiyat alarmları e-posta yerine ya da yanında anlık bildirimle (FCM) gidebilir.
 
 ## Yeni yön (16–17 Ekim kararları) — aşağıdaki P0/A/B/C planının yerini alır
 
