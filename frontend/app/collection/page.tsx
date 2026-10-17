@@ -157,7 +157,7 @@ function Empty({ text }: { text: string }) {
 
 export default async function CollectionPage() {
   const user = await currentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/login?next=%2Fcollection");
 
   const [collection, wishlist, alerts] = await Promise.all([
     getMyCollection(),

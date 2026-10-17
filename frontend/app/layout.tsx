@@ -4,10 +4,10 @@ import { Figtree, Fraunces } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { currentUserOrNull } from "@/services/auth";
-import { LogoutButton } from "@/components/LogoutButton";
 import { AccountMenu } from "@/components/AccountMenu";
 import { SearchDialogButton } from "@/components/SearchDialog";
 import { THEME_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
+import { LoginLink } from "@/components/LoginLink";
 
 // Turkish needs latin-ext (ş, ğ, ı, İ).
 const body = Figtree({
@@ -90,36 +90,32 @@ export default async function RootLayout({
             <nav aria-label="Hesap" className="flex items-center gap-1.5 text-sm sm:gap-3">
               <ThemeToggle />
               {user?.role === "ADMIN" && (
-                <Link href="/admin" className={`${navLink} hidden sm:inline`}>
+                <Link href="/admin" className={`${navLink} hidden lg:inline`}>
                   Admin
                 </Link>
               )}
               {user ? (
                 <>
-                  {/* Phones: one "Hesabım" menu; the header has no room for three. */}
-                  <div className="sm:hidden">
-                    <AccountMenu name={user.display_name} admin={user.role === "ADMIN"} />
-                  </div>
                   <Link
                     href="/collection"
                     className="hidden min-h-11 items-center rounded-lg border border-line bg-surface px-3 font-semibold text-ink transition-colors hover:border-line-strong sm:inline-flex"
                   >
                     Koleksiyonum
                   </Link>
-                  <span className="hidden text-muted lg:inline">{user.display_name}</span>
-                  <LogoutButton className="hidden sm:inline" />
+                  {/* Account settings, admin and logout live in this menu. */}
+                  <AccountMenu name={user.display_name} admin={user.role === "ADMIN"} />
                 </>
               ) : (
                 <>
-                  <Link href="/login" className={`${navLink} min-h-11 inline-flex items-center`}>
+                  <LoginLink className={`${navLink} min-h-11 inline-flex items-center`}>
                     Giriş yap
-                  </Link>
-                  <Link
-                    href="/register"
+                  </LoginLink>
+                  <LoginLink
+                    to="/register"
                     className="inline-flex min-h-11 items-center rounded-lg bg-ink px-3.5 font-semibold text-paper transition-colors hover:bg-accent"
                   >
                     Kayıt ol
-                  </Link>
+                  </LoginLink>
                 </>
               )}
             </nav>

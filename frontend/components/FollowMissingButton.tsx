@@ -6,11 +6,11 @@
  * explicit action: marking a volume "Bende yok" never does this by itself.
  */
 
-import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { addToWishlist } from "@/services/catalog";
 import { BookmarkIcon } from "@/components/volumeStock";
+import { LoginLink } from "@/components/LoginLink";
 
 export function FollowMissingButton({
   signedIn,
@@ -32,9 +32,9 @@ export function FollowMissingButton({
 
   if (!signedIn) {
     return (
-      <Link href="/login" className={`${base} border-line-strong bg-surface text-ink hover:border-accent hover:text-accent`}>
+      <LoginLink className={`${base} border-line-strong bg-surface text-ink hover:border-accent hover:text-accent`}>
         <BookmarkIcon /> Eksiklerimi istek listeme ekle
-      </Link>
+      </LoginLink>
     );
   }
 

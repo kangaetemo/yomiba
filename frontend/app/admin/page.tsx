@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default async function AdminPage() {
   const user = await currentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/login?next=%2Fadmin");
   if (user.role !== "ADMIN") redirect("/");
   return (
     <div className="space-y-6">

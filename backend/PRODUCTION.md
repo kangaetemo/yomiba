@@ -38,6 +38,17 @@ starting the new backend against the real database.
   `X-Forwarded-For` values for authentication or rate limiting.
 - `AUTH_DEVICE_SECRET` (long random value, set in the host's secret store)
   keeps trusted-device cookies valid across restarts.
+- Sessions slide: each use (at most once a day) extends a session to
+  `AUTH_SESSION_DAYS` (default 30) from now, never past `AUTH_SESSION_MAX_DAYS`
+  (default 365) after login. The browser cookie itself lives 400 days; the
+  server-side expiry decides.
+- Google sign-in: `GOOGLE_CLIENT_IDS` (backend; comma-separated OAuth client
+  ids accepted as the ID token audience — web now, mobile apps later) and
+  `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (frontend build; the web client id). Both
+  empty: the Google button is hidden and `/auth/google` answers 503. In
+  Google Cloud add the site origin(s) under "Authorized JavaScript origins";
+  no redirect URI or client secret is needed (popup flow, tokens verified
+  locally against Google's published keys).
 - Startup writes an online backup (`<db>.pre-migration-<rev>-<UTC>.bak`,
   next to the DB) before applying a pending Alembic migration
   (`AUTO_MIGRATION_BACKUP=1`, default). Keep volume headroom for one DB copy.

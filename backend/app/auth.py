@@ -18,6 +18,9 @@ from .models import User, UserSession
 from .utils import utcnow
 
 COOKIE_NAME = "yomiba_session"
+#: The browser keeps the cookie this long (Chrome's cap is 400 days); the
+#: server-side ``expires_at`` decides whether the session is still valid.
+COOKIE_MAX_AGE_DAYS = 400
 PASSWORD_HASHER = PasswordHasher(type=Type.ID)
 # Keep a real Argon2 verification on missing accounts to avoid a trivial timing oracle.
 DUMMY_HASH = PASSWORD_HASHER.hash("not-a-real-account-password")
@@ -51,7 +54,23 @@ def _lookup_session(request: Request, session: Session) -> tuple[User | None, Us
     user = session.get(User, row.user_id)
     if user is None or not user.is_active:
         return None, None
+    _slide(session, row)
     return user, row
+
+
+def _slide(session: Session, row: UserSession) -> None:
+    """Used sessions stay alive: push ``expires_at`` to ``auth_session_days``
+    from now, at most once a day (one small write), never past
+    ``auth_session_max_days`` after login."""
+    settings = get_settings()
+    now = utcnow()
+    created = row.created_at.replace(tzinfo=row.created_at.tzinfo or timezone.utc)
+    expires = row.expires_at.replace(tzinfo=row.expires_at.tzinfo or timezone.utc)
+    target = min(now + timedelta(days=settings.auth_session_days),
+                 created + timedelta(days=settings.auth_session_max_days))
+    if target - expires >= timedelta(days=1):
+        row.expires_at = target
+        session.commit()
 
 
 def optional_user(request: Request, session: Session = Depends(get_db)) -> User | None:

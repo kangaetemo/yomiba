@@ -102,8 +102,10 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 
 ## Üyelik ve cihazlar arası kullanım
 
-- [ ] **Üyelik sisteminin mevcut durumunu kontrol et ve eksikleri tamamla; Google ile giriş ekle.** Daha önce hangi parçaların yapıldığı doğrulanacak.
-- [ ] **Koleksiyonların bulutta, kullanıcı hesabına bağlı olarak kaydedildiğini doğrula ve eksikleri tamamla.** Cihazlar arasında geçişte aynı koleksiyona erişilebilmeli; mevcut koleksiyonlar korunmalı.
+- [x] **Üyelik sisteminin mevcut durumunu kontrol et ve eksikleri tamamla; Google ile giriş ekle.** Daha önce hangi parçaların yapıldığı doğrulanacak. 18 Ekim: yapıldı ([çalışma notları](docs/yomiba-calisma-notlari.md)).
+  - [ ] **Canlıda aç:** Google Cloud'da OAuth istemcisi oluştur; Railway'e `GOOGLE_CLIENT_IDS`, Vercel'e `NEXT_PUBLIC_GOOGLE_CLIENT_ID` ekle; düğmeyi canlıda dene.
+  - [ ] **"Şifremi unuttum":** e-posta gerektiriyor; alan adı ve Resend ile birlikte yapılacak.
+- [x] **Koleksiyonların bulutta, kullanıcı hesabına bağlı olarak kaydedildiğini doğrula ve eksikleri tamamla.** 18 Ekim: doğrulandı. Koleksiyon, istek listesi ve alarmlar veritabanında hesaba bağlı; iki kullanıcının verisinin karışmadığı testlerde kontrol ediliyor. Oturum artık kullandıkça uzuyor. Cihazlar arasında geçişte aynı koleksiyona erişilebilmeli; mevcut koleksiyonlar korunmalı.
 
 ## Fiyat alarmları
 

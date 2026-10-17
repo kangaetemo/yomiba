@@ -47,7 +47,14 @@ class Settings:
     )
 
     auth_cookie_secure: bool = os.getenv("AUTH_COOKIE_SECURE", "1").lower() in {"1", "true", "yes", "on"}
+    #: A session ends after this many days WITHOUT use; each use extends it
+    #: (at most once a day), up to AUTH_SESSION_MAX_DAYS after login.
     auth_session_days: int = int(os.getenv("AUTH_SESSION_DAYS", "30"))
+    auth_session_max_days: int = int(os.getenv("AUTH_SESSION_MAX_DAYS", "365"))
+    #: OAuth client ids allowed as the audience of Google ID tokens (web, and
+    #: later the mobile apps), comma separated. Empty: Google sign-in is off.
+    google_client_ids: tuple[str, ...] = tuple(
+        c.strip() for c in os.getenv("GOOGLE_CLIENT_IDS", "").split(",") if c.strip())
 
 
     # HTTP client defaults shared by all scrapers.

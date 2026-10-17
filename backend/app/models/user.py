@@ -20,6 +20,9 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[str] = mapped_column(String(10), nullable=False, default="USER")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: Google account id ("sub") for "Google ile giriş"; unique when set.
+    #: A Google-only account has no password_hash and is_active=True.
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 

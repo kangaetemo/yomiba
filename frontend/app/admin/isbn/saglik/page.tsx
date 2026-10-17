@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "ISBN Sağlık Raporu" };
 
 export default async function IsbnHealthPage() {
   const user = await currentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/login?next=%2Fadmin%2Fisbn%2Fsaglik");
   if (user.role !== "ADMIN") redirect("/");
   return <div className="space-y-6">
     <header className="space-y-2">

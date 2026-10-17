@@ -1,6 +1,6 @@
 # Yomiba çalışma notları
 
-Son güncelleme: 18 Ekim 2026 (koyu tema, mobil düzeltmeler, tek ciltlik seriler).
+Son güncelleme: 18 Ekim 2026 (üyelik: Google ile giriş, hesap sayfası, uzayan oturum).
 
 Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fazla cihazdan çalışıldığı için yerel kopya yerine her zaman main'deki sürüm esastır.
 
@@ -25,6 +25,43 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - Fiyatsız seriler raporu (`fiyatsızlar.txt`): Mağaza bazındaki sebep sayıları, sorgunun döndürdüğü tüm ürünler üzerinden toplanıyor. Örneğin BKM'de büyük bir `publisher_conflict` sayısı genelde "bu mağaza o seriyi satmıyor" demektir.
 
 ## Son günlerde yapılanlar
+
+### 18 Ekim: üyelik kontrolü, Google ile giriş, hesap sayfası
+
+- **Kontrol sonucu:** Temel sağlamdı:
+  - Argon2id parola özetleri.
+  - Sunucu tarafında, iptal edilebilen oturumlar.
+  - Giriş denemesi sınırı ve "güvenilir cihaz" çerezi.
+  - CSRF (Origin) kontrolü.
+  - Koleksiyon, istek listesi ve alarmlar veritabanında hesaba bağlı (cihazlar arası çalışıyor).
+- **Eksikler:** Google girişi, şifremi unuttum, hesap ayarları, 30 günde düşen oturum, İngilizce doğrulama mesajları, girişten sonra ana sayfaya atma, sade giriş sayfaları.
+- **Google ile giriş** (migration `0022_google_accounts`: `users.google_sub`, benzersiz):
+  - Google'ın resmî düğmesi (GIS, açılır pencere) kullanılıyor (`components/GoogleButton.tsx`).
+  - Backend kimlik belgesini (`app/google_auth.py`, PyJWT) Google'ın yayınladığı anahtarlarla doğruluyor: imza, hedef (`GOOGLE_CLIENT_IDS`), yayıncı, süre ve e-postanın doğrulanmış olması.
+  - Gizli anahtar saklanmıyor. Aynı yöntem ileride mobil uygulamada da çalışır (ek client id).
+  - Karar: aynı e-postalı parola hesabı **otomatik bağlanıyor**. Başka bir Google hesabı aynı e-postayı isterse reddediliyor. Kapalı hesaplar giremiyor.
+  - Google ile açılan hesabın parolası yok; istenirse hesap sayfasından parola belirlenebiliyor.
+- **Hesap sayfası** (`/hesap`, `components/AccountSettings.tsx`):
+  - Görünen ad.
+  - Giriş yöntemleri (e-posta / parola / Google).
+  - Parola değiştirme ya da belirleme; değişince diğer cihazlardaki oturumlar kapanıyor.
+  - "Diğer cihazlardan çıkış yap".
+  - Hesabı silme: parolayla, Google'a özel hesapta e-postayla onaylanıyor. Koleksiyon, istek listesi, alarmlar, oturumlar ve gönderilmemiş alarm mailleri siliniyor. Yönetici hesabı buradan silinemiyor.
+  - Başlıktaki hesap menüsü: telefonda "Hesabım", geniş ekranda baş harfli yuvarlak düğme. Menüde Koleksiyonum, Hesap ayarları, Admin ve Çıkış Yap var. Admin bağlantısı yalnızca geniş ekranda (lg) başlıkta da duruyor; 768px'te başlık sığıyor.
+- **Oturum:** Her kullanımda (günde en fazla bir kez) 30 gün uzuyor. Girişten en fazla 365 gün sonra bitiyor. Tarayıcı çerezi 400 gün; geçerliliğe sunucu karar veriyor.
+- **Giriş ve kayıt sayfaları:**
+  - Kart tasarımı, Google düğmesi, parolayı göster, iki sayfa arasında bağlantı.
+  - En az 8 karakter (önceden 12).
+  - Türkçe hata mesajları (doğrulama artık route içinde).
+  - Girişten sonra `?next=` ile kalınan sayfaya dönüş (`LoginLink`, `safeNext` yalnız site içi yolları kabul ediyor).
+  - Giriş yapmış biri `/login` açarsa yönlendiriliyor. Sayfalar arama motorlarına kapalı.
+- **Doğrulama:**
+  - 935 backend testi geçti. Yeni testler `test_account.py` (10) ve `test_google_auth.py`; ikincisi gerçek RS256 imzalarıyla geçerli, yanlış hedefli, süresi dolmuş, doğrulanmamış e-postalı ve sahte imzalı belgeleri sınıyor.
+  - `tsc`, `eslint` ve `npm run build` temiz.
+  - Başlık 375/768px'te, hesap sayfası 375px'te, giriş/kayıt sayfaları açık ve koyu temada ekran görüntüsüyle kontrol edildi.
+  - **Görülmeyen:** Google düğmesinin kendisi. Sahte Client ID ile Google çizmedi; gerçek ID ile canlıda denenecek.
+  - Bir hata testlerde yakalandı: Google ile açılan yeni hesap, `is_active` alanının varsayılanı ancak veritabanına yazılırken uygulandığı için "kapalı" sayılıyordu.
+- **Kalan:** "Şifremi unuttum" (e-posta ve alan adı bekliyor). Google'ın canlıda açılması (Client ID).
 
 ### 18 Ekim: koyu tema, mobil düzeltmeler, tek ciltlik seriler
 

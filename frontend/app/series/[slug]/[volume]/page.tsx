@@ -18,6 +18,7 @@ import { volumeLabel as labelFor } from "@/lib/volumeLabel";
 import { currentUserOrNull } from "@/services/auth";
 import { getPriceAlert, getPriceHistory, getSeries, getVolume, getWishlist } from "@/services/catalog";
 import type { PriceAlert, PriceHistory, SeriesDetail, VolumeStore, WishlistState } from "@/types";
+import { LoginLink } from "@/components/LoginLink";
 
 export const dynamic = "force-dynamic";
 
@@ -180,18 +181,12 @@ export default async function VolumePage({ params }: VolumePageProps) {
               <div className="space-y-2 text-sm text-muted">
                 <p>İstek listesi, koleksiyon ve fiyat alarmı için giriş yap.</p>
                 <div className="flex gap-2">
-                  <Link
-                    href="/login"
-                    className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-line-strong font-semibold text-ink hover:border-ink/40"
-                  >
+                  <LoginLink className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-line-strong font-semibold text-ink hover:border-ink/40">
                     Giriş yap
-                  </Link>
-                  <Link
-                    href="/register"
-                    className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-ink font-semibold text-paper hover:bg-accent"
-                  >
+                  </LoginLink>
+                  <LoginLink to="/register" className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-ink font-semibold text-paper hover:bg-accent">
                     Kayıt ol
-                  </Link>
+                  </LoginLink>
                 </div>
               </div>
             )}
@@ -367,9 +362,9 @@ export default async function VolumePage({ params }: VolumePageProps) {
               ) : (
                 <p className="text-sm text-muted">
                   Hedef fiyatını kaydetmek için{" "}
-                  <Link href="/login" className="font-semibold text-ink underline decoration-line-strong underline-offset-4 hover:text-accent">
+                  <LoginLink className="font-semibold text-ink underline decoration-line-strong underline-offset-4 hover:text-accent">
                     giriş yap
-                  </Link>
+                  </LoginLink>
                   .
                 </p>
               )}

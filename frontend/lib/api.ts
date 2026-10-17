@@ -73,6 +73,8 @@ async function request<T>(
     }
     throw new ApiError(res.status, detail);
   }
+  // 204 No Content (logout, account deletion): no body to parse.
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
