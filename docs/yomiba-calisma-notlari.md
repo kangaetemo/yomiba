@@ -61,7 +61,11 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
   - Başlık 375/768px'te, hesap sayfası 375px'te, giriş/kayıt sayfaları açık ve koyu temada ekran görüntüsüyle kontrol edildi.
   - **Görülmeyen:** Google düğmesinin kendisi. Sahte Client ID ile Google çizmedi; gerçek ID ile canlıda denenecek.
   - Bir hata testlerde yakalandı: Google ile açılan yeni hesap, `is_active` alanının varsayılanı ancak veritabanına yazılırken uygulandığı için "kapalı" sayılıyordu.
-- **Kalan:** "Şifremi unuttum" (e-posta ve alan adı bekliyor). Google'ın canlıda açılması (Client ID).
+- **Yayın:** `bc4e54d` main'e pushlandı (18 Ekim gecesi). Railway açılışta `0022` migration'ını yedek alarak çalıştırır. Google düğmesi Client ID girilene kadar gizli; `/auth/google` 503 döner.
+- **Kalan:**
+  - Google'ın canlıda açılması: kullanıcı 19 Ekim sabahı Google Cloud'da OAuth istemcisini oluşturacak; Railway'e `GOOGLE_CLIENT_IDS`, Vercel'e `NEXT_PUBLIC_GOOGLE_CLIENT_ID` girilecek ve Vercel yeniden deploy edilecek. Sonra düğme canlıda denenecek.
+  - "Şifremi unuttum": e-posta ve alan adı bekliyor.
+  - Canlıda kontrol: `/hesap`, hesap menüsü, `?next=` dönüşü.
 
 ### 18 Ekim: koyu tema, mobil düzeltmeler, tek ciltlik seriler
 

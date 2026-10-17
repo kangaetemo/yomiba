@@ -103,7 +103,12 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 ## Üyelik ve cihazlar arası kullanım
 
 - [x] **Üyelik sisteminin mevcut durumunu kontrol et ve eksikleri tamamla; Google ile giriş ekle.** Daha önce hangi parçaların yapıldığı doğrulanacak. 18 Ekim: yapıldı ([çalışma notları](docs/yomiba-calisma-notlari.md)).
-  - [ ] **Canlıda aç:** Google Cloud'da OAuth istemcisi oluştur; Railway'e `GOOGLE_CLIENT_IDS`, Vercel'e `NEXT_PUBLIC_GOOGLE_CLIENT_ID` ekle; düğmeyi canlıda dene.
+  - [ ] **Canlıda aç (19 Ekim sabahı, kullanıcı):**
+    1. console.cloud.google.com'da yeni proje aç.
+    2. Google Auth Platform → Branding (ad, destek e-postası) → Audience: External, yayınla.
+    3. Clients → Web application. "Authorized JavaScript origins" alanına sitenin adresini ekle.
+    4. Client ID'yi Railway'e `GOOGLE_CLIENT_IDS`, Vercel'e `NEXT_PUBLIC_GOOGLE_CLIENT_ID` olarak gir; Vercel'i yeniden deploy et.
+    5. Düğmeyi canlıda dene.
   - [ ] **"Şifremi unuttum":** e-posta gerektiriyor; alan adı ve Resend ile birlikte yapılacak.
 - [x] **Koleksiyonların bulutta, kullanıcı hesabına bağlı olarak kaydedildiğini doğrula ve eksikleri tamamla.** 18 Ekim: doğrulandı. Koleksiyon, istek listesi ve alarmlar veritabanında hesaba bağlı; iki kullanıcının verisinin karışmadığı testlerde kontrol ediliyor. Oturum artık kullandıkça uzuyor. Cihazlar arasında geçişte aynı koleksiyona erişilebilmeli; mevcut koleksiyonlar korunmalı.
 
