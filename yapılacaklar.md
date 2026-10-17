@@ -22,7 +22,7 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
   - [x] Codex'in cilt cilt dış kaynak arayan denetimi ve inceleme merkezi kaldırıldı (`/admin/isbn` → sağlık raporu).
 - [ ] **Canlıda doğrula (yayından sonra):** 4 senkron içinde Mangakol ISBN'leri okunmuş olacak (`catalog_isbn` sayacı raporda). Sonra sağlık raporunu tekrar al: Blue Lock 28/29, Yubooh, Monster 9, Happiness 6 ve "çözülemeyen çelişkiler" listesi.
 - [ ] **Özel baskılardaki mağaza barkodları:** Solo Leveling Limitli/Varyant 1–3 ve Titana Saldırı: Kayıp Kızlar Limitli'de ISBN alanında barkod duruyor; raporda "geçersiz ISBN". Eşleşmeye etkisi yok (barkod hiçbir ürünü bağlamaz); admin panelinden temizlenebilir.
-- [ ] **Eski kopya ciltler:** Yıldızların Sesi (2439) ve Komünist Manifesto (2451) ilanları; ürünler bir sonraki taramada doğru cilde taşınıyor, eski satırlar kalıyor.
+- [x] **Eski kopya ciltler:** Yıldızların Sesi (2439) ve Komünist Manifesto (2451) ilanları; ürünler bir sonraki taramada doğru cilde taşınıyor, eski satırlar kalıyor. 17 Ekim: #2439 bir sonraki katalog senkronunda #1847'ye birleşir. #2451 başka bir kitap (Kırmızı Kedi baskısı), gizli olarak kalır; Yordam mangasındaki kopya ilanı fiyat taramasında silinir.
 - [ ] **Mangakol bağımlılığını bitir:** Mangakol bir besleme olarak kalsın; yeni cilt/seri keşfi kendi kaynaklarımızdan, otomatik. "Yakında" için Mangakol + admin elle giriş. Kaynak seçimi (Bora, Destek Dükkan, idefix, Instagram) şimdilik beklemede.
 
 ## P0 ve A/B/C ISBN onay planı (14–15 Ekim) — geçersiz

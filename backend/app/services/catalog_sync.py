@@ -77,7 +77,8 @@ class CatalogSyncReport:
     isbns_deferred: int = 0
     isbn_conflicts: int = 0
     isbn_conflict_details: list[str] = field(default_factory=list)
-    #: Legacy counter: no phantom merge is permitted during P0.
+    #: Legacy store-created copies (volume -1) folded into the catalog volume
+    #: that already carries every one of their store products.
     isbn_phantoms_merged: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -151,6 +152,7 @@ class CatalogSyncService:
         finally:
             self.scraper.close()
         self._resolve_isbns(report)
+        self._merge_redundant_phantoms(report)
         # A successful sync must represent exactly the live snapshot. Stale
         # slug identity changes require reconciliation; do not delete a
         # Series or guess an edition match during an ordinary sync.
@@ -383,6 +385,47 @@ class CatalogSyncService:
             if details.release_date and volume.release_date is None:
                 volume.release_date = details.release_date
             self.session.commit()
+
+    def _merge_redundant_phantoms(self, report: CatalogSyncReport) -> None:
+        """Fold a legacy phantom (Yıldızların Sesi #2439) into the one catalog
+        volume of its series that already lists every one of its store
+        products — the same product page is the same book. Its price history
+        joins that volume's. Never when users point at the phantom, or when
+        its ISBN is another book's (Komünist Manifesto #2451: the Kırmızı Kedi
+        edition, sharing a product only through a wrong match)."""
+        from ..models import StoreListing
+        from .catalog_service import legacy_phantom_condition
+        from .phantom_review import has_personal_rows, merge_volume_rows
+
+        catalog_series = select(CatalogSeries.series_id).distinct()
+        phantoms = list(self.session.scalars(select(Volume).where(
+            Volume.series_id.in_(catalog_series), legacy_phantom_condition())))
+        for phantom in phantoms:
+            products = set(self.session.execute(select(StoreListing.store_id, StoreListing.product_url)
+                                                .where(StoreListing.volume_id == phantom.id)).all())
+            if not products or has_personal_rows(self.session, phantom.id):
+                continue
+            holders: dict[int, set] = {}
+            for vid, store_id, url in self.session.execute(
+                    select(StoreListing.volume_id, StoreListing.store_id, StoreListing.product_url)
+                    .join(Volume, Volume.id == StoreListing.volume_id)
+                    .where(Volume.series_id == phantom.series_id, Volume.volume_number >= 0)):
+                holders.setdefault(vid, set()).add((store_id, url))
+            targets = [vid for vid, held in holders.items() if products <= held]
+            if len(targets) != 1:
+                continue
+            target = self.session.get(Volume, targets[0])
+            if phantom.isbn and phantom.isbn != target.isbn:
+                continue
+            try:
+                merge_volume_rows(self.session, phantom.id, target.id)
+                self.session.commit()
+            except Exception:
+                self.session.rollback()
+                logger.exception("catalog sync: merging phantom %s into %s failed", phantom.id, target.id)
+                continue
+            logger.info("catalog sync: legacy phantom %s merged into volume %s", phantom.id, target.id)
+            report.isbn_phantoms_merged += 1
 
     def _resolve_isbns(self, report: CatalogSyncReport) -> None:
         """Run the ISBN resolver over every catalog volume (cheap, local)."""

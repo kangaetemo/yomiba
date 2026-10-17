@@ -26,6 +26,17 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 17 Ekim gecesi: kesin ISBN'de başka kitabın ilanı silinir, eski kopyalar birleşir
+
+- **Kesin ISBN, başka kitabın ilanını siler:** Cildin ISBN'i kesinse (admin girmiş ya da Mangakol sayfasındakiyle aynı ve Mangakol başka kitaba vermemiş, `isbn_resolver.isbn_settled`) ve aynı başlıklı ürün başka bir ISBN taşıyorsa (`isbn_conflict`), ürünün o cilde bağlı eski ilanı fiyat geçmişiyle birlikte silinir.
+  - Örnekler: Komünist Manifesto'daki 68 TL'lik cep kitabı, Solo Leveling 2'deki roman.
+  - Eskiden bu ilanlar sadece 48 saatte bayatlayıp gizleniyordu. Geçmişleri ise grafikte "en düşük" olarak kalıyordu.
+  - Diğer ciltlerdeki ilanlara dokunulmuyor. Ziyaretçinin gördüğü teklifler değişmiyor; zaten reddediliyorlardı.
+- **Eski kopyaların birleşmesi:** Katalog senkronu, cilt numarası −1 olan eski kopyalardan, bütün mağaza ürünleri serinin tek bir katalog cildinde de bulunanları o cilde birleştiriyor (`_merge_redundant_phantoms`). Fiyat geçmişi korunuyor.
+  - Kullanıcı kaydı (koleksiyon, istek listesi, alarm) olan ya da ISBN'i başka bir kitaba ait olan kopya birleştirilmiyor.
+  - Yıldızların Sesi #2439 birleşecek. Komünist Manifesto #2451 (Kırmızı Kedi baskısı) kalacak.
+- 917 test geçti.
+
 ### 17 Ekim gecesi: canlı ISBN raporunun ikinci turu
 
 - Senkron panelindeki 16 çelişki, senkronun bittiği andaki görüntü. Fiyat taramasından sonra 9'u kendiliğinden çözüldü: Blue Lock 29, Happiness 6, Huzurlu Kamp 3, Skip and Loafer 4, Vampir Şövalye 6, ORV 3/4 ve Yıldızların Sesi/Canım Kızım.

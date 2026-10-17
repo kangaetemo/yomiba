@@ -67,7 +67,7 @@ from ..scrapers.base import BaseScraper
 from ..scrapers.common import FOREIGN_PUBLISHER_RE
 from ..scrapers.relevance import check_manga_relevance
 from ..utils import from_cents, to_cents, utcnow
-from .isbn_resolver import is_sibling, isbn_holders, resolve_many
+from .isbn_resolver import is_sibling, isbn_holders, isbn_settled, resolve_many
 
 logger = logging.getLogger("yomiba.import")
 
@@ -266,6 +266,8 @@ class ImportService:
                                                self.last_match.get("isbn_volume_id")) if v)
                     if reason in DROP_REASONS:
                         self._drop_listing(result, reason)
+                    elif reason == "isbn_conflict":
+                        self._drop_conflicting_listing(result)
                     # Commit resolution side effects (cover backfill, the
                     # observation) right away so a later failing result's
                     # rollback cannot undo them.
@@ -413,6 +415,27 @@ class ImportService:
                 StoreListing.store_id == store.id, StoreListing.product_url == result.product_url)):
             logger.info("import: removing listing %s (%s) from volume %s: %s",
                         listing.id, result.product_url, listing.volume_id, reason)
+            self.session.delete(listing)
+        self.session.flush()
+
+    def _drop_conflicting_listing(self, result: SearchResult) -> None:
+        """The title names a volume whose ISBN is settled and the product
+        carries another one: another book under the same title (Komünist
+        Manifesto: the prose pocket edition; Solo Leveling 2: the novel). Its
+        listing on THAT volume goes with its price history, so an old wrong
+        price never stays the volume's "lowest". Other volumes are untouched."""
+        volume_id = self.last_match.get("title_volume_id")
+        volume = self.session.get(Volume, volume_id) if volume_id else None
+        if volume is None or not isbn_settled(self.session, volume):
+            return
+        store = self.session.scalar(select(Store).where(Store.code == result.store_id))
+        if store is None:
+            return
+        for listing in self.session.scalars(select(StoreListing).where(
+                StoreListing.store_id == store.id, StoreListing.product_url == result.product_url,
+                StoreListing.volume_id == volume.id)):
+            logger.info("import: removing listing %s (%s) from volume %s: ISBN %s is not its settled %s",
+                        listing.id, result.product_url, volume.id, book_isbn(result.isbn), volume.isbn)
             self.session.delete(listing)
         self.session.flush()
 

@@ -132,6 +132,17 @@ def store_votes(session: Session, volume_id: int) -> dict[str, int]:
     return {isbn: len(ids) for isbn, ids in groups.items()}
 
 
+def isbn_settled(session: Session, volume: Volume) -> bool:
+    """The volume's ISBN is certain: an admin set it, or it is the one its
+    own Mangakol page lists (and Mangakol gives no other book the same)."""
+    current = catalog_book_isbn(volume.isbn)
+    if current is None:
+        return False
+    if volume.isbn_source == "admin":
+        return True
+    return current == catalog_book_isbn(volume.catalog_isbn) and not catalog_duplicates(session, volume, current)
+
+
 def catalog_duplicates(session: Session, volume: Volume, isbn: str) -> list[Volume]:
     """Other catalog volumes Mangakol lists with the same ISBN that are NOT
     another edition of the same book (= a source error).
