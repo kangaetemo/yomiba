@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { currentUserOrNull } from "@/services/auth";
 import { LogoutButton } from "@/components/LogoutButton";
+import { AccountMenu } from "@/components/AccountMenu";
 import { SearchDialogButton } from "@/components/SearchDialog";
 import { THEME_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
 
@@ -95,14 +96,17 @@ export default async function RootLayout({
               )}
               {user ? (
                 <>
+                  {/* Phones: one "Hesabım" menu; the header has no room for three. */}
+                  <div className="sm:hidden">
+                    <AccountMenu name={user.display_name} admin={user.role === "ADMIN"} />
+                  </div>
                   <Link
                     href="/collection"
-                    className="inline-flex min-h-11 items-center rounded-lg border border-line bg-surface px-3 font-semibold text-ink transition-colors hover:border-line-strong"
+                    className="hidden min-h-11 items-center rounded-lg border border-line bg-surface px-3 font-semibold text-ink transition-colors hover:border-line-strong sm:inline-flex"
                   >
                     Koleksiyonum
                   </Link>
                   <span className="hidden text-muted lg:inline">{user.display_name}</span>
-                  {/* Phones: on the Koleksiyonum page, the header has no room. */}
                   <LogoutButton className="hidden sm:inline" />
                 </>
               ) : (

@@ -35,7 +35,7 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
   - İki ikon da sunucuda çiziliyor, CSS `dark:` (`@custom-variant dark` = `[data-theme="dark"]`) doğru olanı gösteriyor.
   - Koyu renkler `globals.css`'te zaten tanımlıydı.
 - **Dar telefonlar:**
-  - Giriş yapılmışken başlık 375px'te bölünüyor, 320px'te taşıyordu. Telefonda "Çıkış Yap" Koleksiyonum sayfasına taşındı.
+  - Giriş yapılmışken başlık 375px'te bölünüyor, 320px'te taşıyordu. Telefonda tek bir "Hesabım" menüsü (`AccountMenu`) var: Koleksiyonum, Admin, Çıkış Yap. İlk denemede çıkışı Koleksiyonum sayfasına taşımıştım; kullanıcı "kaybolmuş" dedi, menüyle değiştirildi. Masaüstü aynı kaldı.
   - 360px'ten dar ekranda logoda yalnız 読 mührü kalıyor.
 - **Mobil düzeltmeler** (kullanıcının ekran görüntülerinden):
   - Fiyat geçmişinde üç değer aynı yapıda (etiket, fiyat, tek satırlık not), kuruşsuz. "tipik" yazısı son fiyat etiketine binmiyor.
@@ -48,7 +48,7 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - **Doğrulama:**
   - `tsc`, `eslint` ve `npm run build` temiz.
   - Görünüm 375/360/320px'te, sahte backend ve yalnız yerelde kullanılıp silinen geçici bir önizleme sayfasıyla kontrol edildi.
-  - Koleksiyonum sayfasındaki çıkış satırı ekranda görülmedi.
+  - Açık menü 375/320px'te ekran görüntüsüyle kontrol edildi.
 
 ### 17 Ekim gecesi: kesin ISBN'de başka kitabın ilanı silinir, eski kopyalar birleşir
 
