@@ -20,6 +20,7 @@ from .catalog_exclusion import CatalogExclusion
 from .user import User, UserSession
 from .user_volume_collection import UserVolumeCollection
 from .isbn_review import IsbnAuditRun, IsbnAuditItem, IsbnAuditResult, IsbnReview, IsbnDecision
+from .isbn_evidence import IsbnChange, IsbnIssue, SharedIsbn, StoreObservation
 
 __all__ = [
     "Publisher",
@@ -38,4 +39,8 @@ __all__ = [
     "User",
     "UserSession",
     "UserVolumeCollection",
+    "IsbnChange",
+    "IsbnIssue",
+    "SharedIsbn",
+    "StoreObservation",
 ]

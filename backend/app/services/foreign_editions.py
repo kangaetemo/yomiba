@@ -1,4 +1,23 @@
-"""Foreign-edition evidence preview; legacy application is paused during P0."""
+"""Find and remove foreign-edition listings (admin, preview then apply).
+
+The catalog lists Turkish editions only. Before the catalog had ISBNs, a
+title-only match could attach e.g. VIZ's English "Naruto 11" (ISBN
+9781421502410) to "Naruto Cilt 11" and even store that English ISBN on the
+volume. The importer now rejects foreign ISBNs / languages and the catalog
+sync replaces a foreign volume ISBN with the Mangakol one; this job cleans
+up what the old matches left behind.
+
+Scanned listings: every listing of a volume whose ISBN is foreign, plus
+listings of stores that also sell imported books (``FOREIGN_PRONE``). Each
+listing's product page is read (JSON-LD isbn / inLanguage, Gerekli Şeyler's
+"Stok Kodu"); a listing is removed only when its page PROVES a foreign
+edition (foreign ISBN or language, or the volume's own foreign ISBN).
+Removed products are excluded from future imports; foreign volume ISBNs are
+cleared so the next catalog sync stores the Turkish one.
+
+The scan runs in a background thread (hundreds of pages would outlive an
+HTTP request); the admin polls the status and applies the reviewed plan.
+"""
 
 from __future__ import annotations
 
@@ -10,8 +29,9 @@ from typing import Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from ..models import CatalogSeries, Series, Store, StoreListing, Volume
+from ..models import CatalogSeries, ListingExclusion, Series, Store, StoreListing, Volume
 from ..normalization.isbn import is_foreign_isbn, is_foreign_language
+from ..utils import utcnow
 
 logger = logging.getLogger("yomiba.foreign_editions")
 
@@ -79,8 +99,41 @@ def build_plan(session: Session, fetch: Callable[[str], str | None], max_pages: 
 
 
 def apply_plan(session: Session, plan: dict, db_path: Path | None = None) -> dict:
-    from .isbn_safety import reject_legacy_write
-    reject_legacy_write()
+    """Remove the proven foreign listings (excluding their products) and
+    clear foreign volume ISBNs. A DB backup is written first when the
+    database is a SQLite file."""
+    backup = None
+    if db_path is not None:
+        import sqlite3
+        backup = db_path.with_name(db_path.name + ".bak-foreign-" + utcnow().strftime("%Y%m%dT%H%M%SZ"))
+        with sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True) as src, sqlite3.connect(backup) as dst:
+            src.backup(dst)
+    removed = 0
+    for item in plan["listings"]:
+        if item["action"] != "remove":
+            continue
+        listing = session.get(StoreListing, item["listing_id"])
+        if listing is None or listing.product_url != item["product_url"]:
+            continue  # changed since the preview: leave it
+        if session.scalar(select(ListingExclusion.id).where(
+            ListingExclusion.store_id == listing.store_id,
+            ListingExclusion.product_url == listing.product_url,
+        )) is None:
+            session.add(ListingExclusion(
+                store_id=listing.store_id, product_url=listing.product_url,
+                volume_id=listing.volume_id, reason="yabancı baskı (otomatik tarama)",
+            ))
+        session.delete(listing)
+        removed += 1
+    cleared = 0
+    for item in plan["foreign_isbn_volumes"]:
+        volume = session.get(Volume, item["volume_id"])
+        if volume is not None and volume.isbn == item["isbn"]:
+            volume.isbn = None
+            volume.details_checked_at = None  # next catalog sync reads the Turkish ISBN
+            cleared += 1
+    session.commit()
+    return {"removed_listings": removed, "cleared_isbns": cleared, "backup": str(backup) if backup else None}
 
 
 class ForeignEditionJob:

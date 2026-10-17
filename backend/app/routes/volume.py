@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..auth import optional_user, require_admin, require_user
-from ..models import ImportRecord, Store, StoreListing, User, Volume
+from ..models import ImportRecord, ListingExclusion, Store, StoreListing, User, Volume
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.price_alert import PriceAlertDetail, PriceAlertIn, PriceAlertOut
 from ..schemas.price_history import HistoryListingOut, HistoryPointOut, PriceHistoryOut
@@ -301,6 +301,19 @@ def remove_listing(
     session: Session = Depends(get_db),
     _admin: User = Depends(require_admin),
 ) -> dict:
-    """P0: preserve listings/history until a separate correction workflow exists."""
-    from ..services.isbn_safety import MESSAGE
-    raise HTTPException(status_code=409, detail=MESSAGE)
+    """Admin: remove a store listing wrongly matched to this volume (and its
+    price history) and exclude that store product from future imports."""
+    listing = session.get(StoreListing, listing_id)
+    if listing is None or listing.volume_id != volume_id:
+        raise HTTPException(status_code=404, detail="İlan bulunamadı.")
+    exists = session.query(ListingExclusion).filter_by(
+        store_id=listing.store_id, product_url=listing.product_url
+    ).first()
+    if exists is None:
+        session.add(ListingExclusion(
+            store_id=listing.store_id, product_url=listing.product_url,
+            volume_id=volume_id, reason=(reason or "")[:300] or None,
+        ))
+    session.delete(listing)
+    session.commit()
+    return {"removed": listing_id, "excluded": True}

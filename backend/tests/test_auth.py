@@ -108,20 +108,3 @@ def test_two_users_have_independent_personal_data(client, db_session):
     assert db_session.scalar(select(PriceAlert.user_id)) != 999
     client.cookies.set(COOKIE_NAME, token_b)
     assert client.get(f"/volume/{volume_id}").json()["collection_status"] == "wanted"
-
-
-def test_catalog_volume_merge_keeps_personal_rows_or_blocks_conflict(db_session):
-    from app.services.isbn_safety import MutationPaused
-    series = seed_catalog_series(db_session, "Merge User Data", "Publisher", volumes=(1, 2))
-    source, target = series.volumes
-    db_session.add_all([
-        UserVolumeCollection(user_id=1, volume_id=source.id, status="owned"),
-        WishlistItem(user_id=1, volume_id=source.id),
-        PriceAlert(user_id=1, volume_id=source.id, threshold_price=250),
-    ])
-    db_session.commit()
-    with pytest.raises(MutationPaused):
-        CatalogSyncService(db_session)._move_personal_rows(source.id, target.id)
-    assert db_session.scalar(select(UserVolumeCollection.volume_id)) == source.id
-    assert db_session.scalar(select(WishlistItem.volume_id)) == source.id
-    assert db_session.scalar(select(PriceAlert.volume_id)) == source.id

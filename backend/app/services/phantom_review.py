@@ -1,5 +1,5 @@
-"""Phantom merge preview. P0 rejects both apply entry points."""
-from sqlalchemy import select, func
+"""Evidence-gated phantom merge planning. No automatic cleanup or commit."""
+from sqlalchemy import select, func, update, delete
 
 from ..models import (Volume, Series, CatalogSeries, StoreListing, PriceHistory,
                       WishlistItem, PriceAlert, UserVolumeCollection)
@@ -68,8 +68,18 @@ def plan_merge(session, source_id, target_id=None, *, products=(), catalog_confi
 
 
 def apply_safe_merge(session, source_id, target_id, *, products, catalog_confirmed=False):
-    from .isbn_safety import reject_legacy_write
-    reject_legacy_write()
+    """Caller must explicitly approve, own the transaction and exclude imports.
+
+    No CLI exposes this write operation. Personal source rows always block it.
+    All history points survive, including duplicate store-listing consolidation.
+    """
+    if session.get(Volume, source_id) is None:
+        return False
+    plan = plan_merge(session, source_id, target_id, products=products, catalog_confirmed=catalog_confirmed)
+    if plan["action"] != "SAFE_MERGE":
+        raise ValueError(f"Unsafe merge: {plan['reason']}")
+    merge_volume_rows(session, source_id, target_id)
+    return True
 
 
 def has_personal_rows(session, volume_id) -> bool:
@@ -81,5 +91,27 @@ def has_personal_rows(session, volume_id) -> bool:
 
 
 def merge_volume_rows(session, source_id, target_id):
-    from .isbn_safety import reject_legacy_write
-    reject_legacy_write()
+    """Fold volume ``source_id`` into ``target_id``: listings move (or are
+    consolidated per store, keeping the fresher offer), every price-history
+    point survives, ISBN/cover carry over, the source row is deleted.
+    Caller has proven identity and checked personal rows."""
+    with session.begin_nested():
+        source = session.get(Volume, source_id)
+        target = session.get(Volume, target_id)
+        isbn, cover = source.isbn, source.cover_url
+        session.execute(update(Volume).where(Volume.id == source_id).values(isbn=None))
+        for listing in session.scalars(select(StoreListing).where(StoreListing.volume_id == source_id)).all():
+            existing = session.scalar(select(StoreListing).where(StoreListing.volume_id == target_id, StoreListing.store_id == listing.store_id))
+            if existing is None:
+                session.execute(update(StoreListing).where(StoreListing.id == listing.id).values(volume_id=target_id))
+            else:
+                session.execute(update(PriceHistory).where(PriceHistory.listing_id == listing.id).values(listing_id=existing.id))
+                if aware_datetime(listing.last_checked) > aware_datetime(existing.last_checked):
+                    session.execute(update(StoreListing).where(StoreListing.id == existing.id).values(
+                        product_url=listing.product_url, price=listing.price, in_stock=listing.in_stock,
+                        last_checked=listing.last_checked, image_url=listing.image_url or existing.image_url))
+                session.execute(delete(StoreListing).where(StoreListing.id == listing.id))
+        session.execute(update(Volume).where(Volume.id == target_id).values(
+            isbn=target.isbn or isbn, cover_url=target.cover_url or cover))
+        session.execute(delete(Volume).where(Volume.id == source_id))
+    session.expire_all()

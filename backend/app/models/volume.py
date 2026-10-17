@@ -43,6 +43,12 @@ class Volume(Base):
     #: is the same physical book, so it must map to a single volume. Nullable
     #: because not every store exposes an ISBN.
     isbn: Mapped[str | None] = mapped_column(String(20), unique=True, index=True)
+    #: Where ``isbn`` came from: "catalog", "stores" (store consensus),
+    #: "admin" (never overwritten automatically), "legacy" (before 0018).
+    isbn_source: Mapped[str | None] = mapped_column(String(20))
+    #: What the catalog source (Mangakol) lists for this volume, kept apart
+    #: from ``isbn``: the source can be wrong (one ISBN on two volumes).
+    catalog_isbn: Mapped[str | None] = mapped_column(String(20), index=True)
     cover_url: Mapped[str | None] = mapped_column(String(1000))
     #: Original volumes a 2-in-1 / 3-in-1 book collects (catalog source:
     #: Dragon Ball "Cilt 5" = 9-10). Stores title such books by that span

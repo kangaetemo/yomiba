@@ -77,3 +77,31 @@ def is_foreign_language(value: str | None) -> bool:
         return False
     first = key[0].split("-")[0]
     return first not in _TURKISH_LANGUAGE and not first.startswith("tr")
+
+
+def isbn_checksum_ok(isbn: str | None) -> bool:
+    """ISBN-13 / ISBN-10 check digit; anything else is not an ISBN.
+
+    >>> isbn_checksum_ok("9786259324050"), isbn_checksum_ok("9786259324051")
+    (True, False)
+    """
+    if not isbn:
+        return False
+    if len(isbn) == 13 and isbn.isdigit():
+        total = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(isbn[:12]))
+        return (10 - total % 10) % 10 == int(isbn[12])
+    if len(isbn) == 10 and isbn[:9].isdigit() and (isbn[9].isdigit() or isbn[9] == "X"):
+        total = sum((10 - i) * int(d) for i, d in enumerate(isbn[:9]))
+        check = 10 if isbn[9] == "X" else int(isbn[9])
+        return (total + check) % 11 == 0
+    return False
+
+
+def catalog_book_isbn(value: str | None) -> str | None:
+    """A Turkish book ISBN fit to identify a catalog volume: a book ISBN
+    with a valid check digit, registered in Turkey. Store barcodes
+    ("9740202402059"), foreign editions and typos are None."""
+    isbn = book_isbn(value)
+    if isbn is None or not isbn_checksum_ok(isbn) or is_foreign_isbn(isbn):
+        return None
+    return isbn

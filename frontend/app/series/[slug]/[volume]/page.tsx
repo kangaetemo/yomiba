@@ -8,6 +8,7 @@ import { CollectionStatusPicker } from "@/components/CollectionStatusPicker";
 import { WishlistToggle } from "@/components/WishlistToggle";
 import { PriceAlertForm } from "@/components/PriceAlertForm";
 import { RemoveListingButton } from "@/components/admin/RemoveListingButton";
+import { VolumeIsbnPanel } from "@/components/admin/VolumeIsbnPanel";
 import { Badge, Cover, formatDate, formatTL, volumeTitle } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/time";
@@ -343,6 +344,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
                     </div>
                   </details>
                 )}
+                {isAdmin && <VolumeIsbnPanel volumeId={numId} />}
                 {missingStores.length > 0 && (
                   <details className="group rounded-2xl border border-dashed border-line-strong bg-surface/60">
                     <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-semibold text-muted hover:text-ink">

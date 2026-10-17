@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.models import CatalogSeries, Series, Store, StoreListing, Volume
+from app.models import CatalogSeries, Series, SharedIsbn, Store, StoreListing, Volume
 from app.scrapers.mangakol import CatalogManga, CatalogVariant, CatalogVolume
 from app.scrapers.search_result import SearchResult
 from app.services.background_import import fallback_queries
@@ -45,7 +45,7 @@ def _volume(db_session, title) -> Volume:
     return db_session.scalar(select(Volume).where(Volume.series_id == series.id))
 
 
-def test_sync_discovers_variant_series_but_defers_both_isbns(db_session):
+def test_sync_discovers_variant_series_with_their_own_isbns(db_session):
     report = CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
 
     assert report.errors == []
@@ -56,9 +56,8 @@ def test_sync_discovers_variant_series_but_defers_both_isbns(db_session):
     assert cloth.title == "Soichi (Bez Cilt)"
     assert cloth.publisher_id == regular.publisher_id
     assert cloth.author == "Junji Ito"
-    assert _volume(db_session, "Soichi").isbn is None
-    assert _volume(db_session, "Soichi (Bez Cilt)").isbn is None
-    assert {c["source_isbn"] for c in report.isbn_candidates} == {REGULAR, CLOTH}
+    assert _volume(db_session, "Soichi").isbn == REGULAR
+    assert _volume(db_session, "Soichi (Bez Cilt)").isbn == CLOTH
 
     # idempotent
     report = CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
@@ -86,10 +85,10 @@ def _result(store, isbn, price, url, in_stock=True):
     )
 
 
-def test_store_import_does_not_move_a_misplaced_binding_listing(db_session):
+def test_store_import_moves_a_misplaced_binding_listing(db_session):
     CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
     regular, cloth = _volume(db_session, "Soichi"), _volume(db_session, "Soichi (Bez Cilt)")
-    regular.isbn, cloth.isbn = REGULAR, CLOTH  # established prior catalog values
+    assert (regular.isbn, cloth.isbn) == (REGULAR, CLOTH)
 
     # Before the catalog knew the Bez Cilt edition, a title match put the
     # clothbound product's price on the regular volume.
@@ -101,15 +100,16 @@ def test_store_import_does_not_move_a_misplaced_binding_listing(db_session):
     db_session.commit()
 
     scrapers = _fake_scrapers({"bkm": [
+        # Plain title, clothbound ISBN: the ISBN names the edition.
         _result("bkm", CLOTH, "550", "https://ks.example/soichi-bez"),
-        # sold out: the in-stock switch rule alone would keep the wrong product
         _result("bkm", REGULAR, "400", "https://ks.example/soichi", in_stock=False),
     ]}, failing=set())
     ImportService(db_session, scrapers=scrapers).run_import("Soichi")
 
     listings = {l.volume_id: (l.product_url, l.price) for l in db_session.scalars(select(StoreListing))}
     assert listings == {
-        regular.id: ("https://ks.example/soichi-bez", 55000),
+        cloth.id: ("https://ks.example/soichi-bez", 55000),
+        regular.id: ("https://ks.example/soichi", 40000),
     }
 
 
@@ -142,16 +142,22 @@ def test_sync_stores_publication_status(db_session):
         assert (series.jp_status, series.tr_status) == ("completed", "completed")
 
 
-def test_variant_never_reclaims_isbn_automatically(db_session):
+def test_variant_takes_its_own_isbn_back_when_both_pages_differ(db_session):
+    """Soichi: an old title match put the Bez Cilt ISBN on the regular
+    volume. Both Mangakol pages list different ISBNs, so each edition takes
+    its own page's ISBN (logged)."""
+    from app.models import IsbnChange
+
     CatalogSyncService(db_session, scraper=FakeMangakolScraper([_soichi(with_variant=False)])).sync()
     regular = _volume(db_session, "Soichi")
-    regular.isbn = CLOTH  # pre-existing misplaced ISBN; review must decide
+    regular.isbn = CLOTH  # pre-existing misplaced ISBN
     db_session.commit()
     CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
-    assert _volume(db_session, "Soichi (Bez Cilt)").isbn is None
-    assert regular.isbn == CLOTH
+    assert (regular.isbn, _volume(db_session, "Soichi (Bez Cilt)").isbn) == (REGULAR, CLOTH)
+    assert db_session.scalar(select(SharedIsbn)) is None
+    assert {c.source for c in db_session.scalars(select(IsbnChange))} >= {"moved", "catalog"}
     CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
-    assert regular.isbn == CLOTH
+    assert regular.isbn == REGULAR
 
 
 def test_isbn_of_an_unrelated_series_is_still_only_reported(db_session):
@@ -163,8 +169,8 @@ def test_isbn_of_an_unrelated_series_is_still_only_reported(db_session):
     db_session.commit()
     report = CatalogSyncService(db_session, scraper=_Fake([_soichi()])).sync()
     assert held.isbn == CLOTH and _volume(db_session, "Soichi (Bez Cilt)").isbn is None
+    assert _volume(db_session, "Soichi").isbn == REGULAR
     assert report.isbn_conflicts == 1
-    assert report.isbns_deferred == 2
 
 
 SOLO = "https://mangakol.com/manga/solo-leveling"
@@ -189,12 +195,15 @@ def _solo() -> CatalogManga:
     )
 
 
-def test_shared_isbn_does_not_authorize_listing_transfer(db_session):
-    """An ambiguous shared ISBN cannot transfer an existing listing."""
+def test_shared_isbn_products_move_to_the_edition_their_title_names(db_session):
+    """Solo Leveling 5: the Varyant Kapak and Limitli pages list one ISBN.
+    It is shared by both editions; the title words place each product, and a
+    listing an old match left on the wrong edition moves."""
     CatalogSyncService(db_session, scraper=_SoloFake([_solo()])).sync()
     limited, variant = _volume(db_session, "Solo Leveling (Limitli Baskı)"), _volume(db_session, "Solo Leveling (Varyant Kapak)")
-    variant.isbn = SHARED  # prior catalog owner; not supplied by sync
-    db_session.commit()
+    owners = {v.id for v in (limited, variant) if v.isbn == SHARED}
+    sharers = {r.volume_id for r in db_session.scalars(select(SharedIsbn).where(SharedIsbn.isbn == SHARED))}
+    assert len(owners) == 1 and owners | sharers == {limited.id, variant.id}
 
     store = Store(code="bkm", name="BKM Kitap")
     db_session.add(store)
@@ -217,7 +226,8 @@ def test_shared_isbn_does_not_authorize_listing_transfer(db_session):
 
     listings = {l.volume_id: (l.product_url, l.price) for l in db_session.scalars(select(StoreListing))}
     assert listings == {
-        limited.id: ("https://ks.example/sl5-varyant", 30000),
+        variant.id: ("https://ks.example/sl5-varyant", 30000),
+        limited.id: ("https://ks.example/sl5-limitli", 45000),
     }
 
 
@@ -228,14 +238,14 @@ def _solo_product(title, price, url, isbn=None):
     )
 
 
-def test_shared_isbn_does_not_move_to_a_listed_owner_without_review(db_session):
+def test_shared_isbn_is_stable_across_syncs(db_session):
     CatalogSyncService(db_session, scraper=_SoloFake([_solo()])).sync()
     limited = _volume(db_session, "Solo Leveling (Limitli Baskı)")
     variant = _volume(db_session, "Solo Leveling (Varyant Kapak)")
-    limited.isbn = SHARED
-    db_session.commit()
+    before = (limited.isbn, variant.isbn)
     CatalogSyncService(db_session, scraper=_SoloFake([_solo()])).sync()
-    assert (limited.isbn, variant.isbn) == (SHARED, None)
+    assert (limited.isbn, variant.isbn) == before
+    assert db_session.query(SharedIsbn).count() == 1
 
 
 def test_editions_without_isbn_are_matched_by_their_title_words(db_session):
@@ -257,12 +267,15 @@ def test_editions_without_isbn_are_matched_by_their_title_words(db_session):
     assert listings == {limited.id: 140000, variant.id: 55300}
 
 
-def test_ana_kapak_title_with_a_variant_isbn_requires_identity_review(db_session):
-    """A store put the limited edition's ISBN on the regular book: its
-    531 TL must not show as the price of the 1400 TL hardcover."""
+def test_ana_kapak_title_with_a_variant_isbn_goes_to_the_regular_edition(db_session):
+    """A store put the limited edition's ISBN on the regular book ("2. Hamur
+    – Ana Kapak"): the title names the regular edition, so its 531 TL is the
+    regular book's price, never the 1400 TL hardcover's."""
     CatalogSyncService(db_session, scraper=_SoloFake([_solo()])).sync()
     regular, limited = _volume(db_session, "Solo Leveling"), _volume(db_session, "Solo Leveling (Limitli Baskı)")
     limited.isbn = "9786052115640"
+    limited.isbn_source = "admin"
+    db_session.query(SharedIsbn).delete()
     db_session.commit()
 
     scrapers = _fake_scrapers({"bkm": [
@@ -270,7 +283,7 @@ def test_ana_kapak_title_with_a_variant_isbn_requires_identity_review(db_session
     ]}, failing=set())
     ImportService(db_session, scrapers=scrapers).run_import("Solo Leveling")
 
-    assert list(db_session.scalars(select(StoreListing))) == []
+    assert {l.volume_id: l.price for l in db_session.scalars(select(StoreListing))} == {regular.id: 53125}
     assert limited.isbn == "9786052115640" and regular.isbn is None
 
 
@@ -295,16 +308,16 @@ def _afro() -> CatalogManga:
     )
 
 
-def test_afro_shared_isbn_owner_and_both_volume_ids_stay_unchanged(db_session):
+def test_afro_both_pages_list_one_isbn_so_both_editions_carry_it(db_session):
     CatalogSyncService(db_session, scraper=_AfroFake([_afro()])).sync()
     regular, limited = _volume(db_session, "Afro Samuray"), _volume(db_session, "Afro Samuray (Limitli Baskı)")
     ids = regular.id, limited.id
-    assert (regular.isbn, limited.isbn) == (None, None)
-    limited.isbn = AFRO_ISBN
-    db_session.commit()
+    holders = {v.id for v in (regular, limited) if v.isbn == AFRO_ISBN} | {
+        r.volume_id for r in db_session.scalars(select(SharedIsbn).where(SharedIsbn.isbn == AFRO_ISBN))}
+    assert holders == set(ids)
     CatalogSyncService(db_session, scraper=_AfroFake([_afro()])).sync()
-    assert (regular.isbn, limited.isbn) == (None, AFRO_ISBN)
     assert (regular.id, limited.id) == ids
+    assert db_session.query(SharedIsbn).count() == 1
 
 
 def test_shared_isbn_products_go_to_the_edition_their_title_names(db_session):

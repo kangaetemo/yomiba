@@ -54,9 +54,6 @@ def main() -> int:
     parser.add_argument("--db", type=Path, default=Path("yomiba.db"))
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
-    if args.apply:
-        from app.services.isbn_safety import reject_legacy_write
-        reject_legacy_write()
     db_path = args.db.resolve()
     if not db_path.is_file():
         parser.error(f"DB not found: {db_path}")

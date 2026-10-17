@@ -50,7 +50,6 @@ def create_app(auto_init: bool = True) -> FastAPI:
         price_refresh = None
         scheduler = None
         covers = None
-        isbn_worker = None
         try:
             logger.info("startup: begin")
             validate_runtime_settings(settings)
@@ -113,18 +112,11 @@ def create_app(auto_init: bool = True) -> FastAPI:
                 covers.start()
                 logger.info("startup: cover worker started")
             app.state.cover_worker = covers
-            if auto_init:
-                from .services.isbn_audit import IsbnAuditWorker
-                isbn_worker = IsbnAuditWorker(database.SessionLocal)
-                app.state.isbn_audit_worker = isbn_worker
-                isbn_worker.start()
             app.state.ready = auto_init
             logger.info("startup: app ready")
             yield
         finally:
             app.state.ready = False
-            if isbn_worker is not None:
-                isbn_worker.stop(timeout=5)
             if price_refresh is not None:
                 price_refresh.stop(timeout=5)
                 logger.info("shutdown: price scheduler stopped=%s", not price_refresh.is_running)
@@ -199,7 +191,7 @@ def create_app(auto_init: bool = True) -> FastAPI:
         except Exception:
             logger.exception("readiness check failed")
             raise HTTPException(status_code=503, detail="Database not ready") from None
-        return {"status": "ready", "isbn_writes_paused": True}
+        return {"status": "ready"}
 
     return app
 

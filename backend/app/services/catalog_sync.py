@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -25,6 +25,7 @@ from ..models import (
     Volume,
 )
 from ..normalization import normalize_publisher, normalize_text
+from ..normalization.isbn import book_isbn
 from ..normalization.text import slugify
 from ..scrapers.mangakol import (
     CatalogManga,
@@ -149,6 +150,7 @@ class CatalogSyncService:
                     self._sync_entry(manga, report)
         finally:
             self.scraper.close()
+        self._resolve_isbns(report)
         # A successful sync must represent exactly the live snapshot. Stale
         # slug identity changes require reconciliation; do not delete a
         # Series or guess an edition match during an ordinary sync.
@@ -332,7 +334,11 @@ class CatalogSyncService:
         return series
 
     def _backfill_isbns(self, series: Series, manga: CatalogManga, report: CatalogSyncReport) -> None:
-        """Read published metadata; defer every ISBN candidate during P0."""
+        """Read each released volume's catalog page: page count, local
+        release date and the ISBN Mangakol lists, stored as
+        ``catalog_isbn``. Whether it becomes the volume's ISBN is the
+        resolver's decision (services/isbn_resolver.py), run for every
+        catalog volume at the end of the sync."""
         fetch_details = getattr(self.scraper, "fetch_volume_details", None)
         fetch_isbn = getattr(self.scraper, "fetch_volume_isbn", None)
         if fetch_details is None and fetch_isbn is None:
@@ -363,26 +369,47 @@ class CatalogSyncService:
             if details is None:
                 continue
             volume.details_checked_at = utcnow()
-            isbn = details.isbn
-            if isbn and isbn != volume.isbn:
-                report.isbns_deferred += 1
-                holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
-                if volume.isbn or (holder is not None and holder.id != volume.id):
-                    report.isbn_conflicts += 1
-                report.isbn_conflict_details.append(
-                    f"{series.title} Cilt {cv.number}: kaynak ISBN {isbn}; P0 kilidi nedeniyle mevcut ISBN korundu")
-                report.isbn_candidates.append({
-                    "volume_id": volume.id, "current_isbn": volume.isbn,
-                    "source_isbn": isbn, "source_url": cv.url})
-                # Preserve populated conflicting metadata; never confuse different cilt numbers.
-                if volume.isbn or (holder is not None and holder.volume_number != volume.volume_number):
-                    self.session.commit()
-                    continue
+            source_isbn = book_isbn(details.isbn)
+            if source_isbn and volume.catalog_isbn != source_isbn:
+                volume.catalog_isbn = source_isbn
+            holder = self.session.scalar(select(Volume).where(Volume.isbn == source_isbn)) if source_isbn else None
+            if holder is not None and holder.id != volume.id and holder.volume_number != volume.volume_number:
+                # The page carries another numbered book's ISBN, so its page
+                # count / date may be that book's too: keep ours empty.
+                self.session.commit()
+                continue
             if details.page_count and volume.page_count is None:
                 volume.page_count = details.page_count
             if details.release_date and volume.release_date is None:
                 volume.release_date = details.release_date
             self.session.commit()
+
+    def _resolve_isbns(self, report: CatalogSyncReport) -> None:
+        """Run the ISBN resolver over every catalog volume (cheap, local)."""
+        from ..models import IsbnIssue
+        from .isbn_resolver import resolve_many
+
+        ids = list(self.session.scalars(
+            select(Volume.id).where(
+                Volume.series_id.in_(select(CatalogSeries.series_id).distinct()),
+                Volume.volume_number >= 0,
+                Volume.catalog_present.is_not(False),
+            ).order_by(Volume.id)
+        ))
+        try:
+            counts = resolve_many(self.session, ids)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            logger.exception("catalog sync: ISBN resolution failed")
+            report.errors.append("ISBN resolution failed")
+            return
+        report.isbns_added = counts.get("catalog", 0) + counts.get("stores", 0)
+        report.isbn_conflicts = self.session.scalar(select(func.count()).select_from(IsbnIssue)) or 0
+        report.isbn_conflict_details = [
+            f"volume {row.volume_id}: {row.kind}"
+            for row in self.session.scalars(select(IsbnIssue).order_by(IsbnIssue.volume_id).limit(50))
+        ]
 
     def _page_isbn(self, url: str | None) -> str | None:
         """ISBN a catalog volume page lists (None when unknown/unreadable)."""
@@ -506,20 +533,11 @@ class CatalogSyncService:
     # Publisher alias consolidation
     # ------------------------------------------------------------------
     def _consolidate_publisher_aliases(self, report: CatalogSyncReport) -> None:
-        """P0: retain publisher/series/volume identities until separate review."""
-        logger.info("P0: publisher/series consolidation paused")
-
-    def _merge_publisher_into(self, absorbed: Publisher, keeper: Publisher, report: CatalogSyncReport) -> None:
-        from .isbn_safety import reject_legacy_write
-        reject_legacy_write()
-
-    def _merge_series_into(self, absorbed: Series, keeper: Series, report: CatalogSyncReport) -> None:
-        from .isbn_safety import reject_legacy_write
-        reject_legacy_write()
-
-    def _move_personal_rows(self, source_id: int, target_id: int) -> None:
-        from .isbn_safety import reject_legacy_write
-        reject_legacy_write()
+        """Not run. The fuzzy publisher/series merge of the store-import era
+        (removed in P0, 2026-10-15) is no longer needed: store imports never
+        create publishers or series, and catalog identities come from the
+        Mangakol slug. Kept as a hook; ``publishers_merged`` stays 0."""
+        return
 
     def _unique_slug(
         self, publisher_id: int, series_key: str, *, exclude_id: int | None = None

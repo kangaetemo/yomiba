@@ -1,12 +1,12 @@
 # Yomiba çalışma notları
 
-Son güncelleme: 17 Ekim 2026 (ISBN sisteminin ölçümü ve keşif kaynakları araştırması).
+Son güncelleme: 17 Ekim 2026 (ISBN kanıt sistemi, P0 kilidinin kaldırılması).
 
 Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fazla cihazdan çalışıldığı için yerel kopya yerine her zaman main'deki sürüm esastır.
 
 ## Sistem nasıl çalışıyor
 
-- **Katalog kaynağı Mangakol.** Katalog senkronu seri, cilt, kapak, ISBN, sayfa sayısı, yerel çıkış tarihi, yazar/çizer ve JP/TR yayın durumunu okur. Arama sadece Mangakol kataloğundaki serileri gösterir.
+- **Katalog kaynağı Mangakol.** Katalog senkronu seri, cilt, kapak, sayfa sayısı, yerel çıkış tarihi, yazar/çizer ve JP/TR yayın durumunu okur. Mangakol'un ISBN'i `catalog_isbn` olarak saklanır; cildin ISBN'ine ISBN çözücü karar verir (`services/isbn_resolver.py`). Arama sadece Mangakol kataloğundaki serileri gösterir.
 - **Fiyatlar mağazalardan gelir.** BKM, Kitapseç, Kitap Sepeti, Kitapbulan, Gerekli Şeyler, Edessa ve diğerleri taranır. Ürünler önce ISBN ile, olmazsa başlık ve yayınevi ile ciltlere eşlenir. ISBN her zaman başlıktan önce gelir.
 - **Kapaklar bizde.** Mangakol'dan bir kez indirilip Railway volume'da WebP olarak saklanır ve `/api/covers/...` üzerinden sunulur. İleride R2'ye taşınabilecek şekilde yazıldı.
 - **Deploy.** Backend Railway'de (SQLite, `/data` volume). Veritabanı güncellemeleri açılışta yedek alınarak otomatik çalışır. Frontend Vercel'de.
@@ -25,6 +25,24 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - Fiyatsız seriler raporu (`fiyatsızlar.txt`): Mağaza bazındaki sebep sayıları, sorgunun döndürdüğü tüm ürünler üzerinden toplanıyor. Örneğin BKM'de büyük bir `publisher_conflict` sayısı genelde "bu mağaza o seriyi satmıyor" demektir.
 
 ## Son günlerde yapılanlar
+
+### 17 Ekim: ISBN kanıt sistemi (P0 kilidi kalktı)
+
+Kullanıcının asıl derdi: Mangakol'un aynı ISBN'i iki cilde vermesi (Blue Lock 28/29 → …626) ve yayınevlerinin özel baskıyı normal baskıyla aynı ISBN'le basması. Beş adım tek seferde yapıldı (`0018_isbn_evidence`).
+
+- **P0 kalktı:** Bütün `isbn*` trigger'ları düşürüldü; readiness kontrolü, açılıştaki denetim işçisi, Codex'in inceleme merkezi ve dış kaynak adaptörleri (`isbn_audit/decisions/sources/identity/triage`) kaldırıldı. Migration'ların ihtiyaç duyduğu `isbn_safety.py`, `isbn_approval_guards.py`, `safety_backup.py` duruyor. Bakım araçları (yabancı baskı temizliği, hayalet cilt birleştirme, `isbn_conflict_fix`, `apply_task*`) P0 öncesi haline döndü. Yanlış eşleşme kaldırma geri geldi. Kalkan ürünler silinmiyor, "stokta yok" işaretleniyor (P0'dan kalan, daha iyi davranış). Yayınevi/seri bulanık birleştirmesi kapalı kaldı (artık gereksiz). 0018'in downgrade'i de reddediyor; geri dönüş yedekten.
+- **Kaynak ve karar ayrı:** `volumes.catalog_isbn` (Mangakol ne diyor) ve `volumes.isbn` (ne kararlaştırdık) + `isbn_source` (catalog / stores / admin / legacy). Her değişiklik `isbn_changes`'e gerekçesiyle. Migration, çıkmış ciltlerin Mangakol sayfalarını yeniden okunacak diye işaretledi (senkron başına 600 sayfa → ~4 senkron).
+- **Çözücü kuralları** (`isbn_resolver.py`, her senkron sonunda tüm katalog, her fiyat taramasından sonra dokunulan ciltler):
+  1. Admin kararı hiç ezilmez ("otomatiğe bırak" ile kaldırılır).
+  2. Mağaza uzlaşısı: başlığı bu cildi gösteren en az 2 bağımsız mağaza aynı ISBN'i gösteriyorsa ve Mangakol'un kullanılabilir farklı bir ISBN'i yoksa. Gerekli Şeyler + Büyülü Dükkan ve Kitap Sepeti + İstanbul Kitapçısı tek oy (aynı yanlış stok kodları / aynı sayfalar).
+  3. Mangakol: geçerli, Türk, kaynakta tekrar etmeyen ISBN boş alanı doldurur. Mevcut geçersiz (yabancı/barkod/checksum) ISBN boş sayılır.
+  4. Kaynakta tekrar: Mangakol aynı ISBN'i farklı numaralı ya da başka bir kitaba vermişse hiçbirine yazılmaz; diğer cildin farklı geçerli ISBN'i varsa tekrar "açıklanmış" sayılır (Blue Lock 29 …633 olunca 28 …626 alır; Happiness 6'nın …324050'si 5'e …360492'yi bırakır).
+  5. Başka ciltteki ISBN: aynı kitabın başka baskısıysa ve iki sayfa da aynı ISBN'i gösteriyorsa ortak (`shared_isbns`); sayfalar farklıysa her baskı kendi ISBN'ini alır (Soichi); hayalet/katalog dışı kayıttan alınır; gerçek bir katalog cildinden sadece mağaza uzlaşısıyla ve o cildin lehine oy yoksa taşınır. Gerisi `isbn_issues`.
+- **Eşleştirme** (`import_service._resolve_target`): başlık (ISBN yok sayılarak) ve ISBN ayrı çözülür. Aynı cilt → bağla; başlık aynı kitabın başka baskısı → baskı kelimesi, "Ana Kapak", fiyat aralığı (±1,5×); farklı cilt → `isbn_title_conflict`, bağlanmaz ve mevcut ilan kaldırılır. Sadece başlıkla eşleşen ve diğer mağazaların ≥1,8× fiyatlı ürün reddedilir (`price_outlier`); düşük fiyat asla.
+- **Gözlem kaydı** (`store_observations`): her ürün için başlık, ISBN, fiyat, başlığın ve ISBN'in gösterdiği cilt, bağlandığı cilt, kural/ret nedeni. Okunan ISBN aynı URL + aynı başlıkla tekrar kullanılıyor (mağazalar sayfaları başka cilde çeviriyor). Gerekli Şeyler/Büyülü Dükkan detay kotası (15) artık sadece ISBN'i bilinmeyen ürünlere.
+- **Admin:** cilt sayfasında "ISBN ve eşleşmeler" paneli (Mangakol / bizim ISBN, oylar, çelişki, her ürün için "neden burada", geçmiş, elle ISBN / ortak / taşı / otomatiğe bırak; `GET/POST /admin/isbn/volumes/{id}`). Sağlık raporu: çözülemeyen çelişkiler, Mangakol tekrarları, başlık-ISBN çelişkili ürünler, Mangakol'dan farklı ciltler, fiyat aykırılıkları, son değişiklikler. Gürültülü adres kontrolü kaldırıldı.
+- **Testler:** Backend 898 test geçti; yeni `test_isbn_evidence.py` canlı vakaları birebir kuruyor (Blue Lock, Yubooh, Happiness, Monster, Solo Leveling fiyat aralığı, admin kararları). TypeScript, ESLint ve üretim derlemesi başarılı.
+- **Sınırlar:** Etki canlıda kademeli: Mangakol ISBN'leri ~4 senkronda, mağaza oyları fiyat taramalarıyla (her seri günde bir) birikir. Uzlaşı olana kadar Blue Lock 29 gibi ciltler ilanlarını kaybedebilir (yanlış fiyat göstermektense). Mağaza grupları gözleme dayanıyor; başka ortak beslemeler bulunursa `VOTE_GROUPS`'a eklenmeli.
 
 ### 17 Ekim: ISBN sağlık raporunun canlı sonucu
 

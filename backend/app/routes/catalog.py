@@ -136,7 +136,6 @@ def _last_summary() -> dict | None:
         "series_absorbed": last.get("series_absorbed"),
         "volumes_merged": last.get("volumes_merged"),
         "isbn_pages": last.get("isbn_pages"),
-        "isbn_writes_paused": True,
         "isbn_candidates": last.get("isbn_candidates") or [],
         "isbns_deferred": last.get("isbns_deferred", 0),
         "isbns_added": last.get("isbns_added"),
@@ -288,27 +287,6 @@ def isbn_conflict_fix(apply: bool = False, session: Session = Depends(get_db)) -
         return isbn_fix.run(Path(url.database).resolve(), apply=apply)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-@router.get("/catalog/isbn-safety")
-def isbn_safety_status(session: Session = Depends(get_db)) -> dict:
-    import json
-    from ..services.isbn_safety import GUARDS, check_guards
-    bind = session.get_bind()
-    if bind.dialect.name != "sqlite":
-        raise HTTPException(status_code=503, detail="ISBN veritabanı koruması doğrulanamadı.")
-    try:
-        check_guards(session.connection().connection.driver_connection)
-        path = bind.url.database
-        manifest = None
-        if path and path != ":memory:":
-            file = Path(path).resolve().with_name(Path(path).name + ".isbn-safety.json")
-            if file.is_file():
-                manifest = json.loads(file.read_text())
-    except (RuntimeError, OSError, ValueError):
-        raise HTTPException(status_code=503, detail="ISBN veritabanı koruması doğrulanamadı.") from None
-    return {"isbn_writes_paused": True, "database_guards": len(GUARDS),
-            "activation": manifest}
 
 
 @router.get("/catalog/covers")

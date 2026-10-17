@@ -109,8 +109,6 @@ def n_listings(con: sqlite3.Connection, series_id: int) -> int:
 
 
 def main() -> None:
-    from app.services.isbn_safety import reject_legacy_write
-    reject_legacy_write()
     con = sqlite3.connect(DB)
     con.execute("PRAGMA foreign_keys = ON")
 

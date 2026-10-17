@@ -1,29 +1,31 @@
 """Read-only ISBN health report for admins.
 
-Sizes the ways a wrong or missing ISBN turns into a wrong listing: volumes
-without an ISBN (title-only matching), catalog ISBNs the sync deferred,
-off-by-one suspicions, listings whose product URL names another volume,
-price outliers, malformed ISBNs and one product attached to several volumes.
+Sizes the ways a wrong or missing ISBN turns into a wrong listing:
 
-Never writes: every check is a SELECT over the current database plus the
-persisted last catalog-sync summary.
+* released volumes without an ISBN (their listings are title matches);
+* catalog ISBNs (Mangakol) that differ from the volume's decided ISBN;
+* catalog ISBNs Mangakol lists on two different books (source duplicates,
+  e.g. Blue Lock 28 and 29);
+* store products whose title names one volume and whose ISBN another
+  (``isbn_title_conflict`` observations — not attached);
+* contradictions the resolver left open, and the latest ISBN changes;
+* price outliers, malformed ISBNs and one product on several volumes.
+
+Never writes: every check is a SELECT over the current database.
 """
 from __future__ import annotations
 
-import re
 from collections import defaultdict
-from datetime import date
+from datetime import timedelta
 from statistics import median
-from urllib.parse import unquote, urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from ..models import CatalogSeries, Series, Store, StoreListing, Volume
-from ..normalization.isbn import is_foreign_isbn
-from ..normalization.text import normalize_text
+from ..models import (CatalogSeries, IsbnChange, IsbnIssue, Series, SharedIsbn, Store,
+                      StoreListing, StoreObservation, Volume)
+from ..normalization.isbn import is_foreign_isbn, isbn_checksum_ok
 from ..utils import from_cents, utcnow
-from . import catalog_state
 from .series_slugs import slugs_for
 
 #: Rows returned per check; the count is always the full number.
@@ -32,56 +34,10 @@ ITEM_LIMIT = 2000
 LISTING_HIGH, LISTING_LOW = 1.8, 0.55
 #: A volume this far from its series' typical price is suspect.
 VOLUME_HIGH, VOLUME_LOW = 2.0, 0.5
-
-_PRODUCT_ID_RE = re.compile(r"^\d{4,}$")
-#: Numbers that describe the paper or packaging, not the volume.
-_NON_VOLUME_FOLLOWERS = {"hamur", "adet", "li", "lu", "lı", "lü", "si", "in", "kitap", "sayfa"}
+OBSERVATION_WINDOW = timedelta(days=90)
 
 
-def isbn_checksum_ok(isbn: str) -> bool:
-    """ISBN-13 / ISBN-10 check digit; other lengths are not ISBNs."""
-    if len(isbn) == 13 and isbn.isdigit():
-        total = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(isbn[:12]))
-        return (10 - total % 10) % 10 == int(isbn[12])
-    if len(isbn) == 10 and isbn[:9].isdigit() and (isbn[9].isdigit() or isbn[9] == "X"):
-        total = sum((10 - i) * int(d) for i, d in enumerate(isbn[:9]))
-        check = 10 if isbn[9] == "X" else int(isbn[9])
-        return (total + check) % 11 == 0
-    return False
-
-
-def url_volume_numbers(url: str | None, title_numbers: set[int]) -> set[int]:
-    """Small numbers in a product URL's last path segment that may name the
-    volume ("/urun/happiness-5" -> {5}). Product ids, years, ISBNs, numbers
-    from the series title ("kaiju-no-8-...") and paper/packaging numbers
-    ("2-hamur") are left out. Empty when the URL carries no slug."""
-    if not url:
-        return set()
-    parts = [p for p in urlsplit(url).path.split("/") if p]
-    if not parts:
-        return set()
-    segment = unquote(parts[-1])
-    segment = re.sub(r"\.(?:html?|xhtml|aspx|php)$", "", segment, flags=re.I)
-    tokens = normalize_text(re.sub(r"[-_+.]", " ", segment)).split()
-    if not any(re.search(r"[a-z]", t) for t in tokens):
-        return set()
-    numbers: set[int] = set()
-    for i, token in enumerate(tokens):
-        if not token.isdigit() or _PRODUCT_ID_RE.match(token):
-            continue
-        follower = tokens[i + 1] if i + 1 < len(tokens) else ""
-        if follower in _NON_VOLUME_FOLLOWERS:
-            continue
-        numbers.add(int(token))
-    return numbers - title_numbers
-
-
-def _title_numbers(series: Series) -> set[int]:
-    text = f"{series.normalized_title or ''} {series.original_title or ''}"
-    return {int(n) for n in re.findall(r"\d+", text)}
-
-
-def _released(volume: Volume, today: date) -> bool:
+def _released(volume: Volume, today) -> bool:
     if volume.catalog_released is False:
         return False
     return volume.release_date is None or volume.release_date <= today
@@ -98,6 +54,15 @@ def build_report(session: Session) -> dict:
     ).unique())
     by_id = {v.id: v for v in volumes}
     slugs = slugs_for(session, {v.series_id for v in volumes})
+    base_slug: dict[int, set[str]] = defaultdict(set)
+    for sid, slug in session.execute(select(CatalogSeries.series_id, CatalogSeries.mangakol_slug)):
+        base_slug[sid].add(slug.split("~")[0])
+    shared = defaultdict(set)
+    for isbn, vid in session.execute(select(SharedIsbn.isbn, SharedIsbn.volume_id)):
+        shared[vid].add(isbn)
+
+    def same_book(a: Volume, b: Volume) -> bool:
+        return a.volume_number == b.volume_number and bool(base_slug[a.series_id] & base_slug[b.series_id])
 
     listings_by_volume: dict[int, list[tuple[StoreListing, Store]]] = defaultdict(list)
     all_listings: list[tuple[StoreListing, Store]] = []
@@ -111,7 +76,13 @@ def build_report(session: Session) -> dict:
     def ref(v: Volume) -> dict:
         return dict(volume_id=v.id, series_id=v.series_id, series_slug=slugs.get(v.series_id),
                     series=v.series.title, publisher=v.series.publisher.name if v.series.publisher else None,
-                    volume_number=v.volume_number, isbn=v.isbn)
+                    volume_number=v.volume_number, isbn=v.isbn, isbn_source=v.isbn_source,
+                    catalog_isbn=v.catalog_isbn)
+
+    def short(vid: int | None) -> dict | None:
+        v = by_id.get(vid) if vid else None
+        return dict(volume_id=v.id, series=v.series.title, volume_number=v.volume_number,
+                    series_slug=slugs.get(v.series_id), isbn=v.isbn) if v else None
 
     def offer(listing: StoreListing, store: Store) -> dict:
         return dict(store=store.name, url=listing.product_url, in_stock=listing.in_stock,
@@ -122,58 +93,58 @@ def build_report(session: Session) -> dict:
 
     released = [v for v in volumes if _released(v, today)]
 
-    # 1. Released volumes without an ISBN: every listing they have was matched by title alone.
+    # 1. Released volumes without an ISBN: their listings are title matches.
     missing = []
     for v in released:
-        if v.isbn:
+        if v.isbn or shared[v.id]:
             continue
         rows = listings_by_volume.get(v.id, [])
         missing.append(dict(ref(v), listings=len(rows), in_stock=sum(1 for l, _ in rows if l.in_stock)))
     missing.sort(key=lambda r: (-r["in_stock"], r["series"], r["volume_number"]))
 
-    # 2–3. ISBNs the last catalog sync read but did not write, and off-by-one suspicions.
-    last = catalog_state.read_state().get("last") or {}
-    deferred, shifted = [], []
-    for cand in last.get("isbn_candidates") or []:
-        v = by_id.get(cand.get("volume_id"))
-        source_isbn = cand.get("source_isbn")
-        if v is None or not source_isbn:
-            continue
-        holder = session.scalar(select(Volume).where(Volume.isbn == source_isbn))
-        if v.isbn == source_isbn:
-            continue  # written since
-        if holder is not None and holder.id != v.id:
-            same_series = holder.series_id == v.series_id
-            kind = "held_by_neighbor" if same_series and abs(holder.volume_number - v.volume_number) == 1 else "held_by_other"
-            holder_ref = dict(volume_id=holder.id, series=holder.series.title if holder.series else None,
-                              volume_number=holder.volume_number, series_slug=slugs.get(holder.series_id))
-        elif v.isbn:
-            kind, holder_ref = "differs", None
-        elif not isbn_checksum_ok(source_isbn):
-            kind, holder_ref = "invalid", None
-        else:
-            kind, holder_ref = "safe_to_write", None
-        row = dict(ref(v), source_isbn=source_isbn, source_url=cand.get("source_url"), kind=kind, holder=holder_ref)
-        (shifted if kind == "held_by_neighbor" else deferred).append(row)
-    order = {"safe_to_write": 0, "differs": 1, "held_by_other": 2, "invalid": 3}
-    deferred.sort(key=lambda r: (order.get(r["kind"], 9), r["series"], r["volume_number"]))
+    # 2. Mangakol's ISBN differs from the decided one.
+    differs = []
+    for v in released:
+        if v.catalog_isbn and v.catalog_isbn != v.isbn and v.catalog_isbn not in shared[v.id]:
+            differs.append(dict(ref(v), kind="empty" if not v.isbn else "differs"))
+    differs.sort(key=lambda r: (r["kind"] != "differs", r["series"], r["volume_number"]))
 
-    # 4. Listings whose product URL names a different volume number.
-    url_mismatch = []
-    for vid, rows in listings_by_volume.items():
-        v = by_id[vid]
-        if v.covers_from is not None:
-            continue  # omnibus: the URL carries the original span
-        title_numbers = _title_numbers(v.series)
-        if v.volume_number in title_numbers:
+    # 3. Mangakol lists one ISBN on two different books.
+    by_catalog: dict[str, list[Volume]] = defaultdict(list)
+    for v in volumes:
+        if v.catalog_isbn:
+            by_catalog[v.catalog_isbn].append(v)
+    duplicates = []
+    for isbn, group in by_catalog.items():
+        if len(group) < 2:
             continue
-        for listing, store in rows:
-            numbers = url_volume_numbers(listing.product_url, title_numbers)
-            if len(numbers) == 1 and v.volume_number not in numbers:
-                url_mismatch.append(dict(ref(v), url_number=next(iter(numbers)), **offer(listing, store)))
-    url_mismatch.sort(key=lambda r: (not r["in_stock"], r["series"], r["volume_number"]))
+        if all(same_book(group[0], other) for other in group[1:]):
+            continue  # one book in several editions: a legitimate shared ISBN
+        duplicates.append(dict(isbn=isbn, volumes=[ref(v) for v in group]))
+    duplicates.sort(key=lambda r: r["volumes"][0]["series"])
 
-    # 5a. A store's in-stock price far from the other stores' median for the same volume.
+    # 4. Store title names one volume, ISBN another: not attached.
+    since = utcnow() - OBSERVATION_WINDOW
+    stores = dict(session.execute(select(Store.id, Store.name)).all())
+    conflicts = []
+    for o in session.scalars(select(StoreObservation).where(
+            StoreObservation.reason == "isbn_title_conflict").order_by(StoreObservation.last_seen.desc())):
+        seen = o.last_seen if o.last_seen.tzinfo else o.last_seen.replace(tzinfo=since.tzinfo)
+        if seen < since:
+            continue
+        conflicts.append(dict(store=stores.get(o.store_id), url=o.product_url, title=o.title, isbn=o.isbn,
+                              price=from_cents(o.price), title_volume=short(o.title_volume_id),
+                              isbn_volume=short(o.isbn_volume_id)))
+
+    # 5. Contradictions the resolver left open; latest ISBN changes.
+    issues = [dict(ref(by_id[i.volume_id]) if i.volume_id in by_id else dict(volume_id=i.volume_id),
+                   kind=i.kind, detail=i.detail)
+              for i in session.scalars(select(IsbnIssue).order_by(IsbnIssue.kind, IsbnIssue.volume_id))]
+    changes = [dict(short(c.volume_id) or dict(volume_id=c.volume_id), old_isbn=c.old_isbn, new_isbn=c.new_isbn,
+                    source=c.source, reason=c.reason, at=c.created_at.isoformat() if c.created_at else None)
+               for c in session.scalars(select(IsbnChange).order_by(IsbnChange.id.desc()).limit(300))]
+
+    # 6a. A store's in-stock price far from the other stores' median for the same volume.
     listing_outliers = []
     volume_median: dict[int, float] = {}
     for v in released:
@@ -190,7 +161,7 @@ def build_report(session: Session) -> dict:
                                              others_median=float(from_cents(int(others))), **offer(listing, store)))
     listing_outliers.sort(key=lambda r: -max(r["ratio"], 1 / r["ratio"]))
 
-    # 5b. A whole volume priced far from its series' typical volume (edition mix-ups).
+    # 6b. A whole volume priced far from its series' typical volume (edition mix-ups).
     volume_outliers = []
     by_series: dict[int, list[Volume]] = defaultdict(list)
     for v in released:
@@ -209,7 +180,7 @@ def build_report(session: Session) -> dict:
                                             offers=[offer(l, s) for l, s in in_stock_priced(v.id)]))
     volume_outliers.sort(key=lambda r: -max(r["ratio"], 1 / r["ratio"]))
 
-    # 6. Malformed or foreign ISBNs on catalog volumes.
+    # 7. Malformed or foreign ISBNs on catalog volumes.
     bad_isbn = []
     for v in volumes:
         if not v.isbn:
@@ -226,7 +197,7 @@ def build_report(session: Session) -> dict:
         if problem:
             bad_isbn.append(dict(ref(v), problem=problem))
 
-    # 7. The same store product attached to more than one volume.
+    # 8. The same store product attached to more than one volume.
     by_product: dict[tuple[int, str], list[tuple[StoreListing, Store]]] = defaultdict(list)
     for listing, store in all_listings:
         if listing.product_url:
@@ -240,25 +211,28 @@ def build_report(session: Session) -> dict:
                                             else dict(volume_id=l.volume_id) for l, _ in rows]))
 
     checks = [
-        ("missing_isbn", missing),
-        ("deferred_catalog_isbn", deferred),
-        ("off_by_one", shifted),
-        ("url_volume_mismatch", url_mismatch),
-        ("listing_price_outlier", listing_outliers),
+        ("isbn_issues", issues),
+        ("catalog_duplicate", duplicates),
+        ("title_isbn_conflict", conflicts),
+        ("catalog_differs", differs),
         ("volume_price_outlier", volume_outliers),
+        ("listing_price_outlier", listing_outliers),
+        ("missing_isbn", missing),
         ("invalid_isbn", bad_isbn),
         ("shared_product", shared_product),
+        ("recent_changes", changes),
     ]
     return dict(
         generated_at=utcnow().isoformat(),
-        last_sync_finished_at=last.get("finished_at"),
         totals=dict(
             catalog_volumes=len(volumes),
             released_volumes=len(released),
-            released_with_isbn=sum(1 for v in released if v.isbn),
+            released_with_isbn=sum(1 for v in released if v.isbn or shared[v.id]),
             released_without_isbn=len(missing),
             without_isbn_but_listed=sum(1 for r in missing if r["listings"]),
             listings=len(all_listings),
+            observations=session.query(StoreObservation).count(),
+            catalog_isbn_read=sum(1 for v in released if v.catalog_isbn),
         ),
         checks={key: dict(count=len(rows), items=rows[:ITEM_LIMIT]) for key, rows in checks},
     )

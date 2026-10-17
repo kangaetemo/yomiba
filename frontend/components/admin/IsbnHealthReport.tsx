@@ -8,18 +8,26 @@ import { getIsbnHealth } from "@/services/isbn";
 import type { HealthCheckKey, HealthOffer, HealthRow, IsbnHealth } from "@/services/isbn";
 
 const checks: { key: HealthCheckKey; title: string; help: string }[] = [
-  { key: "off_by_one", title: "Kayma şüphesi", help: "Mangakol’un bu cilt için önerdiği ISBN aynı serinin komşu cildinde duruyor. Çoğunlukla önceki cildin barkodu yeni cilde kopyalanmıştır." },
-  { key: "url_volume_mismatch", title: "Adresi başka cildi gösteren ilanlar", help: "Mağaza ürününün adresindeki cilt numarası bağlı olduğu cildinkiyle tutmuyor. Yanlış cilde bağlanmış olabilir." },
+  { key: "isbn_issues", title: "Otomatik çözülemeyen ISBN çelişkileri", help: "Kanıtlar çelişiyor; sistem hiçbir şeyi değiştirmedi. Cilt sayfasındaki admin ISBN panelinden karar verebilirsiniz." },
+  { key: "catalog_duplicate", title: "Mangakol’un iki farklı kitaba verdiği ISBN’ler", help: "Kaynak hatası (Blue Lock 28/29 gibi). Bu ISBN hiçbir cilde kendiliğinden yazılmaz; mağaza kanıtı ya da admin kararı bekler. Aynı kitabın baskıları burada sayılmaz." },
+  { key: "title_isbn_conflict", title: "Başlığı bir cildi, ISBN’i başka cildi gösteren ürünler", help: "Bağlanmadı (son 90 gün). Mağazanın ISBN’i ya da bizim ISBN’imiz yanlış; mağaza uzlaşısı kataloğu düzeltince ürün doğru cilde bağlanır." },
+  { key: "catalog_differs", title: "Mangakol’dan farklı ISBN’li ciltler", help: "Kararlaştırılmış ISBN ile Mangakol’un listelediği farklı (ya da cilt hâlâ ISBN’siz). Sebep çoğunlukla Mangakol hatası ya da henüz uzlaşı olmaması." },
   { key: "volume_price_outlier", title: "Serinin diğer ciltlerinden çok farklı fiyatlı ciltler", help: "Cildin ortanca fiyatı serinin tipik cilt fiyatının yarısından az ya da iki katından fazla. Genelde başka bir baskının (limitli, varyant) fiyatıdır." },
-  { key: "listing_price_outlier", title: "Fiyatı diğer mağazalardan çok farklı ilanlar", help: "Aynı cildin diğer mağazalardaki ortanca fiyatından çok farklı (≥1,8× ya da ≤0,55×). En az üç stokta ilanı olan ciltler." },
-  { key: "deferred_catalog_isbn", title: "Mangakol’un önerip yazılmayan ISBN’leri", help: "Son katalog senkronunda okunan ama P0 kilidi yüzünden yazılmayan ISBN’ler. Sadece o senkronda yeniden okunan ciltleri kapsar." },
-  { key: "missing_isbn", title: "ISBN’siz çıkmış ciltler", help: "Bu ciltlerin ilanları sadece başlıkla eşleşiyor; çakışma kontrolü olmadığı için baskılar karışabilir." },
+  { key: "listing_price_outlier", title: "Fiyatı diğer mağazalardan çok farklı ilanlar", help: "Aynı cildin diğer mağazalardaki ortanca fiyatından çok farklı (≥1,8× ya da ≤0,55×). Düşük olanlar çoğunlukla gerçek indirimdir; sadece başlıkla eşleşen yüksek fiyatlar aktarımda reddedilir." },
+  { key: "missing_isbn", title: "ISBN’siz çıkmış ciltler", help: "Bu ciltlerin ilanları sadece başlıkla eşleşiyor. Henüz çıkmamış ciltler sayılmaz." },
   { key: "invalid_isbn", title: "Geçersiz ya da şüpheli ISBN’ler", help: "Kontrol basamağı hatalı, kitap barkodu olmayan, ISBN-10 ya da yabancı önekli ISBN’ler." },
   { key: "shared_product", title: "Birden fazla ciltte duran ürün", help: "Aynı mağaza ürünü birden fazla cilde bağlı." },
+  { key: "recent_changes", title: "Son ISBN değişiklikleri", help: "Her otomatik ve admin değişikliği kaynağı ve gerekçesiyle kaydedilir (son 300)." },
 ];
 const kinds: Record<string, string> = {
-  safe_to_write: "Boş alana güvenle yazılabilir", differs: "Mevcut ISBN’den farklı",
-  held_by_other: "Başka bir ciltte tutuluyor", held_by_neighbor: "Komşu ciltte tutuluyor", invalid: "Kontrol basamağı hatalı",
+  empty: "Bizde boş", differs: "Farklı",
+  catalog_duplicate: "Mangakol aynı ISBN’i başka kitaba da vermiş", catalog_differs: "Mangakol farklı diyor, mağaza kanıtı yok",
+  stores_vs_catalog: "Mağazalar Mangakol’la çelişiyor", stores_disagree: "Mağazalar kendi aralarında çelişiyor",
+  isbn_claimed: "ISBN başka bir ciltte",
+};
+const sources: Record<string, string> = {
+  catalog: "Mangakol", stores: "mağaza uzlaşısı", admin: "admin", legacy: "eski kayıt",
+  moved: "taşındı", shared: "ortak baskı", unshared: "ortaklık kaldırıldı",
 };
 const problems: Record<string, string> = {
   checksum: "Kontrol basamağı hatalı", not_book_barcode: "Kitap barkodu değil", isbn10: "ISBN-10", foreign: "Yabancı ISBN",
@@ -41,24 +49,32 @@ function Offer({ offer }: { offer: Partial<HealthOffer> }) {
   </span>;
 }
 
+function Ref({ v }: { v: HealthRow["title_volume"] }) {
+  return v ? <VolumeLink slug={v.series_slug} series={v.series} number={v.volume_number} /> : <span>—</span>;
+}
+
 function details(key: HealthCheckKey, row: HealthRow) {
   switch (key) {
-    case "off_by_one":
-      return <>Önerilen {row.source_isbn} → şu an <VolumeLink slug={row.holder?.series_slug} series={row.holder?.series} number={row.holder?.volume_number} /> cildinde</>;
-    case "deferred_catalog_isbn":
-      return <>{kinds[row.kind ?? ""] ?? row.kind}: {row.source_isbn}{row.holder ? <> · <VolumeLink slug={row.holder.series_slug} series={row.holder.series} number={row.holder.volume_number} /></> : null}</>;
-    case "url_volume_mismatch":
-      return <>Adreste Cilt {row.url_number} · <Offer offer={row} /></>;
+    case "isbn_issues":
+      return <>{kinds[row.kind ?? ""] ?? row.kind} · <span className="font-mono text-xs">{JSON.stringify(row.detail)}</span></>;
+    case "catalog_duplicate":
+      return <>{(row.volumes ?? []).map((v, i) => <span key={i}>{i ? ", " : ""}<VolumeLink slug={v.series_slug} series={v.series} number={v.volume_number} /> ({v.isbn ?? "boş"})</span>)}</>;
+    case "title_isbn_conflict":
+      return <><Offer offer={row} /> “{row.title}” · başlık: <Ref v={row.title_volume} /> · ISBN: <Ref v={row.isbn_volume} /></>;
+    case "catalog_differs":
+      return <>{kinds[row.kind ?? ""]} · Mangakol {row.catalog_isbn}{row.isbn_source ? ` · bizdeki: ${sources[row.isbn_source] ?? row.isbn_source}` : ""}</>;
     case "listing_price_outlier":
       return <><Offer offer={row} /> · diğerleri {tl(row.others_median)} (×{row.ratio})</>;
     case "volume_price_outlier":
       return <>Cilt {tl(row.volume_median)}, seri {tl(row.series_median)} (×{row.ratio}) · {(row.offers ?? []).map((o, i) => <span key={i}>{i ? ", " : ""}<Offer offer={o} /></span>)}</>;
     case "missing_isbn":
-      return <>{row.listings} ilan, {row.in_stock} stokta</>;
+      return <>{row.listings} ilan, {row.in_stock} stokta{row.catalog_isbn ? ` · Mangakol: ${row.catalog_isbn}` : ""}</>;
     case "invalid_isbn":
       return <>{problems[row.problem ?? ""] ?? row.problem}</>;
     case "shared_product":
       return <><a href={row.url} target="_blank" rel="noreferrer" className="text-new hover:underline">{row.store}</a> · {(row.volumes ?? []).map((v, i) => <span key={i}>{i ? ", " : ""}<VolumeLink slug={v.series_slug} series={v.series} number={v.volume_number} /></span>)}</>;
+    case "recent_changes":
+      return <>{row.old_isbn ?? "boş"} → {row.new_isbn ?? "boş"} · {sources[row.source ?? ""] ?? row.source} · {row.reason}{row.at ? ` · ${formatDateTime(row.at)}` : ""}</>;
   }
 }
 
@@ -76,7 +92,7 @@ function CheckSection({ check, data }: { check: (typeof checks)[number]; data: {
         <table className="w-full text-left text-sm">
           <thead className="text-muted"><tr><th className="py-1 pr-3 font-medium">Cilt</th><th className="py-1 pr-3 font-medium">ISBN</th><th className="py-1 font-medium">Ayrıntı</th></tr></thead>
           <tbody>{rows.map((row, i) => <tr key={i} className="border-t border-line align-top">
-            <td className="py-1.5 pr-3">{check.key === "shared_product" ? "—" : <VolumeLink slug={row.series_slug} series={row.series} number={row.volume_number} />}</td>
+            <td className="py-1.5 pr-3">{["shared_product", "catalog_duplicate", "title_isbn_conflict"].includes(check.key) ? "—" : <VolumeLink slug={row.series_slug} series={row.series} number={row.volume_number} />}</td>
             <td className="py-1.5 pr-3 font-mono text-xs">{row.isbn ?? "—"}</td>
             <td className="py-1.5">{details(check.key, row)}</td>
           </tr>)}</tbody>
@@ -124,12 +140,13 @@ export function IsbnHealthReport() {
     ["Katalogdaki cilt", t.catalog_volumes], ["Çıkmış cilt", t.released_volumes],
     ["ISBN’li çıkmış cilt", t.released_with_isbn], ["ISBN’siz çıkmış cilt", t.released_without_isbn],
     ["ISBN’siz ama ilanı olan", t.without_isbn_but_listed], ["Toplam ilan", t.listings],
+    ["Mangakol ISBN’i okunan", t.catalog_isbn_read], ["Mağaza gözlemi", t.observations],
   ];
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center gap-3">
       <button type="button" className={button} onClick={refresh} disabled={loading}>{loading ? "Yenileniyor…" : "Yenile"}</button>
       <button type="button" className={button} onClick={download}>Raporu indir (JSON)</button>
-      <span className="text-sm text-muted">Oluşturuldu: {formatDateTime(report.generated_at)}{report.last_sync_finished_at ? ` · Son katalog senkronu: ${formatDateTime(report.last_sync_finished_at)}` : ""}</span>
+      <span className="text-sm text-muted">Oluşturuldu: {formatDateTime(report.generated_at)}</span>
     </div>
     <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {cards.map(([label, value]) => <div key={label} className="rounded-xl border border-line bg-surface p-3">

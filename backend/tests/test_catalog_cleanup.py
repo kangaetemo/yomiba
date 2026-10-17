@@ -19,7 +19,7 @@ def test_new_release_refreshes_recent_missing_details(db_session):
     fake = _DetailsFake([_zom([cv])], {cv.url: CatalogVolumeDetails("9786257646628", 192, date(2026, 10, 13))})
     CatalogSyncService(db_session, scraper=fake).sync()
     assert fake.fetched == [cv.url]
-    assert (vol.isbn, vol.page_count, vol.release_date) == (None, 192, date(2026, 10, 13))
+    assert (vol.isbn, vol.page_count, vol.release_date) == ("9786257646628", 192, date(2026, 10, 13))
 
 
 def test_conflicting_source_does_not_overwrite_existing_metadata(db_session):
@@ -62,6 +62,9 @@ def test_variant_cannot_claim_another_volume_number_isbn(db_session):
         f"{BASE}/cilt-1-clothbound": CatalogVolumeDetails(REGULAR, 200, date(2026, 10, 13)),
     })
     report = CatalogSyncService(db_session, scraper=fake).sync()
-    assert report.isbn_conflicts == 1
+    # Mangakol lists one ISBN on Cilt 1 and on the variant's Cilt 4: a
+    # source duplicate on both, written to neither, Cilt 1 keeps its own.
+    assert report.isbn_conflicts == 2
+    assert all("catalog_duplicate" in d for d in report.isbn_conflict_details)
     assert _volume(db_session, "Soichi").isbn == REGULAR
     assert variant.isbn is None and variant.page_count is None and variant.release_date is None

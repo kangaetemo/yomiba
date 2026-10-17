@@ -232,16 +232,20 @@ def test_cleanup_dry_run_detects_protected_data(engine, db_session):
     assert has_protected_data(rows)
 
 
-def test_legacy_cleanup_cannot_delete_volume_ids_during_p0(engine, db_session, monkeypatch):
-    from app.services.isbn_safety import MutationPaused
+def test_cleanup_apply_on_scratch_db_keeps_catalog_data(engine, db_session, monkeypatch):
     catalog = seed_catalog_series(db_session, "Catalog", "Publisher", volumes=(1,))
     pub = Publisher(name="Outside", normalized_name="outside")
-    db_session.add(pub); db_session.flush()
-    outside = Series(publisher_id=pub.id, title="Outside", slug="outside", normalized_title="outside")
-    db_session.add(outside); db_session.flush()
-    db_session.add(Volume(series_id=outside.id, volume_number=1)); db_session.commit()
-    before = list(db_session.execute(select(Volume.id, Volume.series_id)))
+    db_session.add(pub)
+    db_session.flush()
+    outside = Series(publisher_id=pub.id, title="Outside", slug="outside",
+                     normalized_title="outside")
+    db_session.add(outside)
+    db_session.flush()
+    db_session.add(Volume(series_id=outside.id, volume_number=1))
+    db_session.commit()
     monkeypatch.setattr(sys, "argv", ["cleanup_catalog_orphans.py", "--db", engine.url.database, "--apply"])
-    with pytest.raises(MutationPaused):
-        cleanup_main()
-    assert list(db_session.execute(select(Volume.id, Volume.series_id))) == before
+    assert cleanup_main() == 0
+    db_session.expire_all()
+    assert {s.id for s in db_session.scalars(select(Series))} == {catalog.id}
+    assert {s.series_id for s in db_session.scalars(select(CatalogSeries))} == {catalog.id}
+    assert db_session.scalar(select(Volume.series_id)) == catalog.id

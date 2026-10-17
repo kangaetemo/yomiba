@@ -233,8 +233,20 @@ class GerekliseylerScraper(BaseScraper):
     )
 
     def _enrich_with_details(self, results: list[SearchResult]) -> list[SearchResult]:
+        """Search cards carry no ISBN ("Stok Kodu" is on the product page).
+        ISBNs read by earlier runs are reused (same URL and title); the
+        detail budget goes to the products still without one, so a title
+        match is never left unverified because it sat past the first N
+        results (Monster 9 = VIZ English edition, 2026-10-17)."""
         limit = self.settings.max_detail_requests
-        for index, result in enumerate(results[:limit]):
+        known = self.known_isbns or {}
+        for index, result in enumerate(results):
+            hit = None if result.isbn else known.get(result.product_url)
+            if hit and hit[0] == (result.title or "")[:500]:
+                results[index] = result.model_copy(update={"isbn": hit[1]})
+        pending = [i for i, r in enumerate(results) if not r.isbn][:limit]
+        for index in pending:
+            result = results[index]
             try:
                 results[index] = self._enrich_one(result)
             except ScraperError:

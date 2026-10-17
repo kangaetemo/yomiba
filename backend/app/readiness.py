@@ -27,8 +27,7 @@ def check_database_ready(engine: Engine, *, check_foreign_keys: bool = False) ->
             raise RuntimeError("Database Alembic revision is not at head")
         for table in ("series", "catalog_series", "volumes", "store_listings",
                       "price_history", "users", "user_sessions", "import_records",
-                      "isbn_audit_runs", "isbn_audit_items", "isbn_audit_results", "isbn_reviews",
-                      "isbn_decisions", "isbn_approval_permits"):
+                      "isbn_changes", "shared_isbns", "store_observations", "isbn_issues"):
             connection.execute(text(f"SELECT 1 FROM {table} LIMIT 1"))
         invalid = connection.execute(text(
             "SELECT cs.series_id FROM catalog_series cs "
@@ -40,6 +39,3 @@ def check_database_ready(engine: Engine, *, check_foreign_keys: bool = False) ->
         if check_foreign_keys and engine.url.get_backend_name() == "sqlite":
             if connection.exec_driver_sql("PRAGMA foreign_key_check").first() is not None:
                 raise RuntimeError("SQLite foreign key integrity check failed")
-        if engine.url.get_backend_name() == "sqlite":
-            from .services.isbn_safety import check_guards
-            check_guards(connection.connection.driver_connection)

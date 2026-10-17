@@ -30,15 +30,17 @@ def _wrong_listing(db_session):
     return vol, listing
 
 
-def test_admin_cannot_delete_a_listing_and_its_history_during_p0(client, db_session):
+def test_admin_removes_listing_and_blocks_product(client, db_session):
     vol, listing = _wrong_listing(db_session)
     body = client.get(f"/volume/{vol.id}").json()
     assert body["stores"][0]["id"] == listing.id
+
     res = client.delete(f"/volume/{vol.id}/listings/{listing.id}?reason=roman, manga değil")
-    assert res.status_code == 409
-    assert db_session.get(StoreListing, listing.id) is not None
-    assert db_session.scalar(select(PriceHistory)) is not None
-    assert db_session.scalar(select(ListingExclusion)) is None
+    assert res.status_code == 200
+    assert db_session.get(StoreListing, listing.id) is None
+    assert db_session.scalar(select(PriceHistory)) is None
+    ex = db_session.scalar(select(ListingExclusion))
+    assert (ex.product_url, ex.volume_id, ex.reason) == (URL, vol.id, "roman, manga değil")
 
 
 def test_excluded_product_is_never_imported_again(db_session, import_service):

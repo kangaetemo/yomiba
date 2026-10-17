@@ -54,6 +54,9 @@ class BaseScraper:
     #: Product URLs the last search found REMOVED from the store (e.g. a
     #: 404 product page); the importer deletes their listings.
     gone_urls: set[str] = set()
+    #: {product URL: (title, ISBN)} the importer already read for this
+    #: store; detail-page enrichment spends its budget on the rest.
+    known_isbns: dict[str, tuple[str, str]] = {}
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         settings = get_settings()

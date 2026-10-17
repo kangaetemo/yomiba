@@ -49,6 +49,7 @@ from ..models import (
     Series,
     Store,
     StoreListing,
+    StoreObservation,
     Volume,
 )
 from ..normalization.isbn import book_isbn, is_foreign_isbn, is_foreign_language
@@ -66,8 +67,15 @@ from ..scrapers.base import BaseScraper
 from ..scrapers.common import FOREIGN_PUBLISHER_RE
 from ..scrapers.relevance import check_manga_relevance
 from ..utils import from_cents, to_cents, utcnow
+from .isbn_resolver import is_sibling, isbn_holders, resolve_many
 
 logger = logging.getLogger("yomiba.import")
+
+#: Rejections that prove a product is not (provably) the volume a listing
+#: had it on: its existing listing is removed.
+DROP_REASONS = frozenset({"isbn_title_conflict", "isbn_conflict", "edition_ambiguous", "foreign_edition"})
+#: A title-only match this far above the other stores is refused.
+PRICE_OUTLIER_HIGH = 1.8
 
 #: Reserved publisher used when a result carries no publisher information and
 #: the edition cannot be determined unambiguously. It keeps unknown items
@@ -209,6 +217,12 @@ class ImportService:
         """
         report = ImportReport(query=query, started_at=utcnow())
         scrapers = self.scrapers if self.scrapers is not None else get_scrapers(store_ids)
+        known = {scraper.store_id: self._known_isbns(scraper.store_id) for scraper in scrapers}
+        for scraper in scrapers:
+            # Scrapers that read detail pages for ISBNs skip products whose
+            # ISBN an earlier run already read (same URL and title).
+            scraper.known_isbns = known[scraper.store_id]
+        touched: set[int] = set()
 
         fetched = self._search_all(scrapers, query)
 
@@ -244,13 +258,21 @@ class ImportService:
             # Phase 1: resolve every result to its (volume, store) target.
             groups: dict[tuple[int, int], list[tuple[int | None, SearchResult]]] = {}
             conflict_publishers: dict[str, int] = {}
+            rules: dict[str, str | None] = {}
             for result in results:
+                result = self._with_known_isbn(result, known[scraper.store_id])
                 try:
                     target = self._resolve_target(result)
-                    # Commit resolution side effects (new store/volume rows,
-                    # ISBN enrichment) right away so a later failing result's
-                    # rollback cannot undo them — same isolation semantics as
-                    # the original per-result loop.
+                    reason = None if target else (self.last_reason or "no_series_match")
+                    self._observe(result, target[0] if target else None, reason)
+                    touched.update(v for v in (self.last_match.get("title_volume_id"),
+                                               self.last_match.get("isbn_volume_id")) if v)
+                    if reason in DROP_REASONS:
+                        self._drop_listing(result, reason)
+                    rules[result.product_url] = self.last_match.get("rule")
+                    # Commit resolution side effects (cover backfill, the
+                    # observation) right away so a later failing result's
+                    # rollback cannot undo them.
                     self.session.commit()
                 except Exception:  # noqa: BLE001 - per-result isolation
                     logger.exception(
@@ -275,20 +297,6 @@ class ImportService:
                     (to_cents(result.price), result)
                 )
 
-            # ISBN-proven products leave the volume a title match once put
-            # them on, before any group is written (so that volume's own
-            # product can take the freed slot in this same run).
-            for (volume_id, store_id), items in groups.items():
-                volume = self.session.get(Volume, volume_id)
-                store = self.session.get(Store, store_id)
-                try:
-                    for _, result in items:
-                        self._release_misplaced_listings(volume, store, result)
-                    self.session.commit()
-                except Exception:  # noqa: BLE001 - best effort
-                    logger.exception("import: could not release misplaced listings for volume %s", volume_id)
-                    self.session.rollback()
-
             # Phase 2: import one representative per (volume, store) group —
             # prefer available products, then the cheapest priced printing.
             for (volume_id, store_id), items in groups.items():
@@ -308,6 +316,20 @@ class ImportService:
                     store_report.reasons["duplicate"] = store_report.reasons.get("duplicate", 0) + len(items) - 1
                 volume = self.session.get(Volume, volume_id)
                 store = self.session.get(Store, store_id)
+                for _, other in items:
+                    if other is not best:
+                        self._observe(other, None, "duplicate")
+                if rules.get(best.product_url) == "title" and self._price_outlier(volume, store, best):
+                    # Matched by title alone and far above the other stores:
+                    # likely another edition (Monster 9 = VIZ English, 1265
+                    # TL). A wrong price is worse than a missing one; a low
+                    # price is never refused (real discounts).
+                    self._observe(best, None, "price_outlier")
+                    self._drop_listing(best, "price_outlier")
+                    self.session.commit()
+                    store_report.skipped += 1
+                    store_report.reasons["price_outlier"] = store_report.reasons.get("price_outlier", 0) + 1
+                    continue
                 try:
                     action = self._upsert_listing(volume, store, best)
                     self.session.commit()
@@ -336,8 +358,94 @@ class ImportService:
                 top = sorted(conflict_publishers.items(), key=lambda kv: -kv[1])[:5]
                 logger.info("import publisher conflicts: store=%s query=%r publishers=%s",
                             store_report.store_code, query, top)
+        if touched:
+            try:
+                resolve_many(self.session, sorted(touched))
+                self.session.commit()
+            except Exception:  # noqa: BLE001 - prices are already stored
+                logger.exception("import: ISBN resolution failed for %r", query)
+                self.session.rollback()
         report.finished_at = utcnow()
         return report
+
+    # ------------------------------------------------------------------
+    # Evidence: observations, ISBN cache, listing drops
+    # ------------------------------------------------------------------
+    def _known_isbns(self, store_code: str) -> dict[str, tuple[str, str]]:
+        """{product URL: (title, ISBN)} an earlier import read for the store."""
+        rows = self.session.execute(
+            select(StoreObservation.product_url, StoreObservation.title, StoreObservation.isbn)
+            .join(Store, Store.id == StoreObservation.store_id)
+            .where(Store.code == store_code, StoreObservation.isbn.is_not(None))
+        )
+        return {url: (title, isbn) for url, title, isbn in rows}
+
+    @staticmethod
+    def _with_known_isbn(result: SearchResult, known: dict[str, tuple[str, str]]) -> SearchResult:
+        """A product without an ISBN gets the one read earlier for the same
+        URL — only when the title is unchanged: stores reuse a product page
+        for another volume (Kitap Sepeti's "derin-tarih-...-153" page now
+        sells Vinland Destanı 6)."""
+        if result.isbn:
+            return result
+        hit = known.get(result.product_url)
+        if hit and hit[0] == (result.title or "")[:500]:
+            return result.model_copy(update={"isbn": hit[1]})
+        return result
+
+    def _observe(self, result: SearchResult, volume: Volume | None, reason: str | None) -> None:
+        store = self._resolve_store(result.store_id, result.store_name)
+        now = utcnow()
+        row = self.session.scalar(select(StoreObservation).where(
+            StoreObservation.store_id == store.id, StoreObservation.product_url == result.product_url))
+        if row is None:
+            row = StoreObservation(store_id=store.id, product_url=result.product_url, first_seen=now,
+                                   title=(result.title or "")[:500], last_seen=now)
+            self.session.add(row)
+        match = getattr(self, "last_match", None) or {}
+        row.title = (result.title or "")[:500]
+        row.isbn = book_isbn(result.isbn)
+        row.publisher = (result.publisher or None) and result.publisher[:300]
+        row.price = to_cents(result.price)
+        row.in_stock = result.in_stock
+        row.last_seen = now
+        if reason != "duplicate":
+            row.title_volume_id = match.get("title_volume_id")
+            row.isbn_volume_id = match.get("isbn_volume_id")
+            row.rule = match.get("rule") if volume is not None else None
+        row.volume_id = volume.id if volume is not None else None
+        row.reason = reason
+        self.session.flush()
+
+    def _drop_listing(self, result: SearchResult, reason: str) -> None:
+        """Remove this store product's listing: the evidence now says it is
+        not (provably) the volume it was on. Its price history goes with it;
+        the observation keeps the record."""
+        store = self.session.scalar(select(Store).where(Store.code == result.store_id))
+        if store is None:
+            return
+        for listing in self.session.scalars(select(StoreListing).where(
+                StoreListing.store_id == store.id, StoreListing.product_url == result.product_url)):
+            logger.info("import: removing listing %s (%s) from volume %s: %s",
+                        listing.id, result.product_url, listing.volume_id, reason)
+            self.session.delete(listing)
+        self.session.flush()
+
+    def _price_outlier(self, volume: Volume, store: Store, result: SearchResult) -> bool:
+        """Title-only match priced >= 1.8x the median of at least two other
+        stores' in-stock offers for the volume."""
+        price = to_cents(result.price)
+        if not price or book_isbn(result.isbn):
+            return False
+        others = [p for p, in self.session.execute(select(StoreListing.price).where(
+            StoreListing.volume_id == volume.id, StoreListing.store_id != store.id,
+            StoreListing.in_stock.is_(True), StoreListing.price.is_not(None)))]
+        if len(others) < 2:
+            return False
+        others.sort()
+        mid = len(others) // 2
+        median = others[mid] if len(others) % 2 else (others[mid - 1] + others[mid]) / 2
+        return price >= PRICE_OUTLIER_HIGH * median
 
     @staticmethod
     def _search_all(scrapers: list[BaseScraper], query: str) -> list[list[SearchResult] | Exception]:
@@ -460,28 +568,93 @@ class ImportService:
     ) -> tuple[Volume, Store] | None:
         """Resolve a result to the (volume, store) it would import into.
 
-        Returns None (with a log line) when the result must be skipped: no
-        title/url, collection, no derivable series, no matching catalog
-        series, or an ISBN outside the catalog. Never writes listings; may
-        enrich ISBN/cover on an existing target — the caller commits or
-        rolls back as usual.
+        The title and the ISBN are judged separately, then compared:
+
+        * title volume: the catalog volume the title alone names
+          (``_title_path`` on a copy of the result without its ISBN);
+        * ISBN volumes: the catalog volumes holding the product's ISBN (the
+          owner, then other editions sharing it).
+
+        Both agree -> attach. Only the ISBN resolves -> attach to it (edition
+        words / price band pick among editions sharing it). Only the title
+        resolves -> attach, unless that volume has a different ISBN
+        (``isbn_conflict``). The title names another edition of the same
+        book -> ``_choose_edition``. The title names a different volume than
+        the ISBN -> NOT attached (``isbn_title_conflict``): a store's wrong
+        ISBN (Yubooh Uyurken 1/2 swapped) or a wrong catalog ISBN (Blue Lock
+        28/29 share one in Mangakol) must not put one book's price on
+        another. The ISBN resolver settles the catalog side from the
+        recorded observations.
+
+        Returns None with ``last_reason`` set when the result is skipped;
+        ``last_match`` holds the evidence for the observation record.
         """
         self.last_reason = None
-        #: Non-catalog volume that holds this result's ISBN (legacy store
-        #: data); resolution may continue only for the SAME work.
+        self.last_match = {"title_volume_id": None, "isbn_volume_id": None, "rule": None}
         self._non_catalog_holder = None
+        if self._precheck(result):
+            return None
+        store = self._resolve_store(result.store_id, result.store_name)
+        isbn = book_isbn(result.isbn)
+        holders = self._isbn_catalog_volumes(isbn)
+        if isbn and not holders:
+            legacy = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
+            if legacy is not None and not self._series_is_catalog(legacy.series_id):
+                # A pre-catalog store-created row holds the ISBN: the product
+                # is that work, so only the SAME work may take it by title.
+                self._non_catalog_holder = legacy
+        title_volume = self._title_path(result.model_copy(update={"isbn": None}))
+        title_reason = self.last_reason
+        self.last_reason = None
+        self.last_match["title_volume_id"] = title_volume.id if title_volume else None
+        self.last_match["isbn_volume_id"] = holders[0].id if holders else None
+
+        def attach(volume: Volume, rule: str):
+            self.last_match["rule"] = rule
+            self._backfill_cover(volume, result)
+            return (volume, store)
+
+        if holders:
+            if title_volume is not None and any(h.id == title_volume.id for h in holders):
+                return attach(title_volume, "isbn+title")
+            if title_volume is None:
+                named = self._edition_named_in_title(holders[0], (result.title or "").strip())
+                if named.id != holders[0].id:
+                    return attach(named, "edition")
+                chosen = self._choose_edition(holders, result)
+                return attach(chosen, "isbn") if chosen else self._reject("edition_ambiguous")
+            if all(is_sibling(self.session, title_volume, h) for h in holders):
+                chosen = self._choose_edition(holders, result, title_volume=title_volume)
+                return attach(chosen, "edition") if chosen else self._reject("edition_ambiguous")
+            logger.info(
+                "import: %r: title names volume %s but ISBN %s is on volume %s; not attached",
+                result.title, title_volume.id, isbn, holders[0].id,
+            )
+            return self._reject("isbn_title_conflict")
+
+        if title_volume is None:
+            return self._reject(title_reason or "no_series_match")
+        if isbn and title_volume.isbn and title_volume.isbn != isbn:
+            return self._reject("isbn_conflict")
+        return attach(title_volume, "title")
+
+    def _precheck(self, result: SearchResult) -> str | None:
+        """Reasons a product is never a catalog volume, whatever it matches."""
         title = (result.title or "").strip()
         if not title or not result.product_url:
-            return self._reject("invalid_result")
+            self._reject("invalid_result")
+            return self.last_reason
         # An admin removed this product from a volume: never attach it again,
         # not even through its ISBN (a store's wrong metadata is the usual cause).
         if (result.store_id, result.product_url) in self._excluded_products():
-            return self._reject("excluded")
+            self._reject("excluded")
+            return self.last_reason
         # The catalog lists Turkish editions only: an English (978-0/978-1),
         # Japanese, ... ISBN or a non-Turkish language tag is another
         # edition — e.g. VIZ's "Naruto 11" must never become Naruto Cilt 11.
         if is_foreign_isbn(result.isbn) or is_foreign_language(result.language):
-            return self._reject("foreign_edition")
+            self._reject("foreign_edition")
+            return self.last_reason
         # Neither an ISBN nor a publisher to tell the edition (Kitapseç gives
         # no publisher but appends it to the title: "... VIZ Media"): a
         # foreign manga publisher or English volume wording ("Naruto, Vol.
@@ -489,24 +662,19 @@ class ImportService:
         # publisher the regular identity rules decide (ISBN wins).
         if not book_isbn(result.isbn) and not (result.publisher or "").strip():
             if _FOREIGN_PUBLISHER_RE.search(title) or _ENGLISH_VOLUME_RE.search(title):
-                return self._reject("foreign_edition")
+                self._reject("foreign_edition")
+                return self.last_reason
 
         if not check_manga_relevance(title=title, publisher=result.publisher, isbn=result.isbn,
                                      category=result.category).accept:
-            return self._reject("non_book_product")
+            self._reject("non_book_product")
+            return self.last_reason
+        return None
 
-        # The ISBN of a catalog volume is proof that beats title wording: a
-        # binding variant's own book ("Soichi (Bez Cilt)", a deluxe or
-        # hardcover edition the catalog lists) carries edition words.
-        proven = self._isbn_catalog_volume(book_isbn(result.isbn))
-        if proven is not None:
-            store = self._resolve_store(result.store_id, result.store_name)
-            named = self._edition_named_in_title(proven, title)
-            if named.id != proven.id:
-                return self._reject("identity_review_required")
-            self._backfill_cover(proven, result)
-            return (proven, store)
-
+    def _title_path(self, result: SearchResult) -> Volume | None:
+        """The catalog volume the product's title names (callers pass a copy
+        without the ISBN), or None with ``last_reason`` set."""
+        title = (result.title or "").strip()
         parsed = parse_volume_title(title)
         if re.search(_EDITION_CONFLICT_RE, normalize_text(title)):
             return self._reject("edition_conflict")
@@ -528,48 +696,7 @@ class ImportService:
         else:
             volume_number = None
 
-        store = self._resolve_store(result.store_id, result.store_name)
-        isbn = book_isbn(result.isbn)
-
-        # ISBN is the strongest identity: when it already resolves to a
-        # volume, that volume's Series/Publisher identity wins and the
-        # (possibly conflicting) metadata on this result must NOT create
-        # phantom Publisher/Series rows. Catalog-only: the volume must
-        # belong to a catalog series; an ISBN outside the catalog skips.
-        if isbn:
-            volume = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
-            if volume is not None:
-                if not self._series_is_catalog(volume.series_id):
-                    # Legacy store-created (non-catalog) row holds the ISBN.
-                    # A DIFFERENT work stays rejected (the ISBN proves the
-                    # product is that work). A same-title duplicate — e.g. the
-                    # pre-catalog importer's own "One Piece" series next to
-                    # the Mangakol catalog "One Piece" — must not starve the
-                    # catalog edition: resolve by title/number below and
-                    # verify it is the same work before importing. The ISBN
-                    # is never moved (unique).
-                    logger.info(
-                        "import: ISBN %s is held by non-catalog volume %s; "
-                        "resolving %r by title (same work only)",
-                        isbn, volume.id, title,
-                    )
-                    self._non_catalog_holder = volume
-                    isbn = None
-                elif volume.volume_number < 0:
-                    # Legacy phantom (old import bug) still holds this ISBN.
-                    # It is not a catalog identity: never attach to it, and
-                    # never move/copy the ISBN (unique). Resolve the product
-                    # by title/number like an ISBN-less result instead, so
-                    # the real catalog volume is no longer starved.
-                    logger.info(
-                        "import: ISBN %s is held by legacy phantom volume %s; "
-                        "resolving %r without ISBN",
-                        isbn, volume.id, title,
-                    )
-                    isbn = None
-                else:
-                    self._backfill_cover(volume, result)
-                    return (volume, store)
+        isbn = None  # the title path never uses the ISBN
 
         # Read-only publisher resolution: a store import never creates
         # Publisher rows (catalog-only).
@@ -606,7 +733,7 @@ class ImportService:
                 reason = "publisher_conflict" if publisher_name else "no_series_match"
             edition = self._edition_title_volume(result)
             if edition is not None:
-                return (edition, store)
+                return edition
             return self._catalog_title_fallback(result, reason)
         if result.volume_number is not None and parsed.volume_number is not None and result.volume_number != parsed.volume_number:
             return self._reject("ambiguous_volume")
@@ -614,10 +741,7 @@ class ImportService:
             return self._reject("ambiguous_volume")
         if not self._same_work_as_holder(series, volume_number):
             return self._reject("non_catalog_volume")
-        volume = self._resolve_volume(series, isbn, volume_number, result)
-        if volume is None:
-            return None
-        return (volume, store)
+        return self._resolve_volume(series, isbn, volume_number, result)
 
     def _catalog_title_fallback(self, result: SearchResult, reason: str):
         """Second chance for catalog titles the generic parser misreads.
@@ -680,22 +804,12 @@ class ImportService:
                 remainder_number = _remainder_volume(remainder)
                 if remainder_number is None:
                     return self._reject(reason)
-        store = self._resolve_store(result.store_id, result.store_name)
-        isbn = book_isbn(result.isbn)
-        if isbn:
-            holder = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
-            if holder is not None and not self._series_is_catalog(holder.series_id):
-                self._non_catalog_holder = holder
-                isbn = None
-            elif holder is not None and holder.volume_number < 0:
-                isbn = None  # legacy phantom keeps it; see _resolve_target
         if not self._same_work_as_holder(series, remainder_number):
             return self._reject("non_catalog_volume")
-        volume = self._resolve_volume(series, isbn, remainder_number, result, title_verified=True)
-        if volume is None:
-            return None
-        logger.info("import: %r matched catalog title %r by %s", result.title, series.title, how)
-        return (volume, store)
+        volume = self._resolve_volume(series, None, remainder_number, result, title_verified=True)
+        if volume is not None:
+            logger.info("import: %r matched catalog title %r by %s", result.title, series.title, how)
+        return volume
 
     def _catalog_series_by_range(self, raw_title: str, publisher_name: str):
         """Omnibus book titled by its original-volume span.
@@ -1134,16 +1248,8 @@ class ImportService:
         *,
         title_verified: bool = False,
     ) -> Volume | None:
-        # 1) ISBN is the strongest cross-store identifier: globally unique.
-        if isbn:
-            volume = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
-            if volume is not None:
-                if not self._series_is_catalog(volume.series_id):
-                    return self._reject("non_catalog_volume")
-                self._backfill_cover(volume, result)
-                return volume
-
-        # Unknown products cannot create a catalog identity. Only a series
+        # ISBN decisions are made in _resolve_target; this resolves by
+        # series + number only. Unknown products cannot create a catalog identity. Only a series
         # with exactly one positive volume, numbered 1, can use this fallback.
         if volume_number is None and not title_verified:
             title_key = normalize_text(parse_volume_title(result.title).base_title)
@@ -1172,11 +1278,6 @@ class ImportService:
             )
         )
         if volume is not None:
-            if isbn and volume.isbn is None:
-                logger.info("P0: deferred store ISBN %s for volume %s", isbn, volume.id)
-            elif isbn and volume.isbn != isbn:
-                return self._reject("isbn_conflict")
-            self._backfill_cover(volume, result)
             return volume
 
         return self._reject("volume_not_found")
@@ -1209,14 +1310,60 @@ class ImportService:
     # ------------------------------------------------------------------
     # Listing upsert + price history
     # ------------------------------------------------------------------
-    def _isbn_catalog_volume(self, isbn: str | None) -> Volume | None:
-        """The numbered catalog volume holding ``isbn``, if any."""
+    def _isbn_catalog_volumes(self, isbn: str | None) -> list[Volume]:
+        """Numbered, present catalog volumes holding ``isbn``: the owner
+        first, then other editions sharing it (``shared_isbns``)."""
         if not isbn:
+            return []
+        return [v for v in isbn_holders(self.session, isbn)
+                if v.volume_number >= 0 and v.catalog_present is not False
+                and self._series_is_catalog(v.series_id)]
+
+    def _volume_price_median(self, volume: Volume, *, exclude_store_id: int | None = None) -> float | None:
+        prices = [p for p, in self.session.execute(
+            select(StoreListing.price).where(
+                StoreListing.volume_id == volume.id, StoreListing.in_stock.is_(True),
+                StoreListing.price.is_not(None),
+                *( [StoreListing.store_id != exclude_store_id] if exclude_store_id else [] ),
+            ))]
+        if not prices:
             return None
-        volume = self.session.scalar(select(Volume).where(Volume.isbn == isbn))
-        if volume is None or volume.volume_number < 0 or not self._series_is_catalog(volume.series_id):
-            return None
-        return volume
+        prices.sort()
+        mid = len(prices) // 2
+        return prices[mid] if len(prices) % 2 else (prices[mid - 1] + prices[mid]) / 2
+
+    def _choose_edition(self, candidates: list[Volume], result: SearchResult,
+                        *, title_volume: Volume | None = None) -> Volume | None:
+        """Pick the edition a product is among volumes of the same book.
+
+        1. The title names an edition (its label words, e.g. "Limitli",
+           "Varyant") -> that edition. "Ana Kapak" names the main edition.
+        2. A plain title with an ISBN that editions share (publishers print
+           a limited book under the regular ISBN): the price band decides —
+           the edition whose other stores' typical price is within ×1.5.
+        3. Otherwise the ISBN's owner (``candidates[0]``); when only the
+           title named a volume and nothing else decides, give up.
+        """
+        key = normalize_text(result.title)
+        words = set(key.split())
+        pool = list(dict.fromkeys([*candidates, *([title_volume] if title_volume else [])]))
+        named = [v for v in pool if (w := self._edition_words(v.series)) and w <= words]
+        if len(named) == 1:
+            return named[0]
+        mains = [v for v in pool if not self._edition_words(v.series)]
+        if "ana kapak" in key and len(mains) == 1:
+            return mains[0]
+        price = to_cents(result.price)
+        if price:
+            store = self.session.scalar(select(Store.id).where(Store.code == result.store_id))
+            fits = []
+            for v in candidates:
+                median = self._volume_price_median(v, exclude_store_id=store)
+                if median and 1 / 1.5 <= price / median <= 1.5:
+                    fits.append(v)
+            if len(fits) == 1:
+                return fits[0]
+        return candidates[0] if len(candidates) == 1 or title_volume is None or title_volume not in candidates else title_volume
 
     _EDITION_LABEL_RE = re.compile(r"\(([^()]+)\)\s*$")
     #: Label words that do not tell editions apart ("Limitli Baskı" and a
@@ -1334,10 +1481,6 @@ class ImportService:
         series, number = found[0]
         return self._resolve_volume(series, book_isbn(result.isbn), number, result, title_verified=True)
 
-    def _release_misplaced_listings(self, volume: Volume, store: Store, result: SearchResult) -> None:
-        """P0: ISBN equality cannot authorize moving/deleting another history."""
-        return
-
     def _upsert_listing(
         self, volume: Volume, store: Store, result: SearchResult
     ) -> ImportAction:
@@ -1345,12 +1488,21 @@ class ImportService:
         if not self._series_is_catalog(volume.series_id) or volume.catalog_present is False or volume.catalog_released is False:
             self.last_reason = "non_catalog_volume"
             return ImportAction.SKIPPED
-        other = self.session.scalar(select(StoreListing.id).where(
-            StoreListing.store_id == store.id, StoreListing.product_url == result.product_url,
-            StoreListing.volume_id != volume.id))
-        if other is not None:
-            self.last_reason = "identity_review_required"
-            return ImportAction.SKIPPED
+        for other in self.session.scalars(select(StoreListing).where(
+                StoreListing.store_id == store.id, StoreListing.product_url == result.product_url,
+                StoreListing.volume_id != volume.id)):
+            # The product now resolves here (e.g. the catalog ISBN was fixed).
+            mine = self.session.scalar(select(StoreListing.id).where(
+                StoreListing.volume_id == volume.id, StoreListing.store_id == store.id))
+            if mine is None:
+                logger.info("import: moving listing %s (%s) from volume %s to %s",
+                            other.id, result.product_url, other.volume_id, volume.id)
+                other.volume_id = volume.id
+            else:
+                logger.info("import: dropping listing %s (%s) left on volume %s",
+                            other.id, result.product_url, other.volume_id)
+                self.session.delete(other)
+            self.session.flush()
         now = utcnow()
         price_cents = to_cents(result.price)
 

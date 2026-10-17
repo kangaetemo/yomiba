@@ -93,10 +93,14 @@ def test_sync_backfills_isbns_of_released_volumes(db_session):
     })
     report = CatalogSyncService(db_session, scraper=fake).sync()
 
-    assert _isbns(db_session) == {1: None, 2: None, 3: None}
-    assert f"{BASE}/manga/zom-100/cilt-3" not in fake.fetched  # "Yakında": never asked
-    assert (report.isbn_pages, report.isbns_added, report.isbn_conflicts) == (2, 0, 0)
-    assert report.isbns_deferred == 2
+    # The catalog ISBN is kept apart (catalog_isbn) and, with no conflict,
+    # becomes the volume's ISBN. "Yakında" has none yet and is never asked.
+    assert _isbns(db_session) == {1: "9786257646628", 2: "9786257646642", 3: None}
+    assert {v.volume_number: v.catalog_isbn for v in db_session.scalars(select(Volume))} == {
+        1: "9786257646628", 2: "9786257646642", 3: None}
+    assert {v.isbn_source for v in db_session.scalars(select(Volume)) if v.isbn} == {"catalog"}
+    assert f"{BASE}/manga/zom-100/cilt-3" not in fake.fetched
+    assert (report.isbn_pages, report.isbns_added, report.isbn_conflicts) == (2, 2, 0)
 
     # next sync: volumes that already have an ISBN are not fetched again
     fake.fetched.clear()
@@ -114,12 +118,12 @@ def test_sync_isbn_budget_spreads_over_syncs(db_session, monkeypatch):
         f"{BASE}/manga/zom-100/cilt-2": "9786257646642",
     })
     CatalogSyncService(db_session, scraper=fake).sync()
-    assert _isbns(db_session) == {1: None, 2: None}
+    assert _isbns(db_session) == {1: "9786257646628", 2: None}
     CatalogSyncService(db_session, scraper=fake).sync()
-    assert _isbns(db_session) == {1: None, 2: None}
+    assert _isbns(db_session) == {1: "9786257646628", 2: "9786257646642"}
 
 
-def test_isbn_held_by_another_volume_is_reported_not_moved(db_session):
+def test_catalog_alone_never_takes_an_isbn_from_another_catalog_volume(db_session):
     other = seed_catalog_series(db_session, "Başka Seri", "Marmara Çizgi", volumes=(4,))
     held = db_session.scalar(select(Volume).where(Volume.series_id == other.id))
     held.isbn = "9786257646628"
@@ -133,7 +137,7 @@ def test_isbn_held_by_another_volume_is_reported_not_moved(db_session):
     assert zom_vol.isbn is None
     assert held.isbn == "9786257646628"
     assert report.isbn_conflicts == 1
-    assert "P0 kilidi" in report.isbn_conflict_details[0]
+    assert "isbn_claimed" in report.isbn_conflict_details[0]
     # a conflict is a data finding, not a sync error
     assert not any("ISBN" in e for e in report.errors)
 
@@ -197,21 +201,26 @@ def _phantom_with_listing(db_session, isbn):
     return series, phantom.id, listing.id
 
 
-def test_same_series_legacy_row_is_not_merged_without_a_decision(db_session):
-    from app.models import PriceHistory
+def test_legacy_phantom_gives_up_the_catalog_isbn_but_keeps_its_rows(db_session):
+    """A "Cilt -1" leftover is no catalog identity: Cilt 1 takes the ISBN.
+    The phantom row, its listing and price history stay (the next import
+    moves the listing by its ISBN); no merge, no deletion."""
+    from app.models import IsbnChange, PriceHistory
     isbn = "9786256031302"
     series, phantom_id, listing_id = _phantom_with_listing(db_session, isbn)
     report = CatalogSyncService(db_session, scraper=_look_back(
         {f"{BASE}/manga/look-back/cilt-1": isbn})).sync()
     vol1 = db_session.scalar(select(Volume).where(Volume.series_id == series.id, Volume.volume_number == 1))
-    assert vol1.isbn is None
-    assert db_session.get(Volume, phantom_id).isbn == isbn
+    assert vol1.isbn == isbn
+    assert db_session.get(Volume, phantom_id).isbn is None
     assert db_session.get(StoreListing, listing_id).volume_id == phantom_id
     assert db_session.scalar(select(PriceHistory.listing_id)) == listing_id
-    assert report.isbn_phantoms_merged == report.isbns_added == 0
+    assert (report.isbn_phantoms_merged, report.isbns_added) == (0, 1)
+    sources = {c.volume_id: c.source for c in db_session.scalars(select(IsbnChange))}
+    assert sources == {phantom_id: "moved", vol1.id: "catalog"}
 
 
-def test_legacy_row_with_personal_data_is_only_reported(db_session):
+def test_legacy_row_with_personal_data_keeps_the_row_and_the_user_data(db_session):
     from app.models import User, UserVolumeCollection
 
     isbn = "9786256031302"
@@ -226,9 +235,9 @@ def test_legacy_row_with_personal_data_is_only_reported(db_session):
         {f"{BASE}/manga/look-back/cilt-1": isbn})).sync()
 
     assert db_session.get(Volume, phantom_id) is not None
+    assert db_session.scalar(select(UserVolumeCollection.volume_id)) == phantom_id
     assert report.isbn_phantoms_merged == 0
-    assert report.isbn_conflicts == 1
-    assert "P0 kilidi" in report.isbn_conflict_details[0]
+    assert report.isbn_conflicts == 0
 
 
 # -- volume details: page count, local release date, credits -----------------------------
@@ -281,7 +290,7 @@ def test_sync_stores_details_and_reads_each_page_once(db_session):
     CatalogSyncService(db_session, scraper=fake).sync()
 
     vol = db_session.scalar(select(Volume))
-    assert (vol.isbn, vol.page_count, vol.release_date) == (None, 192, date(2021, 3, 1))
+    assert (vol.isbn, vol.page_count, vol.release_date) == ("9786257646628", 192, date(2021, 3, 1))
     assert vol.details_checked_at is not None
     series = db_session.scalar(select(Series))
     assert (series.author, series.illustrator) == ("Haro Aso", "Kotaro Takata")

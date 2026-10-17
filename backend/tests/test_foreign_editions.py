@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import time
-import pytest
 
 from sqlalchemy import select
 
@@ -46,7 +45,7 @@ def test_importer_rejects_foreign_isbn_and_language(db_session, import_service):
     assert import_service.last_reason == "foreign_edition"
 
 
-def test_catalog_sync_preserves_foreign_volume_isbn_until_review(db_session):
+def test_catalog_sync_replaces_foreign_volume_isbn(db_session):
     manga = CatalogManga(slug="naruto", title="Naruto", local_publisher="Gerekli Şeyler",
                          volumes=[CatalogVolume(number=11, cover_url=None, url="https://mangakol.com/manga/naruto/cilt-11")])
 
@@ -60,7 +59,7 @@ def test_catalog_sync_preserves_foreign_volume_isbn_until_review(db_session):
     db_session.commit()
 
     CatalogSyncService(db_session, scraper=Fake([manga])).sync()
-    assert vol.isbn == VIZ  # P0: source metadata cannot replace a stored value
+    assert vol.isbn == GS_11
 
 
 def _naruto_with_listings(db_session):
@@ -80,18 +79,24 @@ def _naruto_with_listings(db_session):
     return v10, v11, rows
 
 
-def test_foreign_scan_can_preview_but_cannot_apply_until_review(db_session):
-    from app.services.isbn_safety import MutationPaused
+def test_scan_and_apply_remove_only_proven_foreign_listings(db_session):
     v10, v11, rows = _naruto_with_listings(db_session)
-    pages = {"https://kb/naruto-11": _page(VIZ, "en"),
-             "https://bkm/naruto-11": _page(GS_11, "tr"),
-             "https://kb/naruto-10": _page(None, "English")}
+    pages = {
+        "https://kb/naruto-11": _page(VIZ, "en"),               # the English book
+        "https://bkm/naruto-11": _page(GS_11, "tr"),            # the real Turkish volume
+        "https://kb/naruto-10": _page(None, "English"),         # English import, no ISBN
+    }
     plan = build_plan(db_session, pages.get)
+    actions = {(l["store"], l["volume_number"]): l["action"] for l in plan["listings"]}
+    assert actions == {("kitapbulan", 11): "remove", ("bkm", 11): "keep", ("kitapbulan", 10): "remove"}
     assert [v["isbn"] for v in plan["foreign_isbn_volumes"]] == [VIZ]
-    with pytest.raises(MutationPaused):
-        apply_plan(db_session, plan)
-    assert v11.isbn == VIZ
-    assert all(db_session.get(StoreListing, row.id) is not None for row in rows.values())
+
+    result = apply_plan(db_session, plan)
+    assert result == {"removed_listings": 2, "cleared_isbns": 1, "backup": None}
+    assert db_session.get(StoreListing, rows["bkm11"].id) is not None
+    assert v11.isbn is None and v11.details_checked_at is None
+    assert {e.product_url for e in db_session.scalars(select(ListingExclusion))} == {
+        "https://kb/naruto-11", "https://kb/naruto-10"}
 
 
 def test_admin_scan_endpoint_runs_in_background(client, db_session, monkeypatch):
@@ -107,7 +112,7 @@ def test_admin_scan_endpoint_runs_in_background(client, db_session, monkeypatch)
         time.sleep(0.05)
     assert status["state"] == "ready"
     res = client.post("/catalog/foreign-editions/apply")
-    assert res.status_code == 409
+    assert res.status_code == 200 and res.json()["removed_listings"] == 1
     assert client.post("/catalog/foreign-editions/apply").status_code == 409  # plan consumed
 
 
@@ -136,7 +141,7 @@ def test_bkm_drops_out_of_stock_products_whose_page_is_gone():
     assert scraper.gone_urls == {"https://www.bkmkitap.com/one-piece-48"}
 
 
-def test_import_retains_listing_of_a_removed_product(db_session):
+def test_import_marks_listing_of_a_removed_product_out_of_stock(db_session):
     from app.services.import_service import ImportService
     from tests.helpers import RecordingScraper
 
@@ -156,8 +161,9 @@ def test_import_retains_listing_of_a_removed_product(db_session):
             return []
 
     report = ImportService(db_session, scrapers=[GoneScraper(store_id="bkm")]).run_import("One Piece")
-    assert db_session.get(StoreListing, ghost.id) is not None
-    assert db_session.get(StoreListing, ghost.id).in_stock is False
+    # Kept with its history but never shown: out-of-stock offers are hidden.
+    kept = db_session.get(StoreListing, ghost.id)
+    assert kept is not None and kept.in_stock is False
     assert report.stores[0].reasons["gone"] == 1
 
 
