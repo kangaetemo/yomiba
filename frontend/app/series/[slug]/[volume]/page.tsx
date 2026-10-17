@@ -110,7 +110,8 @@ export default async function VolumePage({ params }: VolumePageProps) {
     user ? getPriceAlert(numId).catch((): { alert: PriceAlert | null } | null => null) : null,
   ]);
 
-  const historyListings = (history?.listings ?? []).filter((l) => l.points.length > 0);
+  const lowestHistory = history?.lowest ?? [];
+  const renderedAt = new Date().getTime();
   const best = detail.unverified ? null : cheapest(detail.stores);
   const buyable = detail.stores.filter((s) => s.stock && !s.stale);
   const deal = detail.price_deal && best && detail.price_deal.new_price === best.price ? detail.price_deal : null;
@@ -395,12 +396,12 @@ export default async function VolumePage({ params }: VolumePageProps) {
               <h2 id="gecmis-title" className="text-lg font-semibold text-ink">
                 Fiyat geçmişi
               </h2>
-              {historyListings.length === 0 ? (
+              {lowestHistory.length === 0 ? (
                 <p className="rounded-2xl border border-dashed border-line-strong bg-surface/70 p-6 text-sm text-muted">
                   Henüz fiyat geçmişi yok. Fiyat her değiştiğinde buraya bir nokta eklenir.
                 </p>
               ) : (
-                <PriceHistoryChart listings={historyListings} />
+                <PriceHistoryChart points={lowestHistory} now={renderedAt} current={best ? { price: best.price, store: best.stores.join(", ") } : null} />
               )}
             </section>
           </div>

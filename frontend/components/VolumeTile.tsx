@@ -52,7 +52,7 @@ export function VolumeTile({
             </Link>
           </div>
           {signedIn && (
-            <VolumeQuickActions volumeId={volume.id} label={label} initial={volume.collection_status} />
+            <VolumeQuickActions volumeId={volume.id} label={label} initial={volume.collection_status} initialWishlisted={Boolean(volume.wishlisted)} />
           )}
         </div>
 

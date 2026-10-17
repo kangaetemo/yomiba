@@ -1,8 +1,8 @@
 """PriceAlert model.
 
-A price alert is one user's condition on one volume: "notify me (in the
-future notification phase) when the best price drops to or below
-``threshold_price``".
+A price alert is one user's condition on one volume: "e-mail me when the
+best in-stock price drops to or below ``threshold_price``"
+(services/price_alert_checker.py, after every price refresh of a series).
 
 Semantics:
   * ``threshold_price`` is stored as INTEGER CENTS (150 TRY = 15000), never
@@ -10,9 +10,9 @@ Semantics:
   * At most one alert row per (user, volume); "one active alert" is
     therefore guaranteed by the unique constraint, and ``is_active`` lets a
     user pause / re-activate the single alert.
-  * The alert condition for a future checker is: best price <= threshold.
-    NOTHING in this codebase evaluates it — no scheduler, no background
-    job, no notification exists yet (a later phase).
+  * One mail per crossing: ``triggered_at`` is set when it fires and
+    cleared when the best price goes back above the threshold or the
+    threshold changes.
 """
 
 from __future__ import annotations
@@ -48,6 +48,9 @@ class PriceAlert(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+    #: When the alert last fired (None = armed), and the best price then (cents).
+    triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    triggered_price: Mapped[int | None] = mapped_column(Integer)
 
     def __repr__(self):  # pragma: no cover
         return (

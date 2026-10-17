@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 #: Per-user collection statuses; anonymous detail responses use null.
-CollectionStatus = Literal["owned", "missing", "wanted"]
+CollectionStatus = Literal["owned", "missing"]
 
 
 class VolumeStoreOut(BaseModel):

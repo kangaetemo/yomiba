@@ -146,6 +146,26 @@ def _last_summary() -> dict | None:
     }
 
 
+def _refresh_popularity() -> None:
+    """Store bestseller lists -> home "Popüler seriler". Best effort."""
+    import httpx
+
+    from ..config import get_settings
+    from ..services.popularity import refresh
+
+    try:
+        with httpx.Client(headers={"User-Agent": get_settings().http_user_agent,
+                                   "Accept-Language": "tr-TR"}, timeout=30, follow_redirects=True) as client:
+            def get(url: str) -> str:
+                response = client.get(url)
+                response.raise_for_status()
+                return response.text
+            with SessionLocal() as session:
+                refresh(session, get)
+    except Exception:  # noqa: BLE001 - popularity never fails a sync
+        logger.exception("popularity refresh failed")
+
+
 def _run_sync(runner) -> None:
     global _running, _last
     started = time.monotonic()
@@ -195,6 +215,8 @@ def _run_sync(runner) -> None:
         runner.release_import_lock(SYNC_GATE_KEY, "catalog")
         with _state_lock:
             _running = False
+    # Outside the gate: a few store pages, never holding up price imports.
+    _refresh_popularity()
 
 
 def try_start_sync(runner) -> str:

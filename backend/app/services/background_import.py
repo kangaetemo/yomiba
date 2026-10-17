@@ -638,6 +638,7 @@ class BackgroundImportRunner:
                         break
                 self._verify_unseen(session, query, report, started)
                 record = record_import_result(session, key, report)
+                self._check_price_alerts(session, query)
                 logger.info(
                     "background import for %r finished: status=%s ok=%d failed=%d "
                     "found=%d created=%d updated=%d",
@@ -662,6 +663,25 @@ class BackgroundImportRunner:
             # garbage collection — never acceptable with a bounded pool.
             session.close()
 
+
+    @staticmethod
+    def _check_price_alerts(session: Session, query: str) -> None:
+        """Fire this series' price alerts and send queued mails. Best effort:
+        a mail problem never fails the price refresh."""
+        from .mailer import send_pending
+        from .price_alert_checker import check_alerts
+
+        try:
+            series_ids = _catalog_series_ids(session, query)
+            if series_ids:
+                ids = session.scalars(select(Volume.id).where(Volume.series_id.in_(series_ids)))
+                fired = check_alerts(session, list(ids))
+                if fired["fired"]:
+                    logger.info("background import for %r: %d price alert(s) fired", query, fired["fired"])
+            send_pending(session)
+        except Exception:  # noqa: BLE001
+            logger.exception("price alert check for %r failed", query)
+            session.rollback()
 
     def _verify_unseen(
         self, session: Session, query: str, report: ImportReport, started: datetime

@@ -36,6 +36,16 @@ def fast_scraper_network(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def no_popularity_network(monkeypatch):
+    """The post-sync bestseller refresh reads live store pages; tests that
+    want it call ``services.popularity.refresh`` with a fake fetcher."""
+    from app.routes import catalog
+
+    monkeypatch.setattr(catalog, "_refresh_popularity", lambda: None)
+    yield
+
+
 @pytest.fixture()
 def engine(tmp_path):
     # File-based SQLite: background import jobs open their own sessions, so

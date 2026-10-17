@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-CollectionStatus = Literal["owned", "missing", "wanted"]
+CollectionStatus = Literal["owned", "missing"]
 
 
 class SeriesVolumeOut(BaseModel):
@@ -26,6 +26,8 @@ class SeriesVolumeOut(BaseModel):
     best_store: str | None = None
     #: Collection status; ``None`` when the volume is not tracked.
     collection_status: CollectionStatus | None = None
+    #: On the signed-in user's wishlist (independent of collection status).
+    wishlisted: bool = False
     cover_url: str | None = None
     #: Local release date from the catalog source; ``None`` when unknown.
     release_date: date | None = None

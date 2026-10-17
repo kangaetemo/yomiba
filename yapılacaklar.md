@@ -35,26 +35,28 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 - [x] **Senkronun yeniden başlatmalarda ertelenmesini düzelt ve yeni künyeleri işle.** Kalıcı çalışma zamanıyla açılışta gecikmiş senkron çalışıyor; yedi yeni cildin ISBN/sayfa/tarih alanları canlıda doğrulandı. Kısmi kaynak görüntüsünde pasifleştirme yapılmıyor.
 - [x] **Mangakol kataloğu ile Yomiba veritabanını tüm seriler için karşılaştır ve farkları raporla.** 13 Ekim 2026'da tam tarama ve sonuç analizi tamamlandı: 473 ana seri / 495 seri-baskı / 2.399 cilt künyesi; kaynak hatası yok. [Ayrıntılı sonuçlar](docs/mangakol-yomiba-karsilastirma-2026-10-13.md) ve [çalışma notları](docs/yomiba-calisma-notlari.md).
 
+- [ ] **Yeni serilerin Türkçe kapak resimlerini ekle.** Yeni eklenen serilerde kapak görseli Türkçe baskıya ait olmalı; kapak yoksa veya yabancı baskıya aitse Türkçe baskının kapağı bulunup eklenecek. Acil değil.
+
 ## Ana sayfa ve tasarım
 
 - [x] **İndirim bölümünü yeniden düzenle.** Eşit boyutlu kartlar, satış fiyatı geçmişine dayalı karşılaştırma, güncel stok/fiyat doğrulaması ve cilt başına tek fırsat uygulandı. Etiket fiyatı referans alınmıyor. Ana sayfa için en az 7 günlük geçmiş ve tipik en ucuz satış fiyatına göre en az %10 avantaj aranıyor. Küçük düşüşler ayrı sayfada görülebiliyor.
 - [x] **“Tüm indirimler” bağlantısı ve sayfası ekle.** `/indirimler`: 7/14/30 gün, oran/TL farkı/fiyat/tarih sıralaması ve sayfalama.
 - [x] **Fiyat avantajını cilt sayfasında göster.** Fiyat özeti ve ilgili mağaza satırında ortak düşüş bilgisi; yeterli geçmiş yoksa mevcut mağazalar arasındaki avantaj ayrı ifadeyle belirtiliyor.
 - [x] **Fairy Tail ve diğer serilerdeki fazla cilt kayıtlarını araştır; genel koruma ekle.** 14 seri örneklemi incelendi. Kaynak yayın durumu ve tam kaynak görüntüsüne göre, kayıt silmeden genel görünürlük düzeltmesi hazırlandı. [Araştırma](docs/cilt-sayisi-arastirmasi-2026-10-13.md).
-- [ ] **Yayın takvimini küçült.** Takvim alanı çok yer kaplıyor; daha az alan kaplayan bir düzen oluştur.
-- [ ] **“Takip edilen mağazalar” bölümünü kaldır.** Bu ayrı bölüme ihtiyaç yok.
-- [ ] **Ana sayfadaki istatistik alanını kaldır.** “Katalogdaki seri: 495”, “Takip edilen mağaza: 10” ve “Güncel fiyat: 13.314” göstergelerini içeren alana ihtiyaç yok. Sayılar, kaldırılacak alanı tanımlamak için mevcut görünümden örnektir.
-- [ ] **Ana sloganı daha doğal bir dille yeniden yaz.** “Rafına eklenecek bir sonraki cilt, en uygun fiyatıyla.” sloganı yapay duruyor. Alanın genel fikri ve aşağıdaki açıklama beğeniliyor; yeni slogan birlikte değerlendirilecek.
+- [x] **Yayın takvimini küçült.** Takvim alanı çok yer kaplıyor; daha az alan kaplayan bir düzen oluştur. 17 Ekim: yapıldı ([çalışma notları](docs/yomiba-calisma-notlari.md)).
+- [x] **“Takip edilen mağazalar” bölümünü kaldır.** Bu ayrı bölüme ihtiyaç yok. 17 Ekim: yapıldı ([çalışma notları](docs/yomiba-calisma-notlari.md)).
+- [x] **Ana sayfadaki istatistik alanını kaldır.** “Katalogdaki seri: 495”, “Takip edilen mağaza: 10” ve “Güncel fiyat: 13.314” göstergelerini içeren alana ihtiyaç yok. Sayılar, kaldırılacak alanı tanımlamak için mevcut görünümden örnektir.
+- [x] **Ana sloganı daha doğal bir dille yeniden yaz.** Yeni slogan: “Aynı cilt, en uygun fiyat.” “Rafına eklenecek bir sonraki cilt, en uygun fiyatıyla.” sloganı yapay duruyor. Alanın genel fikri ve aşağıdaki açıklama beğeniliyor; yeni slogan birlikte değerlendirilecek.
 
   > Aynı cildin fiyatını Türkiye'deki kitapçılarda yan yana gör, stokta olanı tek bakışta bul. Koleksiyonunu tut, istek listeni oluştur, fiyat düşünce haberin olsun.
 
-- [ ] **Popüler seriler bölümünü gözden geçir.** Bölümün sunumu ve hangi serilerin gösterileceği birlikte netleştirilecek.
-- [ ] **Yeni çıkanlardaki mobil taşmayı düzelt.** Mobilde en soldaki cilt alanın dışına taşıyor.
-- [ ] **Fiyat geçmişini yeniden düzenle.** Mevcut görünüm anlaşılır ve kullanışlı değil; grafik ve sunum biçimi gözden geçirilecek.
+- [x] **Popüler seriler bölümünü gözden geçir.** Bölümün sunumu ve hangi serilerin gösterileceği birlikte netleştirilecek. 17 Ekim: mağaza çok satan listeleri (idefix, BKM) + yeni cilt + okur ilgisi; yalnız stokta olan seriler.
+- [x] **Yeni çıkanlardaki mobil taşmayı düzelt.** Mobilde en soldaki cilt alanın dışına taşıyor. 17 Ekim: yapıldı ([çalışma notları](docs/yomiba-calisma-notlari.md)).
+- [x] **Fiyat geçmişini yeniden düzenle.** Mevcut görünüm anlaşılır ve kullanışlı değil; grafik ve sunum biçimi gözden geçirilecek. 17 Ekim: tek çizgi, en düşük stoklu fiyat.
 
 ## Koleksiyon ve istek listesi
 
-- [ ] **“Koleksiyonum” durumlarını ve görünümünü sadeleştir.**
+- [x] **“Koleksiyonum” durumlarını ve görünümünü sadeleştir.** 17 Ekim: “Bende var” / “Bende yok”; istek listesi ayrı.
   - “Sahibim” yerine “Bende var” gibi daha doğal bir ifade kullan.
   - “Eksik” yerine “Bende yok” gibi daha açık bir ifade kullan.
   - Ayrı bir istek listesi bulunduğu için koleksiyon durumlarındaki “İstediğim” seçeneğini kaldır.
@@ -68,4 +70,9 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 
 ## Fiyat alarmları
 
-- [ ] **Çalışmayan fiyat alarmlarını araştır ve düzelt.** Kullanıcı bildirimine göre alarmlar şu an çalışmıyor. Alarm oluşturma, fiyat koşulunun kontrolü ve bildirimin kullanıcıya ulaşması uçtan uca incelenecek.
+- [x] **Çalışmayan fiyat alarmlarını araştır ve düzelt.** Kullanıcı bildirimine göre alarmlar şu an çalışmıyor. Alarm oluşturma, fiyat koşulunun kontrolü ve bildirimin kullanıcıya ulaşması uçtan uca incelenecek.
+  - 17 Ekim: alarm kontrolü her fiyat güncellemesinden sonra çalışıyor; eşik geçilince bir kez e-posta kuyruğa giriyor (email_outbox), fiyat eşiğin üstüne çıkınca alarm yeniden kuruluyor. Gönderim şimdilik yalnız SMTP.
+- [ ] **Alan adı alınınca alarm e-postalarını devreye al.** Railway Hobby planı SMTP portlarını (25/465/587/2525) engelliyor; bu yüzden gönderim HTTPS API'li bir servise geçirilecek. Öneri: Resend (ücretsiz: günde 100, ayda 3.000 mail). Brevo da olur (günde 300).
+  - Alan adını al, Resend'de doğrula (DNS kayıtları).
+  - Mailer'a Resend API gönderimini ekle; SMTP yolu Pro plan için kalsın.
+  - Railway'e `RESEND_API_KEY`, `MAIL_FROM` (ör. `Yomiba <alarm@alanadi>`) ve `SITE_URL` ekle; deneme alarmıyla uçtan uca doğrula.

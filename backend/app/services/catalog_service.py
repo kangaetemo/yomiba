@@ -425,6 +425,36 @@ def get_price_history(session: Session, volume_id: int) -> PriceHistoryDetail | 
     return PriceHistoryDetail(volume=volume, entries=entries)
 
 
+def lowest_price_steps(entries: list[HistoryEntry]) -> list[tuple[datetime, int | None, str | None]]:
+    """The cheapest in-stock price across stores over time, as steps.
+
+    Every observation updates its store's state (price, in stock); after
+    each instant the cheapest in-stock store is taken, and a step is emitted
+    whenever price or store changes. Observations from before stock was
+    recorded (``in_stock`` None) count as in stock. No store in stock ->
+    ``(at, None, None)``, a gap in the chart.
+    """
+    events = sorted(
+        ((_aware(p.checked_at), e.listing.id, p.price, p.in_stock is not False, e.listing.store.name if e.listing.store else "")
+         for e in entries for p in e.points),
+        key=lambda ev: (ev[0], ev[1]),
+    )
+    state: dict[int, tuple[int, bool, str]] = {}
+    steps: list[tuple[datetime, int | None, str | None]] = []
+    i = 0
+    while i < len(events):
+        at = events[i][0]
+        while i < len(events) and events[i][0] == at:
+            _, lid, price, in_stock, store = events[i]
+            state[lid] = (price, in_stock, store)
+            i += 1
+        offers = [(p, s) for p, ok, s in state.values() if ok]
+        best = min(offers) if offers else (None, None)
+        if not steps or (steps[-1][1], steps[-1][2]) != best:
+            steps.append((at, best[0], best[1]))
+    return steps
+
+
 def _is_catalog_series(session: Session, series_id: int) -> bool:
     return session.scalar(
         select(CatalogSeries.series_id).where(CatalogSeries.series_id == series_id).limit(1)

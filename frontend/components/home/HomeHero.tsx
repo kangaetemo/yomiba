@@ -11,7 +11,6 @@ import { HeroShelf } from "@/components/home/HeroShelf";
 import { HERO_HISTORY_COOKIE, parseHeroHistory, pickHeroSeries } from "@/lib/heroSelection";
 import type { HomeFeed } from "@/types";
 
-const NUMBER = new Intl.NumberFormat("tr-TR");
 
 export async function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; signedIn: boolean }) {
   const recent = parseHeroHistory((await cookies()).get(HERO_HISTORY_COOKIE)?.value);
@@ -30,9 +29,9 @@ export async function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; sign
             id="hero-title"
             className="text-[2.35rem] leading-[1.05] font-semibold text-ink sm:text-[3.4rem]"
           >
-            Rafına eklenecek bir sonraki cilt,{" "}
+            Aynı cilt,{" "}
             <em className="font-sans font-bold tracking-tight text-accent not-italic">
-              en uygun fiyatıyla
+              en uygun fiyat
             </em>
             .
           </h1>
@@ -59,22 +58,6 @@ export async function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; sign
             </Link>
           </div>
 
-          {feed && (
-            <dl className="flex flex-wrap gap-x-8 gap-y-2 border-t border-line pt-5 text-sm">
-              <div>
-                <dt className="text-faint">Katalogdaki seri</dt>
-                <dd className="tabular font-sans text-xl font-bold text-ink">{NUMBER.format(feed.stats.series)}</dd>
-              </div>
-              <div>
-                <dt className="text-faint">Takip edilen mağaza</dt>
-                <dd className="tabular font-sans text-xl font-bold text-ink">{NUMBER.format(feed.stats.stores)}</dd>
-              </div>
-              <div>
-                <dt className="text-faint">Güncel fiyat</dt>
-                <dd className="tabular font-sans text-xl font-bold text-ink">{NUMBER.format(feed.stats.offers)}</dd>
-              </div>
-            </dl>
-          )}
         </div>
 
         {lead && <HeroShelf key={shelf.map((s) => s.id).join("-")} series={shelf} />}

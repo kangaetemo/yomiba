@@ -154,8 +154,8 @@ export function PriceAlertForm({
 
       {error && <p className="text-xs text-bad">{error}</p>}
       <p className="text-xs text-faint">
-        Hedef fiyatın kaydedilir; fiyat bu seviyeye inince bildirim gönderme özelliği yakında
-        etkinleşecek.
+        Stokta bir mağazada fiyat bu seviyeye inince hesabındaki e-posta adresine haber veririz.
+        Fiyat tekrar yükselip yeniden inerse yine yazarız.
       </p>
     </div>
   );

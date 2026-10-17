@@ -21,6 +21,8 @@ from .user import User, UserSession
 from .user_volume_collection import UserVolumeCollection
 from .isbn_review import IsbnAuditRun, IsbnAuditItem, IsbnAuditResult, IsbnReview, IsbnDecision
 from .isbn_evidence import IsbnChange, IsbnIssue, SharedIsbn, StoreObservation
+from .email_outbox import EmailOutbox
+from .series_popularity import SeriesPopularity
 
 __all__ = [
     "Publisher",
@@ -43,4 +45,6 @@ __all__ = [
     "IsbnIssue",
     "SharedIsbn",
     "StoreObservation",
+    "EmailOutbox",
+    "SeriesPopularity",
 ]

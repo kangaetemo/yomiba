@@ -1,9 +1,11 @@
 """GET /home — the home page shelves, computed from catalog data only.
 
 * ``popular_series``: catalog series with at least one in-stock offer,
-  ranked by time-weighted reader interest (wishlist + collection rows; the
-  last RECENT_DAYS count RECENT_WEIGHT times), then by in-stock offers PER
-  VOLUME (so long series do not win just by length), then by total offers.
+  ranked by popularity — stores' bestseller lists (services/popularity.py),
+  a bonus for a volume released lately, and time-weighted reader interest
+  (wishlist + collection rows; the last RECENT_DAYS count RECENT_WEIGHT
+  times, capped) — then by in-stock offers PER VOLUME (so long series do not
+  win just by length), then by total offers.
   The price shown is the lowest current in-stock price of any volume.
 * ``new_volumes``: volumes by their LOCAL release date from the catalog
   source (Mangakol "Yayın Tarihi (Yerel)"), newest first, never in the
@@ -32,6 +34,7 @@ from ..models import (
     CatalogSeries,
     Publisher,
     Series,
+    SeriesPopularity,
     StoreListing,
     UserVolumeCollection,
     Volume,
@@ -67,6 +70,11 @@ def _series_covers(session: Session, series_ids: list[int]) -> dict[int, str]:
 #: shelf follows what readers are into now, not what they added years ago.
 RECENT_DAYS = 30
 RECENT_WEIGHT = 3.0
+#: "Popüler seriler": a volume released in the last RECENT_RELEASE_DAYS adds
+#: RECENT_RELEASE_BONUS; reader interest adds at most 1 (at INTEREST_CAP).
+RECENT_RELEASE_DAYS = 60
+RECENT_RELEASE_BONUS = 0.5
+INTEREST_CAP = 10.0
 
 
 def reader_interest(session: Session) -> dict[int, float]:
@@ -112,12 +120,25 @@ def home(
         .group_by(Volume.series_id)
     ).all())
 
+    bestseller = dict(session.execute(select(SeriesPopularity.series_id, SeriesPopularity.bestseller_score)).all())
+    recent_cutoff = utcnow().date() - timedelta(days=RECENT_RELEASE_DAYS)
+    recent = set(session.scalars(
+        select(Volume.series_id).where(Volume.series_id.in_([r[0] for r in offers]), real,
+                                       Volume.release_date >= recent_cutoff,
+                                       Volume.release_date <= utcnow().date())
+    ))
+
     def rank(row):
         sid, offer_count, _ = row
-        # Offers per volume: how easy the series is to buy, without long
-        # series winning merely by having many volumes.
+        # Stores' bestseller lists lead; a volume released lately and
+        # readers' interest add to it (interest is capped so a handful of
+        # users cannot outweigh the stores). Offers per volume break ties:
+        # how easy the series is to buy, without long series winning merely
+        # by having many volumes.
+        popularity = (bestseller.get(sid, 0.0) + (RECENT_RELEASE_BONUS if sid in recent else 0.0)
+                      + min(interest.get(sid, 0.0), INTEREST_CAP) / INTEREST_CAP)
         availability = offer_count / max(1, volume_counts.get(sid, 0))
-        return (-interest.get(sid, 0.0), -availability, -offer_count, sid)
+        return (-popularity, -availability, -offer_count, sid)
 
     ranked = sorted(offers, key=rank)[:popular]
     popular_ids = [r[0] for r in ranked]

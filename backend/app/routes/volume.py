@@ -11,7 +11,7 @@ from ..auth import optional_user, require_admin, require_user
 from ..models import ImportRecord, ListingExclusion, Store, StoreListing, User, Volume
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.price_alert import PriceAlertDetail, PriceAlertIn, PriceAlertOut
-from ..schemas.price_history import HistoryListingOut, HistoryPointOut, PriceHistoryOut
+from ..schemas.price_history import HistoryListingOut, HistoryPointOut, LowestPointOut, PriceHistoryOut
 from ..schemas.volume import (
     MissingStoreOut,
     SeriesRefOut,
@@ -152,7 +152,8 @@ def set_volume_collection_status(
     session: Session = Depends(get_db),
     user: User = Depends(require_user),
 ) -> VolumeOut:
-    """Mark a volume owned / missing / wanted, or clear it with ``null``."""
+    """Mark a volume owned ("Bende var") / missing ("Bende yok"), or clear
+    it with ``null``. Wanting a volume is the wishlist."""
     _require_catalog_volume(session, volume_id)
     try:
         updated = collections_service.set_volume_status(
@@ -188,7 +189,9 @@ def get_volume_price_history(
         )
         for entry in detail.entries
     ]
-    return PriceHistoryOut(volume_id=detail.volume.id, listings=listings)
+    lowest = [LowestPointOut(at=at, price=from_cents(price), store=store)
+              for at, price, store in catalog_service.lowest_price_steps(detail.entries)]
+    return PriceHistoryOut(volume_id=detail.volume.id, listings=listings, lowest=lowest)
 
 
 # ---------------------------------------------------------------------------

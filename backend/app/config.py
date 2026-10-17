@@ -112,6 +112,16 @@ class Settings:
     # over consecutive syncs.
     mangakol_max_isbn_requests: int = int(os.getenv("MANGAKOL_MAX_ISBN_REQUESTS", "600"))
 
+    # Price-alert e-mail. Without SMTP_HOST mails stay queued in email_outbox.
+    site_url: str = os.getenv("SITE_URL", "https://yomiba.com")
+    smtp_host: str = os.getenv("SMTP_HOST", "")
+    smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user: str = os.getenv("SMTP_USER", "")
+    smtp_password: str = os.getenv("SMTP_PASSWORD", "")
+    #: "starttls" (port 587), "ssl" (port 465) or "none" (local test servers).
+    smtp_security: str = os.getenv("SMTP_SECURITY", "starttls")
+    mail_from: str = os.getenv("MAIL_FROM", "Yomiba <bildirim@yomiba.com>")
+
     # Self-hosted covers (see services/covers.py). Pages never hot-link an
     # external image: covers are downloaded once, resized to WebP and served
     # from our own storage.

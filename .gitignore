@@ -22,6 +22,8 @@ backups/
 *.sqlite3
 *.isbn-safety.json
 *.isbn-safety.json.*.tmp
+*.catalog-state.json
+*.catalog-state.json.*
 
 # Node (frontend)
 node_modules/

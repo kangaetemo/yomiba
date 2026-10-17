@@ -13,6 +13,8 @@ class UserVolumeCollection(Base):
     __tablename__ = "user_volume_collections"
     __table_args__ = (
         UniqueConstraint("user_id", "volume_id", name="uq_collection_user_volume"),
+        # 'wanted' is retired (0020) but kept in the CHECK: changing the
+        # constraint would recreate the table on SQLite.
         CheckConstraint("status IN ('owned', 'missing', 'wanted')", name="ck_collection_status"),
     )
 

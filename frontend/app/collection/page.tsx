@@ -13,15 +13,13 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Koleksiyonum" };
 
 const STATUS_LABEL: Record<CollectionStatus, string> = {
-  owned: "Sahibim",
-  missing: "Eksik",
-  wanted: "İstek listemdekiler",
+  owned: "Bende var",
+  missing: "Bende yok",
 };
 
 const STATUS_TONE: Record<CollectionStatus, BadgeTone> = {
   owned: "stock",
   missing: "soldout",
-  wanted: "lowest",
 };
 
 /** A cover-first card, the same look as the series page's volume grid. */
@@ -59,7 +57,7 @@ function Tile({
   );
 }
 
-const STATUS_ORDER: CollectionStatus[] = ["owned", "missing", "wanted"];
+const STATUS_ORDER: CollectionStatus[] = ["owned", "missing"];
 
 interface SeriesGroup {
   slug: string;
@@ -82,7 +80,7 @@ function groupBySeries(items: MyCollectionItem[]): SeriesGroup[] {
         title: item.series_title,
         publisher: item.publisher,
         cover_url: null,
-        counts: { owned: 0, missing: 0, wanted: 0 },
+        counts: { owned: 0, missing: 0 },
         total: 0,
       };
       groups.set(item.series_id, group);
@@ -95,7 +93,7 @@ function groupBySeries(items: MyCollectionItem[]): SeriesGroup[] {
 }
 
 /** A series in the collection: the cover opens the series page, each count
- * opens it filtered to that status (the page's own Sahibim / Eksik filter). */
+ * opens it filtered to that status (the page's own Bende var / Bende yok filter). */
 function SeriesTile({ group }: { group: SeriesGroup }) {
   const href = seriesPath(group.slug);
   return (
@@ -196,7 +194,7 @@ export default async function CollectionPage() {
           lead={collection.length > 0 ? `${collection.length} cilt işaretli. Bir seriye girince ciltlerini ve durumlarını görürsün.` : undefined}
         />
         {collection.length === 0 ? (
-          <Empty text="Henüz işaretlediğin cilt yok — bir cildi açıp Sahibim / Eksik / İstek listemdekiler seç." />
+          <Empty text="Henüz işaretlediğin cilt yok — bir cildi açıp Bende var / Bende yok seç." />
         ) : (
           <Grid>
             {seriesGroups.map((group) => (

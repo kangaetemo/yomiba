@@ -15,7 +15,7 @@ const STEPS = [
   {
     no: "三",
     title: "Takip et",
-    text: "Sahip olduklarını ve eksiklerini işaretle, istek listesi tut, hedef fiyatına alarm kur.",
+    text: "Ciltleri Bende var / Bende yok diye işaretle, istek listeni tut, hedef fiyatına alarm kur.",
   },
 ];
 
@@ -43,7 +43,7 @@ export function HowItWorks({ signedIn }: { signedIn: boolean }) {
           <h3 className="text-2xl font-semibold text-ink sm:text-3xl">Beklediğin fiyatı kaydet.</h3>
           <p className="max-w-lg text-sm leading-relaxed text-muted sm:text-base">
             Her cilt için bir hedef fiyat belirle; koleksiyonundaki eksikleri ve istek listeni aynı
-            yerde tut. Alarmlar şimdilik hedefini saklıyor, bildirimler yakında geliyor.
+            yerde tut. Fiyat hedefine inince sana e-postayla haber verelim.
           </p>
           <div className="flex flex-wrap gap-3 pt-1">
             <Link

@@ -1,6 +1,6 @@
 # Yomiba çalışma notları
 
-Son güncelleme: 17 Ekim 2026 (ISBN kanıt sistemi, P0 kilidinin kaldırılması).
+Son güncelleme: 17 Ekim 2026 (fiyat alarmları, ana sayfa, koleksiyon, fiyat geçmişi, popüler seriler).
 
 Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fazla cihazdan çalışıldığı için yerel kopya yerine her zaman main'deki sürüm esastır.
 
@@ -25,6 +25,30 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - Fiyatsız seriler raporu (`fiyatsızlar.txt`): Mağaza bazındaki sebep sayıları, sorgunun döndürdüğü tüm ürünler üzerinden toplanıyor. Örneğin BKM'de büyük bir `publisher_conflict` sayısı genelde "bu mağaza o seriyi satmıyor" demektir.
 
 ## Son günlerde yapılanlar
+
+### 17 Ekim gecesi: alarmlar, ana sayfa, koleksiyon, fiyat geçmişi, popüler seriler
+
+- **Fiyat alarmları** (migration `0019_price_alert_mail`): Her fiyat güncellemesinden sonra alarmlar kontrol ediliyor (`services/price_alert_checker.py`). Eşik geçilince bir kez e-posta `email_outbox` kuyruğuna giriyor. Stoklu en düşük fiyat eşiğin üstüne çıkınca alarm yeniden kuruluyor. Teklif yoksa hiçbir şey değişmiyor. `services/mailer.py` kuyruğu SMTP ile gönderiyor, hata olursa artan aralıklarla en fazla 8 kez deniyor.
+  - **Sınırlama:** Railway Hobby SMTP'yi engelliyor. Alan adı alınınca Resend API'ye geçilecek ([yapılacaklar](../yapılacaklar.md)). O zamana kadar mailler kuyrukta bekliyor.
+- **Ana sayfa:**
+  - Slogan “Aynı cilt, en uygun fiyat.” oldu.
+  - İstatistik alanı ve alt bilgideki mağaza listesi kaldırıldı.
+  - Yeni çıkanlardaki mobil taşma düzeltildi.
+  - Takvim küçültüldü; geniş ekranda yanda sabit duruyor.
+- **Popüler seriler** (migration `0021_series_popularity`, `services/popularity.py`):
+  - Her katalog senkronundan sonra idefix manga “Çok satanlar” (3 sayfa) ve BKM çok satan çizgi roman (4 sayfa) okunuyor. Her ürün serisine `1 - sıra/liste uzunluğu` puan veriyor.
+  - Sıralama: çok satan puanı, son 60 günde cilt çıktıysa +0,5 ve okur ilgisi (en fazla +1). Eşitlikte cilt başına stoklu teklif sayısı kullanılıyor.
+  - Liste okunamazsa eski puanlar korunuyor.
+  - Gerçek listelerle ölçüm (17 Ekim): idefix 72 üründen 65'i (%90), BKM 48 üründen 42'si (%87) eşleşti. Eşleşmeyenler setler, hediyeli paketler, katalog dışı kitaplar ve belirsiz “Tokyo 9. Cilt”. İlk sıralar: Blue Lock, Gençlik Yolculuğu, Titana Saldırı, Tokyo Gul, Kahramanlık Akademim.
+- **Koleksiyon** (migration `0020_collection_two_states`):
+  - Durumlar artık yalnız “Bende var” / “Bende yok”. Eski “İstediğim” kayıtları istek listesine taşındı.
+  - Cilt kartlarında yer imi istek listesini, tik “Bende var”ı açıp kapatıyor. “Eksiklerimi istek listeme ekle” düğmesi istek listesine ekliyor.
+  - Seri sayfasında “İstek listemde” filtresi var; eski `?status=wanted` bağlantıları da buna yönleniyor.
+- **Fiyat geçmişi:**
+  - Grafik tek çizgi: stokta olan mağazalar arasındaki en düşük fiyat, basamak biçiminde (`lowest`, `catalog_service.lowest_price_steps`).
+  - Üstte üç değer var: şu an, aralığın en düşüğü ve tipik fiyat (zamana göre ağırlıklı ortanca).
+  - 30/90 gün/Tümü aralıkları var. Üzerine gelince ya da dokununca tarih, fiyat ve mağaza görünüyor.
+- **Doğrulama:** 912 backend testinden 911'i geçti; yalnız bilinen zamanlama testi düştü, o da tek başına çalıştırınca geçiyor. `tsc`, `eslint` ve `npm run build` temiz. Popülerlik yenilemesi senkron kilidinin dışında çalışıyor; testlerde ağa çıkmıyor (`conftest.no_popularity_network`).
 
 ### 17 Ekim akşamı: "yanlış fiyat, eksik fiyattan kötü" kuralı kaldırıldı
 

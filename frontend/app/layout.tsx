@@ -29,18 +29,6 @@ export const metadata: Metadata = {
     "Manga fiyatlarını Türk mağazaları (BKM Kitap, Gerekli Şeyler, Kitap Sepeti ve diğerleri) arasında karşılaştırın, koleksiyonunuzu takip edin, fiyat alarmı kurun.",
 };
 
-const STORES = [
-  "BKM Kitap",
-  "Gerekli Şeyler",
-  "Kitap Sepeti",
-  "Kitapbulan",
-  "Kitapseç",
-  "Komikşeyler",
-  "Edessa Kitabevi",
-  "Büyülü Dükkan",
-  "İstanbul Kitapçısı",
-];
-
 /** Wordmark: "Yomiba" (読み場, "a place to read") with a hanko seal. */
 function Logo() {
   return (
@@ -145,25 +133,15 @@ export default async function RootLayout({
         </main>
 
         <footer className="mt-12 border-t border-line bg-surface/60">
-          <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.2fr_2fr]">
-            <div className="space-y-3">
-              <Logo />
-              <p className="max-w-sm text-sm text-muted">
-                Türkiye&apos;deki manga baskılarının fiyatını mağazalar arasında karşılaştırır,
-                koleksiyonunu ve istek listeni tek yerde tutar.
-              </p>
-            </div>
-            <div className="space-y-3">
-              <p className="eyebrow">Takip edilen mağazalar</p>
-              <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-ink-2">
-                {STORES.map((store) => (
-                  <li key={store}>{store}</li>
-                ))}
-              </ul>
-              <p className="text-xs text-faint">
-                Fiyatlar mağazaların kamuya açık sayfalarından toplanır ve gecikmeli olabilir.
-              </p>
-            </div>
+          <div className="mx-auto max-w-6xl space-y-3 px-4 py-10 sm:px-6">
+            <Logo />
+            <p className="max-w-sm text-sm text-muted">
+              Türkiye&apos;deki manga baskılarının fiyatını mağazalar arasında karşılaştırır,
+              koleksiyonunu ve istek listeni tek yerde tutar.
+            </p>
+            <p className="text-xs text-faint">
+              Fiyatlar mağazaların kamuya açık sayfalarından toplanır ve gecikmeli olabilir.
+            </p>
           </div>
         </footer>
         <Analytics />

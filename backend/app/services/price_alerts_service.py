@@ -12,9 +12,8 @@ Single-row upsert semantics (one ``PriceAlert`` row per user+volume):
     without touching its threshold.
   * DELETE -> remove the alert.
 
-IMPORTANT: this service only stores the condition. Nothing evaluates it —
-the "best price <= threshold" check, any scheduler and any notification
-delivery belong to future phases.
+The condition is evaluated by services/price_alert_checker.py after each
+price refresh; changing the threshold re-arms the alert.
 """
 
 from __future__ import annotations
@@ -80,6 +79,8 @@ def upsert_price_alert(
         session.add(alert)
     else:
         if threshold_price is not None:
+            if alert.threshold_price != threshold_price:
+                alert.triggered_at = alert.triggered_price = None  # re-arm
             alert.threshold_price = threshold_price
             # Providing a threshold (re)set activates the alert, including
             # a previously paused one.

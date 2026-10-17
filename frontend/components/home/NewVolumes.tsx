@@ -25,7 +25,7 @@ export function NewVolumes({ volumes }: { volumes: NewVolume[] }) {
         lead="Türkiye'de en son yayımlanan ciltler, yayınevinin çıkış tarihine göre."
         action={{ href: `/takvim?ay=${volumes[0].release_date.slice(0, 7)}`, label: "Yayın takvimi" }}
       />
-      <ul className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-5">
+      <ul className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:scroll-px-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-5">
         {volumes.map((v) => (
           <li key={v.id} className="w-36 shrink-0 snap-start sm:w-auto">
             <Link href={volumePath(v.series_slug, v.number)} className="group block space-y-2.5">

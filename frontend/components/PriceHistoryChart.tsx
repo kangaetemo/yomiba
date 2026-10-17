@@ -1,240 +1,204 @@
+"use client";
+
 /**
- * PriceHistoryChart: dependency-free SVG line chart of price over time,
- * one series per store.
+ * PriceHistoryChart: ONE line — the volume's lowest in-stock price over
+ * time (GET /volume/{id}/price-history ``lowest``, computed server-side).
  *
- * Deliberately a Server Component with zero client JS: native <title>
- * tooltips on each point, no chart library (keep the solo-project rule of
- * no unnecessary dependencies). The data arrives from
- * GET /volume/{id}/price-history, points already sorted chronologically.
+ * Drawn as steps: a price holds until the next change, so no straight
+ * segment ever invents prices in between. A gap means no store had it in
+ * stock. The line ends at today's best price (the one the page shows).
+ * Hover or tap shows the date, price and store at that moment.
  */
 
+import { useMemo, useRef, useState } from "react";
 import { TIME_ZONE, serverDate } from "@/lib/time";
 import { formatPrice } from "@/components/PriceBadge";
-import type { PriceHistoryListing } from "@/types";
-
-// Muted "ink" colors that sit on paper (and stay legible on warm charcoal).
-const PALETTE = [
-  "#b8321b", // hanko red
-  "#2f4f7a", // aizome indigo
-  "#2f6b46", // matcha
-  "#b07d1a", // ochre
-  "#7a3f6e", // plum
-  "#4d6b73", // slate teal
-];
-
-/** Stable color per store name (same store -> same color on every page). */
-function colorFor(store: string): string {
-  let h = 0;
-  for (let i = 0; i < store.length; i++) {
-    h = (h * 31 + store.charCodeAt(i)) >>> 0;
-  }
-  return PALETTE[h % PALETTE.length];
-}
+import type { LowestPricePoint } from "@/types";
 
 const W = 720;
-const H = 260;
-const PAD = { top: 16, right: 20, bottom: 30, left: 64 };
-const INNER_W = W - PAD.left - PAD.right;
-const INNER_H = H - PAD.top - PAD.bottom;
-const HOUR_MS = 3_600_000;
+const H = 240;
+const PAD = { top: 14, right: 72, bottom: 28, left: 52 };
+const DAY = 86_400_000;
+const RANGES = [
+  { key: "30", label: "30 gün", days: 30 },
+  { key: "90", label: "90 gün", days: 90 },
+  { key: "all", label: "Tümü", days: Infinity },
+] as const;
 
-function formatTickPrice(v: number): string {
-  const r = Math.round(v);
-  const text = Math.abs(v - r) < 0.005 ? String(r) : v.toFixed(2);
-  return `${text} ₺`;
-}
+interface Step { t: number; price: number | null; store: string | null }
 
-function formatTickDate(d: Date, spanMs: number): string {
-  const day = d.toLocaleDateString("tr-TR", { day: "numeric", month: "short", timeZone: TIME_ZONE });
-  // Short windows: show the time too, otherwise just the day.
-  if (spanMs < 48 * HOUR_MS) {
-    const time = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: TIME_ZONE });
-    return `${day} ${time}`;
-  }
-  return day;
-}
+const fmtDay = (t: number) => new Date(t).toLocaleDateString("tr-TR", { day: "numeric", month: "short", timeZone: TIME_ZONE });
+const fmtLong = (t: number) => new Date(t).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", timeZone: TIME_ZONE });
 
-function formatPointDate(d: Date): string {
-  return d.toLocaleString("tr-TR", {
-    timeZone: TIME_ZONE,
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+/** Time-weighted median of the in-stock steps between t0 and t1. */
+function typicalPrice(steps: Step[], t0: number, t1: number): number | null {
+  const spans: [number, number][] = [];
+  steps.forEach((s, i) => {
+    const a = Math.max(s.t, t0);
+    const b = Math.min(steps[i + 1]?.t ?? t1, t1);
+    if (s.price !== null && b > a) spans.push([s.price, b - a]);
   });
+  if (spans.length === 0) return null;
+  spans.sort((x, y) => x[0] - y[0]);
+  const half = spans.reduce((n, [, d]) => n + d, 0) / 2;
+  let acc = 0;
+  for (const [p, d] of spans) { acc += d; if (acc >= half) return p; }
+  return spans[spans.length - 1][0];
 }
 
-interface SeriesPoint {
-  t: number;
-  price: number;
-  label: string;
-}
+export function PriceHistoryChart({
+  points,
+  current,
+  now,
+}: {
+  points: LowestPricePoint[];
+  /** Today's best in-stock offer as the page shows it; ends the line. */
+  current: { price: number; store: string } | null;
+  /** Render time (ms) from the server, so server and browser draw the same. */
+  now: number;
+}) {
+  const all: Step[] = useMemo(() => {
+    const steps = points.map((p) => ({ t: serverDate(p.at).getTime(), price: p.price, store: p.store }));
+    const last = steps[steps.length - 1];
+    if (current && (!last || last.price !== current.price || last.store !== current.store)) {
+      steps.push({ t: Math.max(now - 1, last?.t ?? now - DAY), price: current.price, store: current.store });
+    }
+    return steps;
+  }, [points, current, now]);
+  const firstT = all[0]?.t ?? now;
+  const spanDays = (now - firstT) / DAY;
+  const ranges = RANGES.filter((r) => r.days === Infinity ? spanDays > 90 : r.days === 30 || spanDays > 30);
+  const [rangeKey, setRangeKey] = useState<string>(spanDays > 30 ? "90" : "30");
+  const [hover, setHover] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
-export function PriceHistoryChart({ listings }: { listings: PriceHistoryListing[] }) {
-  if (listings.length === 0) return null;
+  const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[0];
+  const t1 = now;
+  const t0 = range.days === Infinity ? firstT : Math.max(firstT, now - range.days * DAY);
+  // The step in force at t0 starts the window; later ones follow.
+  const startIdx = Math.max(0, all.findLastIndex((s) => s.t <= t0));
+  const steps = all.slice(startIdx).map((s, i) => (i === 0 ? { ...s, t: Math.max(s.t, t0) } : s));
+  if (steps.length === 0) return null;
 
-  const series: { store: string; color: string; points: SeriesPoint[] }[] = [];
-  for (const listing of listings) {
-    if (listing.points.length === 0) continue;
-    const points: SeriesPoint[] = listing.points.map((p) => {
-      const d = serverDate(p.checked_at);
-      return {
-        t: d.getTime(),
-        price: p.price,
-        label: `${listing.store} — ${formatPrice(p.price)} — ${formatPointDate(d)}`,
-      };
-    });
-    series.push({ store: listing.store, color: colorFor(listing.store), points });
+  const priced = steps.filter((s) => s.price !== null) as (Step & { price: number })[];
+  const lowestStep = priced.reduce<(Step & { price: number }) | null>((m, s) => (!m || s.price < m.price ? s : m), null);
+  const typical = typicalPrice(steps, t0, t1);
+  const nowPrice = current?.price ?? null;
+
+  const prices = priced.map((s) => s.price);
+  let lo = Math.min(...prices), hi = Math.max(...prices);
+  const pad = Math.max((hi - lo) * 0.15, hi * 0.03, 2);
+  lo = Math.max(0, lo - pad); hi = hi + pad;
+  const tickStep = [5, 10, 20, 25, 50, 100].find((s) => (hi - lo) / s <= 5) ?? 100;
+  const yTicks: number[] = [];
+  for (let v = Math.ceil(lo / tickStep) * tickStep; v <= hi; v += tickStep) yTicks.push(v);
+  const span = Math.max(t1 - t0, DAY);
+  const x = (t: number) => PAD.left + ((t - t0) / span) * (W - PAD.left - PAD.right);
+  const y = (p: number) => PAD.top + (1 - (p - lo) / (hi - lo)) * (H - PAD.top - PAD.bottom);
+  const xTicks = [0, 1, 2, 3].map((k) => t0 + (span * k) / 3);
+
+  let d = "";
+  steps.forEach((s, i) => {
+    const end = steps[i + 1]?.t ?? t1;
+    if (s.price === null) return;
+    const prev = steps[i - 1];
+    d += prev && prev.price !== null ? `V${y(s.price)}` : `M${x(s.t)},${y(s.price)}`;
+    d += `H${x(end)}`;
+  });
+  const last = steps[steps.length - 1];
+
+  function onPointer(e: React.PointerEvent<SVGRectElement>) {
+    const box = svgRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const sx = ((e.clientX - box.left) / box.width) * W;
+    setHover(Math.min(t1, Math.max(t0, t0 + ((sx - PAD.left) / (W - PAD.left - PAD.right)) * span)));
   }
-  if (series.length === 0) return null;
-
-  // Time scale (pad degenerate ranges so same-second imports still fit).
-  const allT = series.flatMap((s) => s.points.map((p) => p.t));
-  const rawT0 = Math.min(...allT);
-  const rawT1 = Math.max(...allT);
-  const t0 = rawT0 === rawT1 ? rawT0 - 12 * HOUR_MS : rawT0;
-  const t1 = rawT0 === rawT1 ? rawT1 + 12 * HOUR_MS : rawT1;
-  const tSpan = t1 - t0;
-  const x = (t: number) => PAD.left + ((t - t0) / tSpan) * INNER_W;
-
-  // Price scale (guard a flat range; never go below zero).
-  const allP = series.flatMap((s) => s.points.map((p) => p.price));
-  let pMin = Math.min(...allP);
-  let pMax = Math.max(...allP);
-  if (pMin === pMax) {
-    const pad = Math.max(1, pMin * 0.02);
-    pMin = Math.max(0, pMin - pad);
-    pMax = pMax + pad;
-  } else {
-    const span = pMax - pMin;
-    pMin = Math.max(0, pMin - span * 0.08);
-    pMax = pMax + span * 0.08;
-  }
-  const y = (p: number) => PAD.top + INNER_H - ((p - pMin) / (pMax - pMin)) * INNER_H;
-
-  const yTicks = Array.from({ length: 4 }, (_, i) => pMin + ((pMax - pMin) * i) / 3);
-  const xTicks = Array.from({ length: 4 }, (_, i) => new Date(t0 + (tSpan * i) / 3));
+  const at = hover === null ? null : steps[Math.max(0, steps.findLastIndex((s) => s.t <= hover))];
+  const hoverX = hover === null ? 0 : x(hover);
 
   return (
-    <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        role="img"
-        aria-label={`Fiyat geçmişi: ${series.map((s) => s.store).join(", ")}`}
-        className="h-auto w-full"
-      >
-        {/* Horizontal grid + price labels */}
-        {yTicks.map((v, i) => (
-          <g key={`y${i}`}>
-            <line
-              x1={PAD.left}
-              x2={W - PAD.right}
-              y1={y(v)}
-              y2={y(v)}
-              stroke="var(--line)"
-              strokeWidth={1}
-            />
-            <text
-              x={PAD.left - 8}
-              y={y(v) + 4}
-              textAnchor="end"
-              fontSize={15}
-              fill="var(--faint)"
+    <div className="space-y-4 rounded-xl border border-line bg-surface p-4 shadow-card">
+      <dl className="grid grid-cols-3 gap-2 text-sm">
+        <div className="min-w-0">
+          <dt className="text-xs text-faint">Şu an</dt>
+          <dd className="tabular text-lg font-bold text-ink">{nowPrice !== null ? formatPrice(nowPrice) : "Stokta yok"}</dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs text-faint">{range.days === Infinity ? "En düşük" : `${range.days} günün en düşüğü`}</dt>
+          <dd className="tabular text-lg font-bold text-ink">{lowestStep ? formatPrice(lowestStep.price) : "—"}</dd>
+          {lowestStep && <dd className="truncate text-xs text-muted">{fmtDay(lowestStep.t)}</dd>}
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs text-faint">Tipik fiyat</dt>
+          <dd className="tabular text-lg font-bold text-ink">{typical !== null ? formatPrice(typical) : "—"}</dd>
+        </div>
+      </dl>
+
+      {ranges.length > 1 && (
+        <div role="group" aria-label="Zaman aralığı" className="inline-flex gap-0.5 rounded-lg bg-surface-2 p-0.5">
+          {ranges.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              aria-pressed={r.key === range.key}
+              onClick={() => { setRangeKey(r.key); setHover(null); }}
+              className={`min-h-9 rounded-md px-3 text-sm font-semibold transition-colors ${r.key === range.key ? "bg-surface text-ink shadow-card" : "text-muted hover:text-ink"}`}
             >
-              {formatTickPrice(v)}
-            </text>
-          </g>
-        ))}
+              {r.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-        {/* Time labels */}
-        {xTicks.map((d, i) => (
-          <g key={`x${i}`}>
-            <line
-              x1={x(d.getTime())}
-              x2={x(d.getTime())}
-              y1={PAD.top}
-              y2={PAD.top + INNER_H}
-              stroke="var(--line)"
-              strokeWidth={1}
-              strokeDasharray="2 4"
-            />
-            <text
-              x={x(d.getTime())}
-              y={H - 8}
-              textAnchor={i === 0 ? "start" : i === xTicks.length - 1 ? "end" : "middle"}
-              fontSize={15}
-              fill="var(--faint)"
-            >
-              {formatTickDate(d, tSpan)}
-            </text>
-          </g>
-        ))}
-
-        {/* Axes */}
-        <line
-          x1={PAD.left}
-          x2={PAD.left}
-          y1={PAD.top}
-          y2={PAD.top + INNER_H}
-          stroke="var(--line-strong)"
-          strokeWidth={1}
-        />
-        <line
-          x1={PAD.left}
-          x2={W - PAD.right}
-          y1={PAD.top + INNER_H}
-          y2={PAD.top + INNER_H}
-          stroke="var(--line-strong)"
-          strokeWidth={1}
-        />
-
-        {/* One line + dots per store */}
-        {series.map((s) => (
-          <g key={s.store}>
-            {s.points.length >= 2 && (
-              <polyline
-                points={s.points.map((p) => `${x(p.t)},${y(p.price)}`).join(" ")}
-                fill="none"
-                stroke={s.color}
-                strokeWidth={2.25}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
+      <div className="relative">
+        <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} role="img" className="h-auto w-full touch-pan-y overflow-visible"
+          aria-label={`En düşük fiyat geçmişi; şu an ${nowPrice !== null ? formatPrice(nowPrice) : "stokta yok"}, en düşük ${lowestStep ? formatPrice(lowestStep.price) : "—"}`}>
+          {yTicks.map((v) => (
+            <g key={v}>
+              <line x1={PAD.left} x2={W - PAD.right} y1={y(v)} y2={y(v)} stroke="var(--line)" strokeWidth={1} />
+              <text x={PAD.left - 8} y={y(v) + 4} textAnchor="end" fontSize={13} fill="var(--faint)" className="tabular">{v} ₺</text>
+            </g>
+          ))}
+          {xTicks.map((t, i) => (
+            <text key={i} x={x(t)} y={H - 6} fontSize={13} fill="var(--faint)" textAnchor={i === 0 ? "start" : i === 3 ? "end" : "middle"}>{fmtDay(t)}</text>
+          ))}
+          {typical !== null && (
+            <g>
+              <line x1={PAD.left} x2={W - PAD.right} y1={y(typical)} y2={y(typical)} stroke="var(--ink-2)" strokeWidth={1} strokeDasharray="4 4" />
+              <text x={W - PAD.right + 6} y={y(typical) + 4} fontSize={12} fill="var(--muted)">tipik</text>
+            </g>
+          )}
+          <path d={d} fill="none" stroke="var(--accent)" strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
+          {last.price !== null && (
+            <g>
+              <circle cx={x(t1)} cy={y(last.price)} r={4.5} fill="var(--accent)" stroke="var(--surface)" strokeWidth={2} />
+              <text x={x(t1) + 8} y={y(last.price) + (typical !== null && Math.abs(y(typical) - y(last.price)) < 14 ? 16 : 4)} fontSize={13} fontWeight={700} fill="var(--ink)" className="tabular">{Math.round(last.price)} ₺</text>
+            </g>
+          )}
+          {at && (
+            <g pointerEvents="none">
+              <line x1={hoverX} x2={hoverX} y1={PAD.top} y2={H - PAD.bottom} stroke="var(--line-strong)" strokeWidth={1} />
+              {at.price !== null && <circle cx={hoverX} cy={y(at.price)} r={4} fill="var(--accent)" stroke="var(--surface)" strokeWidth={2} />}
+            </g>
+          )}
+          <rect x={PAD.left} y={PAD.top} width={W - PAD.left - PAD.right} height={H - PAD.top - PAD.bottom} fill="transparent"
+            onPointerMove={onPointer} onPointerDown={onPointer} onPointerLeave={() => setHover(null)} />
+        </svg>
+        {at && hover !== null && (
+          <div
+            className="pointer-events-none absolute top-2 z-10 min-w-40 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm shadow-lift"
+            style={hoverX / W > 0.6 ? { right: `${100 - (hoverX / W) * 100 + 2}%` } : { left: `${(hoverX / W) * 100 + 2}%` }}
+          >
+            <p className="text-xs text-faint">{fmtLong(hover)}</p>
+            {at.price !== null ? (
+              <p className="tabular font-bold text-ink">{formatPrice(at.price)} <span className="font-normal text-muted">· {at.store}</span></p>
+            ) : (
+              <p className="text-muted">Hiçbir mağazada stokta değildi</p>
             )}
-            {s.points.map((p, i) => (
-              <circle
-                key={i}
-                cx={x(p.t)}
-                cy={y(p.price)}
-                r={3.5}
-                fill={s.color}
-                stroke="var(--surface)"
-                strokeWidth={1}
-              >
-                <title>{p.label}</title>
-              </circle>
-            ))}
-          </g>
-        ))}
-      </svg>
-
-      {/* Legend */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted">
-        {series.map((s) => (
-          <span key={s.store} className="inline-flex items-center gap-2">
-            <span
-              aria-hidden
-              className="inline-block h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: s.color }}
-            />
-            {s.store}
-          </span>
-        ))}
-        <span className="ml-auto text-xs text-faint">
-          Kesin fiyat için noktaların üzerine gelin
-        </span>
+          </div>
+        )}
       </div>
+      <p className="text-xs text-faint">Çizgi, stokta olan mağazalar arasındaki en düşük fiyatı gösterir. Boşluk, hiçbir mağazada stok olmadığı günlerdir.</p>
     </div>
   );
 }

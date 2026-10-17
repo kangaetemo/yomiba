@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..auth import optional_user
-from ..models import User, Volume
+from ..models import User, Volume, WishlistItem
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.series import SeriesEditionOut, SeriesOut, SeriesVolumeOut
 from ..services import catalog_service, collections_service, series_slugs
@@ -30,6 +30,10 @@ def get_series_detail(
     if detail is None:
         raise HTTPException(status_code=404, detail="Seri bulunamadı.")
 
+    wishlisted = set(session.scalars(select(WishlistItem.volume_id).where(
+        WishlistItem.user_id == user.id,
+        WishlistItem.volume_id.in_([v.id for v in detail.volumes]),
+    ))) if user else set()
     volumes = [
         SeriesVolumeOut(
             id=volume.id,
@@ -40,6 +44,7 @@ def get_series_detail(
             stale_count=detail.volume_stats[volume.id].stale_count,
             best_store=detail.volume_stats[volume.id].best_store,
             collection_status=collections_service.get_volume_status(session, user.id if user else None, volume.id),  # type: ignore[arg-type]
+            wishlisted=volume.id in wishlisted,
             cover_url=cover_url(volume.cover_key),
             release_date=volume.release_date,
         )

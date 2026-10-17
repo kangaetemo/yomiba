@@ -390,14 +390,14 @@ def test_m9_me_lists_are_per_user_and_ordered(client, db_session):
 
     a, b = register("la@example.com"), register("lb@example.com")
     client.cookies.clear(); client.cookies.set(COOKIE_NAME, a)
-    client.patch(f"/volume/{v2.id}/collection-status", json={"status": "wanted"})
+    client.patch(f"/volume/{v2.id}/collection-status", json={"status": "missing"})
     client.patch(f"/volume/{v0.id}/collection-status", json={"status": "owned"})
     client.post(f"/volume/{v1.id}/wishlist")
     client.put(f"/volume/{v1.id}/price-alert", json={"threshold_price": 10000})
 
     col = client.get("/me/collection")
     assert "no-store" in col.headers["cache-control"]
-    assert [(i["volume_number"], i["status"]) for i in col.json()] == [(0, "owned"), (2, "wanted")]
+    assert [(i["volume_number"], i["status"]) for i in col.json()] == [(0, "owned"), (2, "missing")]
     wl = client.get("/me/wishlist").json()
     assert [(i["volume_id"], i["best_price"]) for i in wl] == [(v1.id, 123.45)]
     assert client.get("/me/price-alerts").json()[0]["threshold_price"] == 10000

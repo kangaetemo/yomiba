@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * CollectionStatusPicker: mark the current volume owned / missing / wanted.
+ * CollectionStatusPicker: mark the current volume "Bende var" / "Bende yok".
+ * Wanting a volume is the separate wishlist; "Bende yok" never adds to it.
  *
  * The one interactive element on the volume page (hence a Client Component);
  * the API call goes through the catalog service, not raw fetch. State is
@@ -16,18 +17,13 @@ import type { CollectionStatus } from "@/types";
 const OPTIONS: { value: CollectionStatus; label: string; activeClass: string }[] = [
   {
     value: "owned",
-    label: "Sahibim",
+    label: "Bende var",
     activeClass: "border-ok/50 bg-ok-soft text-ok",
   },
   {
     value: "missing",
-    label: "Eksik",
+    label: "Bende yok",
     activeClass: "border-bad/40 bg-bad-soft text-bad",
-  },
-  {
-    value: "wanted",
-    label: "İstediğim",
-    activeClass: "border-accent/40 bg-accent-soft text-accent",
   },
 ];
 
@@ -60,7 +56,7 @@ export function CollectionStatusPicker({
 
   return (
     <div className="space-y-2">
-      <div role="group" aria-label="Koleksiyon durumu" className="grid grid-cols-3 gap-1.5 rounded-xl bg-surface-2 p-1">
+      <div role="group" aria-label="Koleksiyon durumu" className="grid grid-cols-2 gap-1.5 rounded-xl bg-surface-2 p-1">
         {OPTIONS.map((opt) => {
           const active = status === opt.value;
           return (

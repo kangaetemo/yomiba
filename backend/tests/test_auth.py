@@ -98,7 +98,7 @@ def test_two_users_have_independent_personal_data(client, db_session):
     assert client.get(f"/volume/{volume_id}/price-alert").json()["alert"] is None
     assert client.delete(f"/volume/{volume_id}/wishlist").status_code == 200
     assert client.delete(f"/volume/{volume_id}/price-alert").status_code == 200
-    assert client.patch(f"/volume/{volume_id}/collection-status", json={"status": "wanted", "user_id": 999}).json()["collection_status"] == "wanted"
+    assert client.patch(f"/volume/{volume_id}/collection-status", json={"status": "missing", "user_id": 999}).json()["collection_status"] == "missing"
     client.cookies.set(COOKIE_NAME, token_a)
     assert client.get(f"/volume/{volume_id}").json()["collection_status"] == "owned"
     assert client.get(f"/volume/{volume_id}/wishlist").json()["wishlisted"] is True
@@ -107,4 +107,4 @@ def test_two_users_have_independent_personal_data(client, db_session):
     assert db_session.scalar(select(WishlistItem.user_id)) != 999
     assert db_session.scalar(select(PriceAlert.user_id)) != 999
     client.cookies.set(COOKIE_NAME, token_b)
-    assert client.get(f"/volume/{volume_id}").json()["collection_status"] == "wanted"
+    assert client.get(f"/volume/{volume_id}").json()["collection_status"] == "missing"

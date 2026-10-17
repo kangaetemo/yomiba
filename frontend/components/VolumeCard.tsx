@@ -14,13 +14,11 @@ import { StockBadge, storeSummary, volumeStock } from "@/components/volumeStock"
 const STATUS_CHIP: Record<CollectionStatus, string> = {
   owned: "bg-ok-soft text-ok",
   missing: "bg-bad-soft text-bad",
-  wanted: "bg-accent-soft text-accent",
 };
 
 const STATUS_LABEL: Record<CollectionStatus, string> = {
-  owned: "Sahibim",
-  missing: "Eksik",
-  wanted: "Takipte",
+  owned: "Bende var",
+  missing: "Bende yok",
 };
 
 export function VolumeCard({ volume, seriesSlug }: { volume: SeriesVolume; seriesSlug: string }) {
@@ -41,6 +39,11 @@ export function VolumeCard({ volume, seriesSlug }: { volume: SeriesVolume; serie
               className={`shrink-0 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold ${STATUS_CHIP[volume.collection_status]}`}
             >
               {STATUS_LABEL[volume.collection_status]}
+            </span>
+          )}
+          {volume.wishlisted && (
+            <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[0.68rem] font-semibold text-accent">
+              İstek listesinde
             </span>
           )}
         </p>

@@ -132,7 +132,8 @@ export interface SearchResponse {
 }
 
 /** Collection status for the authenticated user; null for anonymous views. */
-export type CollectionStatus = "owned" | "missing" | "wanted";
+/** "Bende var" / "Bende yok". Wanting a volume is the wishlist. */
+export type CollectionStatus = "owned" | "missing";
 
 export interface SeriesVolume {
   id: number;
@@ -150,6 +151,8 @@ export interface SeriesVolume {
   best_store?: string | null;
   /** Collection status; null when the volume is not tracked. */
   collection_status: CollectionStatus | null;
+  /** On the signed-in user's wishlist. */
+  wishlisted?: boolean;
   cover_url?: string | null;
   /** Local release date (YYYY-MM-DD); null when unknown. */
   release_date?: string | null;
@@ -263,9 +266,18 @@ export interface PriceHistoryListing {
   points: PriceHistoryPoint[];
 }
 
+/** From ``at`` on, the cheapest in-stock price (null: none in stock). */
+export interface LowestPricePoint {
+  at: string;
+  price: number | null;
+  store: string | null;
+}
+
 export interface PriceHistory {
   volume_id: number;
   listings: PriceHistoryListing[];
+  /** Optional during rolling deployment of the backend. */
+  lowest?: LowestPricePoint[];
 }
 
 // -- admin (import / catalog sync management) -----------------------------------

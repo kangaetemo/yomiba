@@ -19,13 +19,13 @@ interface SeriesPageProps {
   searchParams: Promise<{ status?: string; all?: string; sort?: string; view?: string; stock?: string }>;
 }
 
-type Filter = CollectionStatus | "all";
+type Filter = CollectionStatus | "wishlist" | "all";
 
 const FILTERS: { value: Filter; label: string }[] = [
   { value: "all", label: "Tümü" },
-  { value: "owned", label: "Sahibim" },
-  { value: "missing", label: "Eksik" },
-  { value: "wanted", label: "İstek listemdekiler" },
+  { value: "owned", label: "Bende var" },
+  { value: "missing", label: "Bende yok" },
+  { value: "wishlist", label: "İstek listemde" },
 ];
 
 /** Default view shows the first N volumes; the rest sit behind the
@@ -92,9 +92,11 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
   const upcoming = detail.upcoming_volumes ?? [];
 
   const { status: rawStatus, all, sort, view, stock } = await searchParams;
+  // "wanted" is the old wishlist-like collection status (links in the wild).
+  const requested = rawStatus === "wanted" ? "wishlist" : rawStatus;
   const activeFilter: Filter =
-    signedIn && (rawStatus === "owned" || rawStatus === "missing" || rawStatus === "wanted")
-      ? rawStatus
+    signedIn && (requested === "owned" || requested === "missing" || requested === "wishlist")
+      ? requested
       : "all";
   const activeSort = SORTS.find((o) => o.key === sort)?.key ?? "no";
   const stockOnly = stock === "1";
@@ -103,7 +105,9 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
   const byStatus =
     activeFilter === "all"
       ? detail.volumes
-      : detail.volumes.filter((v) => v.collection_status === activeFilter);
+      : activeFilter === "wishlist"
+        ? detail.volumes.filter((v) => v.wishlisted)
+        : detail.volumes.filter((v) => v.collection_status === activeFilter);
   const filtered = stockOnly ? byStatus.filter((v) => v.in_stock_count > 0) : byStatus;
   const volumes =
     activeSort === "desc"
@@ -132,9 +136,9 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
   const cheapest = cheapestInStock(detail.volumes);
   const inStock = detail.volumes.filter((v) => v.in_stock_count > 0);
   const owned = detail.volumes.filter((v) => v.collection_status === "owned").length;
-  const tracked = detail.volumes.filter((v) => v.collection_status === "wanted").length;
+  const tracked = detail.volumes.filter((v) => v.wishlisted).length;
   const untrackedIds = detail.volumes
-    .filter((v) => v.collection_status !== "owned" && v.collection_status !== "wanted")
+    .filter((v) => v.collection_status !== "owned" && !v.wishlisted)
     .map((v) => v.id);
 
   const chip = "inline-flex min-h-9 items-center rounded-lg border px-3 text-sm transition-colors";
@@ -309,8 +313,8 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
               ? "Şu an stokta cilt yok."
               : activeFilter === "all"
               ? "Bu seri için henüz cilt yok."
-              : activeFilter === "wanted"
-                ? "Takip ettiğin cilt yok. Kartlardaki zil simgesiyle takibe alabilirsin."
+              : activeFilter === "wishlist"
+                ? "İstek listende bu seriden cilt yok. Kartlardaki yer imi simgesiyle ekleyebilirsin."
                 : `“${activeLabel}” olarak işaretlenmiş cilt yok.`}
           </div>
         ) : listView ? (
@@ -347,7 +351,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
               <p className="font-display text-lg font-semibold text-ink">Hangi ciltler sende var?</p>
               <p className="text-sm text-muted">
                 {signedIn
-                  ? "Sahip olduklarını ✓ ile işaretle; eksiklerini tek tıkla takibe al."
+                  ? "Elindekileri ✓ ile işaretle; istediklerini yer imiyle istek listene ekle."
                   : "Koleksiyonunu oluştur, eksik ciltlerini tek bakışta gör."}
               </p>
             </div>

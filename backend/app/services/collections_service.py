@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 from ..models import UserVolumeCollection, Volume
 from ..utils import utcnow
 
-#: The only valid collection statuses (also used by the API schemas).
-COLLECTION_STATUSES: tuple[str, ...] = ("owned", "missing", "wanted")
+#: The only valid collection statuses (also used by the API schemas):
+#: "Bende var" / "Bende yok". Wanting a volume is the wishlist's job
+#: (migration 0020 moved the old "wanted" rows there).
+COLLECTION_STATUSES: tuple[str, ...] = ("owned", "missing")
 
 
 def get_volume_status(session: Session, user_id: int | None, volume_id: int) -> str | None:

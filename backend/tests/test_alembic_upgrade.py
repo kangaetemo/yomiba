@@ -59,7 +59,7 @@ def test_init_db_builds_full_schema_on_fresh_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0018_isbn_evidence"
+        ).fetchone()[0] == "0021_series_popularity"
     finally:
         conn.close()
 
@@ -84,7 +84,7 @@ def test_init_db_migrates_unstamped_legacy_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0018_isbn_evidence"
+        ).fetchone()[0] == "0021_series_popularity"
     finally:
         conn.close()
 
@@ -99,7 +99,7 @@ def test_init_db_is_noop_when_already_at_head(alembic_url):
     try:
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchall() == [("0018_isbn_evidence",)]
+        ).fetchall() == [("0021_series_popularity",)]
     finally:
         conn.close()
 
@@ -146,8 +146,8 @@ def test_auth_downgrade_refuses_to_discard_user_data(alembic_url):
     with pytest.raises(RuntimeError, match="ISBN protection"):
         command.downgrade(config, "0004_catalog_exclusion")
     with sqlite3.connect(alembic_url) as conn:
-        # 0018 refuses before any downgrade; neither evidence nor user data are removed.
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0018_isbn_evidence",)
+        # 0021 refuses before any downgrade; neither evidence nor user data are removed.
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0021_series_popularity",)
         assert conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'users'").fetchone() == (1,)
 
 
