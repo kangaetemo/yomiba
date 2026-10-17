@@ -71,11 +71,9 @@ from .isbn_resolver import is_sibling, isbn_holders, resolve_many
 
 logger = logging.getLogger("yomiba.import")
 
-#: Rejections that prove a product is not (provably) the volume a listing
-#: had it on: its existing listing is removed.
-DROP_REASONS = frozenset({"isbn_title_conflict", "isbn_conflict", "edition_ambiguous", "foreign_edition"})
-#: A title-only match this far above the other stores is refused.
-PRICE_OUTLIER_HIGH = 1.8
+#: Rejections that prove a product is another edition: its existing
+#: listing is removed (a foreign ISBN read later, e.g. Monster 9 = VIZ).
+DROP_REASONS = frozenset({"foreign_edition"})
 
 #: Reserved publisher used when a result carries no publisher information and
 #: the edition cannot be determined unambiguously. It keeps unknown items
@@ -258,7 +256,6 @@ class ImportService:
             # Phase 1: resolve every result to its (volume, store) target.
             groups: dict[tuple[int, int], list[tuple[int | None, SearchResult]]] = {}
             conflict_publishers: dict[str, int] = {}
-            rules: dict[str, str | None] = {}
             for result in results:
                 result = self._with_known_isbn(result, known[scraper.store_id])
                 try:
@@ -269,7 +266,6 @@ class ImportService:
                                                self.last_match.get("isbn_volume_id")) if v)
                     if reason in DROP_REASONS:
                         self._drop_listing(result, reason)
-                    rules[result.product_url] = self.last_match.get("rule")
                     # Commit resolution side effects (cover backfill, the
                     # observation) right away so a later failing result's
                     # rollback cannot undo them.
@@ -319,17 +315,6 @@ class ImportService:
                 for _, other in items:
                     if other is not best:
                         self._observe(other, None, "duplicate")
-                if rules.get(best.product_url) == "title" and self._price_outlier(volume, store, best):
-                    # Matched by title alone and far above the other stores:
-                    # likely another edition (Monster 9 = VIZ English, 1265
-                    # TL). A wrong price is worse than a missing one; a low
-                    # price is never refused (real discounts).
-                    self._observe(best, None, "price_outlier")
-                    self._drop_listing(best, "price_outlier")
-                    self.session.commit()
-                    store_report.skipped += 1
-                    store_report.reasons["price_outlier"] = store_report.reasons.get("price_outlier", 0) + 1
-                    continue
                 try:
                     action = self._upsert_listing(volume, store, best)
                     self.session.commit()
@@ -430,22 +415,6 @@ class ImportService:
                         listing.id, result.product_url, listing.volume_id, reason)
             self.session.delete(listing)
         self.session.flush()
-
-    def _price_outlier(self, volume: Volume, store: Store, result: SearchResult) -> bool:
-        """Title-only match priced >= 1.8x the median of at least two other
-        stores' in-stock offers for the volume."""
-        price = to_cents(result.price)
-        if not price or book_isbn(result.isbn):
-            return False
-        others = [p for p, in self.session.execute(select(StoreListing.price).where(
-            StoreListing.volume_id == volume.id, StoreListing.store_id != store.id,
-            StoreListing.in_stock.is_(True), StoreListing.price.is_not(None)))]
-        if len(others) < 2:
-            return False
-        others.sort()
-        mid = len(others) // 2
-        median = others[mid] if len(others) % 2 else (others[mid - 1] + others[mid]) / 2
-        return price >= PRICE_OUTLIER_HIGH * median
 
     @staticmethod
     def _search_all(scrapers: list[BaseScraper], query: str) -> list[list[SearchResult] | Exception]:
@@ -580,11 +549,11 @@ class ImportService:
         resolves -> attach, unless that volume has a different ISBN
         (``isbn_conflict``). The title names another edition of the same
         book -> ``_choose_edition``. The title names a different volume than
-        the ISBN -> NOT attached (``isbn_title_conflict``): a store's wrong
-        ISBN (Yubooh Uyurken 1/2 swapped) or a wrong catalog ISBN (Blue Lock
-        28/29 share one in Mangakol) must not put one book's price on
-        another. The ISBN resolver settles the catalog side from the
-        recorded observations.
+        the ISBN -> attached by the TITLE, the store's own claim about what it
+        sells (rule ``title_over_isbn``, listed in the health report): a
+        store's wrong ISBN (Yubooh Uyurken 1/2 swapped) or a wrong catalog
+        ISBN (Blue Lock 28/29 share one in Mangakol). The ISBN resolver
+        settles the catalog side from the recorded observations.
 
         Returns None with ``last_reason`` set when the result is skipped;
         ``last_match`` holds the evidence for the observation record.
@@ -627,10 +596,10 @@ class ImportService:
                 chosen = self._choose_edition(holders, result, title_volume=title_volume)
                 return attach(chosen, "edition") if chosen else self._reject("edition_ambiguous")
             logger.info(
-                "import: %r: title names volume %s but ISBN %s is on volume %s; not attached",
+                "import: %r: title names volume %s but ISBN %s is on volume %s; attached by title",
                 result.title, title_volume.id, isbn, holders[0].id,
             )
-            return self._reject("isbn_title_conflict")
+            return attach(title_volume, "title_over_isbn")
 
         if title_volume is None:
             return self._reject(title_reason or "no_series_match")

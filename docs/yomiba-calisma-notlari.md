@@ -26,6 +26,13 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 17 Ekim akşamı: "yanlış fiyat, eksik fiyattan kötü" kuralı kaldırıldı
+
+- Kullanıcı kararı: fiyatlar gösterilsin, hata görülürse üzerine gidilsin.
+- Başlık ve ISBN farklı ciltleri gösterdiğinde ürün artık reddedilmiyor; **mağazanın başlığına göre** bağlanıyor (kural `title_over_isbn`) ve sağlık raporundaki "Başlığı bir cildi, ISBN'i başka cildi gösteren ürünler" bölümünde listeleniyor. Yubooh Uyurken'de her ürün kendi başlığındaki cilde gidiyor; katalog ISBN'leri değişmiyor (uzlaşı kuralları aynı).
+- Sadece başlıkla eşleşen yüksek fiyatlı ürünün reddi kaldırıldı; fiyat aykırılıkları raporda.
+- Reddedilen ürünün mevcut ilanı sadece yabancı baskı kanıtlanınca kaldırılıyor (Monster 9 VIZ). Cildin kendi ISBN'i farklıyken başka ISBN'li ürünün bağlanmaması (`isbn_conflict`, eskiden beri var) duruyor ama mevcut ilan silinmiyor.
+
 ### 17 Ekim: ISBN kanıt sistemi (P0 kilidi kalktı)
 
 Kullanıcının asıl derdi: Mangakol'un aynı ISBN'i iki cilde vermesi (Blue Lock 28/29 → …626) ve yayınevlerinin özel baskıyı normal baskıyla aynı ISBN'le basması. Beş adım tek seferde yapıldı (`0018_isbn_evidence`).
@@ -38,11 +45,11 @@ Kullanıcının asıl derdi: Mangakol'un aynı ISBN'i iki cilde vermesi (Blue Lo
   3. Mangakol: geçerli, Türk, kaynakta tekrar etmeyen ISBN boş alanı doldurur. Mevcut geçersiz (yabancı/barkod/checksum) ISBN boş sayılır.
   4. Kaynakta tekrar: Mangakol aynı ISBN'i farklı numaralı ya da başka bir kitaba vermişse hiçbirine yazılmaz; diğer cildin farklı geçerli ISBN'i varsa tekrar "açıklanmış" sayılır (Blue Lock 29 …633 olunca 28 …626 alır; Happiness 6'nın …324050'si 5'e …360492'yi bırakır).
   5. Başka ciltteki ISBN: aynı kitabın başka baskısıysa ve iki sayfa da aynı ISBN'i gösteriyorsa ortak (`shared_isbns`); sayfalar farklıysa her baskı kendi ISBN'ini alır (Soichi); hayalet/katalog dışı kayıttan alınır; gerçek bir katalog cildinden sadece mağaza uzlaşısıyla ve o cildin lehine oy yoksa taşınır. Gerisi `isbn_issues`.
-- **Eşleştirme** (`import_service._resolve_target`): başlık (ISBN yok sayılarak) ve ISBN ayrı çözülür. Aynı cilt → bağla; başlık aynı kitabın başka baskısı → baskı kelimesi, "Ana Kapak", fiyat aralığı (±1,5×); farklı cilt → `isbn_title_conflict`, bağlanmaz ve mevcut ilan kaldırılır. Sadece başlıkla eşleşen ve diğer mağazaların ≥1,8× fiyatlı ürün reddedilir (`price_outlier`); düşük fiyat asla.
+- **Eşleştirme** (`import_service._resolve_target`): başlık (ISBN yok sayılarak) ve ISBN ayrı çözülür. Aynı cilt → bağla; başlık aynı kitabın başka baskısı → baskı kelimesi, "Ana Kapak", fiyat aralığı (±1,5×); farklı cilt → `isbn_title_conflict`, bağlanmaz ve mevcut ilan kaldırılır. (Akşam güncellemesi: çelişkide başlık kazanıyor, fiyat reddi kaldırıldı; aşağıya bakın.)
 - **Gözlem kaydı** (`store_observations`): her ürün için başlık, ISBN, fiyat, başlığın ve ISBN'in gösterdiği cilt, bağlandığı cilt, kural/ret nedeni. Okunan ISBN aynı URL + aynı başlıkla tekrar kullanılıyor (mağazalar sayfaları başka cilde çeviriyor). Gerekli Şeyler/Büyülü Dükkan detay kotası (15) artık sadece ISBN'i bilinmeyen ürünlere.
 - **Admin:** cilt sayfasında "ISBN ve eşleşmeler" paneli (Mangakol / bizim ISBN, oylar, çelişki, her ürün için "neden burada", geçmiş, elle ISBN / ortak / taşı / otomatiğe bırak; `GET/POST /admin/isbn/volumes/{id}`). Sağlık raporu: çözülemeyen çelişkiler, Mangakol tekrarları, başlık-ISBN çelişkili ürünler, Mangakol'dan farklı ciltler, fiyat aykırılıkları, son değişiklikler. Gürültülü adres kontrolü kaldırıldı.
 - **Testler:** Backend 898 test geçti; yeni `test_isbn_evidence.py` canlı vakaları birebir kuruyor (Blue Lock, Yubooh, Happiness, Monster, Solo Leveling fiyat aralığı, admin kararları). TypeScript, ESLint ve üretim derlemesi başarılı.
-- **Sınırlar:** Etki canlıda kademeli: Mangakol ISBN'leri ~4 senkronda, mağaza oyları fiyat taramalarıyla (her seri günde bir) birikir. Uzlaşı olana kadar Blue Lock 29 gibi ciltler ilanlarını kaybedebilir (yanlış fiyat göstermektense). Mağaza grupları gözleme dayanıyor; başka ortak beslemeler bulunursa `VOTE_GROUPS`'a eklenmeli.
+- **Sınırlar:** Etki canlıda kademeli: Mangakol ISBN'leri ~4 senkronda, mağaza oyları fiyat taramalarıyla (her seri günde bir) birikir. Mağaza grupları gözleme dayanıyor; başka ortak beslemeler bulunursa `VOTE_GROUPS`'a eklenmeli.
 
 ### 17 Ekim: ISBN sağlık raporunun canlı sonucu
 

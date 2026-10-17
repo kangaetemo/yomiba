@@ -124,7 +124,7 @@ def _swapped(store):
     return [product(store, "Yubooh Uyurken 2", YU1, "276.25"), product(store, "Yubooh Uyurken 1", YU2, "276.25")]
 
 
-def test_swapped_store_isbns_are_not_attached_and_the_old_listing_goes(db_session):
+def test_swapped_store_isbns_attach_by_title_and_never_change_the_catalog(db_session):
     vols = _yubooh(db_session)
     gs = db_session.scalar(select(Store).where(Store.code == "gerekliseyler")) or Store(code="gerekliseyler", name="Gerekli Şeyler")
     db_session.add(gs)
@@ -136,9 +136,16 @@ def test_swapped_store_isbns_are_not_attached_and_the_old_listing_goes(db_sessio
 
     run(db_session, {"gerekliseyler": _swapped("gerekliseyler"), "buyuludukkan": _swapped("buyuludukkan")})
 
-    assert listings(db_session) == set()
-    reasons = {o.reason for o in db_session.scalars(select(StoreObservation))}
-    assert reasons == {"isbn_title_conflict"}
+    # Each product goes where the store's own title puts it; the listing an
+    # old ISBN match left on Cilt 1 moves to Cilt 2.
+    assert listings(db_session) == {
+        (vols[2].id, "https://gerekliseyler.example/yubooh-uyurken-2"),
+        (vols[1].id, "https://gerekliseyler.example/yubooh-uyurken-1"),
+        (vols[2].id, "https://buyuludukkan.example/yubooh-uyurken-2"),
+        (vols[1].id, "https://buyuludukkan.example/yubooh-uyurken-1"),
+    }
+    # The disagreement stays visible in the health report.
+    assert {o.rule for o in db_session.scalars(select(StoreObservation))} == {"title_over_isbn"}
     # One shared feed is one vote: the catalog stays right.
     assert store_votes(db_session, vols[2].id) == {YU1: 1}
     assert (vols[1].isbn, vols[2].isbn) == (YU1, YU2)
@@ -179,7 +186,7 @@ def test_foreign_isbn_found_later_removes_the_title_match(db_session):
     assert listings(db_session) == set()
 
 
-def test_high_title_only_price_is_refused_low_one_kept(db_session):
+def test_outlier_prices_are_kept_both_high_and_low(db_session):
     series = seed_catalog_series(db_session, "Monster", "Marmara Çizgi", volumes=(9,))
     vol = volumes(db_session, series)[9]
     run(db_session, {"bkm": [product("bkm", "Monster 9", None, "385")],
@@ -187,9 +194,8 @@ def test_high_title_only_price_is_refused_low_one_kept(db_session):
     run(db_session, {"gerekliseyler": [product("gerekliseyler", "Monster 9", None, "1265")],
                      "edessa": [product("edessa", "Monster 9", None, "99")]})
     stores = {url.split("//")[1].split(".")[0] for vid, url in listings(db_session) if vid == vol.id}
-    assert stores == {"bkm", "kitapsec", "edessa"}
-    refused = db_session.scalar(select(StoreObservation).where(StoreObservation.reason == "price_outlier"))
-    assert refused.product_url.startswith("https://gerekliseyler")
+    # Shown and listed in the health report's price outliers instead.
+    assert stores == {"bkm", "kitapsec", "gerekliseyler", "edessa"}
 
 
 # -- ISBN cache: a detail page read once is reused only for the same title ----------------

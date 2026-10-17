@@ -19,11 +19,12 @@ const sources: Record<string, string> = {
 const rules: Record<string, string> = {
   "isbn+title": "ISBN ve başlık aynı cildi gösteriyor", isbn: "ISBN ile", title: "sadece başlıkla",
   edition: "baskı kelimesi / fiyat aralığı ile",
+  title_over_isbn: "başlıkla (ürünün ISBN’i başka bir cildi gösteriyor, kontrol edin)",
 };
 const reasons: Record<string, string> = {
   isbn_title_conflict: "başlık ve ISBN farklı ciltleri gösteriyor", isbn_conflict: "ISBN bu cildinkinden farklı",
   edition_ambiguous: "hangi baskı olduğu belirlenemedi", foreign_edition: "yabancı baskı",
-  price_outlier: "sadece başlıkla eşleşti ve fiyatı diğer mağazaların çok üstünde", duplicate: "aynı mağazada daha uygun baskı seçildi",
+duplicate: "aynı mağazada daha uygun baskı seçildi",
   excluded: "admin kaldırmıştı", non_book_product: "kitap değil",
 };
 const issues: Record<string, string> = {

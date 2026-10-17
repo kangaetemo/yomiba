@@ -7,7 +7,7 @@ Sizes the ways a wrong or missing ISBN turns into a wrong listing:
 * catalog ISBNs Mangakol lists on two different books (source duplicates,
   e.g. Blue Lock 28 and 29);
 * store products whose title names one volume and whose ISBN another
-  (``isbn_title_conflict`` observations — not attached);
+  (attached by title, rule ``title_over_isbn``);
 * contradictions the resolver left open, and the latest ISBN changes;
 * price outliers, malformed ISBNs and one product on several volumes.
 
@@ -123,18 +123,19 @@ def build_report(session: Session) -> dict:
         duplicates.append(dict(isbn=isbn, volumes=[ref(v) for v in group]))
     duplicates.sort(key=lambda r: r["volumes"][0]["series"])
 
-    # 4. Store title names one volume, ISBN another: not attached.
+    # 4. Store title names one volume, ISBN another: attached by title.
     since = utcnow() - OBSERVATION_WINDOW
     stores = dict(session.execute(select(Store.id, Store.name)).all())
     conflicts = []
     for o in session.scalars(select(StoreObservation).where(
-            StoreObservation.reason == "isbn_title_conflict").order_by(StoreObservation.last_seen.desc())):
+            (StoreObservation.rule == "title_over_isbn") | (StoreObservation.reason == "isbn_title_conflict")
+    ).order_by(StoreObservation.last_seen.desc())):
         seen = o.last_seen if o.last_seen.tzinfo else o.last_seen.replace(tzinfo=since.tzinfo)
         if seen < since:
             continue
         conflicts.append(dict(store=stores.get(o.store_id), url=o.product_url, title=o.title, isbn=o.isbn,
                               price=from_cents(o.price), title_volume=short(o.title_volume_id),
-                              isbn_volume=short(o.isbn_volume_id)))
+                              isbn_volume=short(o.isbn_volume_id), attached=o.volume_id is not None))
 
     # 5. Contradictions the resolver left open; latest ISBN changes.
     issues = [dict(ref(by_id[i.volume_id]) if i.volume_id in by_id else dict(volume_id=i.volume_id),

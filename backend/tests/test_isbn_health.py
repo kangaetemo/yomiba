@@ -51,7 +51,7 @@ def test_health_report_flags_each_case(client, db_session):
     now = datetime.now(timezone.utc)
     db_session.add(StoreObservation(store_id=stores[2].id, product_url="https://c.example/yubooh-2",
                                     title="Blue Lock Cilt 28", isbn=BL29, title_volume_id=blues[28].id,
-                                    isbn_volume_id=blues[29].id, reason="isbn_title_conflict",
+                                    isbn_volume_id=blues[29].id, volume_id=blues[28].id, rule="title_over_isbn",
                                     first_seen=now, last_seen=now))
     db_session.add(IsbnChange(volume_id=vols[5].id, old_isbn=None, new_isbn=HAPPINESS_5, source="catalog",
                               reason="Mangakol katalog ISBN'i", created_at=now))
