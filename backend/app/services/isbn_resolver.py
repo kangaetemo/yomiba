@@ -199,6 +199,12 @@ def resolve(session: Session, volume: Volume) -> str | None:
         if catalog and catalog != target:
             reason += f" (Mangakol'daki {catalog} başka bir kitapta da var)"
     elif len(strong) > 1:
+        if usable_catalog in strong and catalog_book_isbn(volume.isbn) == usable_catalog:
+            # Mangakol and stores back the current ISBN; the other one is
+            # another print or edition (Soichi Bez Cilt, Kara Paradoks) whose
+            # products never attach here (``isbn_conflict``). Nothing to decide.
+            _clear_issue(session, volume)
+            return None
         _issue(session, volume, "stores_disagree", votes=votes, catalog=catalog)
         return "issue"
     elif usable_catalog and not strong:

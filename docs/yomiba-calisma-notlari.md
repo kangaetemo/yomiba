@@ -26,6 +26,19 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 17 Ekim gecesi: canlı ISBN raporunun ikinci turu
+
+- Senkron panelindeki 16 çelişki, senkronun bittiği andaki görüntü. Fiyat taramasından sonra 9'u kendiliğinden çözüldü: Blue Lock 29, Happiness 6, Huzurlu Kamp 3, Skip and Loafer 4, Vampir Şövalye 6, ORV 3/4 ve Yıldızların Sesi/Canım Kızım.
+- Mağazalarla doğrulanan yanlış ISBN'ler (admin panelinden girilecek):
+  - Solo Leveling 2 (#859) → 9786256449671. Bizdeki …459, Novel Cilt 2'nin ISBN'i.
+  - Solo Leveling 7 (#2471) → 9786258630510.
+  - Komünist Manifesto (#2245) → 9786055541583. Bizdeki …801, düz metin cep kitabı.
+  - Kapital 2 (#2311) → 9789944122962. Bizdeki …781, asıl Kapital kitabı.
+  - Kapital 1 (#2310) → …917 aynı kalır; admin onayı çelişkiyi kapatır.
+  - Alacakaranlık (#2275) → …633. Önce kapakla doğrulanacak.
+- **Ders:** Yanlış ISBN, aynı adlı manga olmayan kitapların (roman, düz metin) fiyatını mangaya bağlıyor. Doğru ISBN girilince bu ürünler `isbn_conflict` ile reddediliyor ve eski ilanlar 48 saatte bayatlayıp düşüyor.
+- **Çözücü değişikliği:** Mangakol, bizdeki ISBN ve mağazalardan biri aynı ISBN'i gösteriyorsa, başka bir baskının ISBN'i artık "mağazalar anlaşamıyor" çelişkisi açmıyor (Soichi, Kara Paradoks, Çöküşten Önce…). 913 test geçti.
+
 ### 17 Ekim gecesi: alarmlar, ana sayfa, koleksiyon, fiyat geçmişi, popüler seriler
 
 - **Fiyat alarmları** (migration `0019_price_alert_mail`): Her fiyat güncellemesinden sonra alarmlar kontrol ediliyor (`services/price_alert_checker.py`). Eşik geçilince bir kez e-posta `email_outbox` kuyruğuna giriyor. Stoklu en düşük fiyat eşiğin üstüne çıkınca alarm yeniden kuruluyor. Teklif yoksa hiçbir şey değişmiyor. `services/mailer.py` kuyruğu SMTP ile gönderiyor, hata olursa artan aralıklarla en fazla 8 kez deniyor.

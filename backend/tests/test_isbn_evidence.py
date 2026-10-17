@@ -160,6 +160,25 @@ def test_stores_never_override_a_usable_catalog_isbn(db_session):
     assert db_session.get(IsbnIssue, vols[2].id).kind == "stores_vs_catalog"
 
 
+def test_another_print_is_no_issue_when_catalog_and_stores_agree(db_session):
+    """Kara Paradoks 1: Mangakol, the current ISBN and some stores say …074;
+    other stores sell a second print (…098) under the same title. The current
+    ISBN stays, the other print never attaches, and nothing is reported."""
+    A, B = "9786259324074", "9786259324098"
+    series = seed_catalog_series(db_session, "Kara Paradoks", "Kayıp Kıta", volumes=(1,))
+    vols = catalog(db_session, series, {1: A}, current={1: A})
+    run(db_session, {
+        "komikseyler": [product("komikseyler", "Kara Paradoks 1", A)],
+        "kitapsec": [product("kitapsec", "Kara Paradoks 1", A)],
+        "gerekliseyler": [product("gerekliseyler", "Kara Paradoks 1", B)],
+        "edessa": [product("edessa", "Kara Paradoks 1", B)],
+    })
+    assert vols[1].isbn == A
+    assert db_session.get(IsbnIssue, vols[1].id) is None
+    attached = {url for vid, url in listings(db_session) if vid == vols[1].id}
+    assert attached == {"https://komikseyler.example/kara-paradoks-1", "https://kitapsec.example/kara-paradoks-1"}
+
+
 # -- Happiness: Mangakol's off-by-one -----------------------------------------------------
 
 def test_off_by_one_catalog_isbn_never_moves_the_right_one(db_session):
