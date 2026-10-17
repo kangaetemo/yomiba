@@ -34,6 +34,7 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
   - `<head>`'deki küçük betik temayı ilk çizimden önce uyguluyor; açık temanın bir an görünüp koyuya dönmesi yok.
   - İki ikon da sunucuda çiziliyor, CSS `dark:` (`@custom-variant dark` = `[data-theme="dark"]`) doğru olanı gösteriyor.
   - Koyu renkler `globals.css`'te zaten tanımlıydı.
+  - Geçiş animasyonu: View Transitions ile yeni tema düğmeden büyüyen bir daireyle açılıyor (450 ms). Ay/güneş simgesi dönerek geliyor. "Hareketi azalt" açıksa ya da tarayıcı desteklemiyorsa geçiş anında oluyor.
 - **Dar telefonlar:**
   - Giriş yapılmışken başlık 375px'te bölünüyor, 320px'te taşıyordu. Telefonda tek bir "Hesabım" menüsü (`AccountMenu`) var: Koleksiyonum, Admin, Çıkış Yap. İlk denemede çıkışı Koleksiyonum sayfasına taşımıştım; kullanıcı "kaybolmuş" dedi, menüyle değiştirildi. Masaüstü aynı kaldı.
   - 360px'ten dar ekranda logoda yalnız 読 mührü kalıyor.
