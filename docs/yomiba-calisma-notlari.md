@@ -26,6 +26,17 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 19 Ekim: Railway volume doldu, site çöktü
+
+- **Belirti:** Site açılmıyordu; Railway volume %99 doluydu.
+- **Sebep:** Her migration'dan önce veritabanının tam bir kopyası aynı volume'a alınıyor ve eski kopyalar hiç silinmiyordu (pre-migration, P0 ISBN, ISBN-fix, yabancı baskı yedekleri). 17-19 Ekim arasında art arda 0018-0023 geldi. 0023'ün yedeği yere sığmadı; yedek doğrulanamayınca uygulama açılmayı reddetti. Veritabanının kendisi sağlam.
+- **Düzeltme** (`app/database.py`):
+  - `BACKUP_KEEP = 2`: yeni yedekten önce eski yedeklerden yalnızca en yenisi kalıyor (`prune_backups`). Silinenler logda `old backup removed: …` olarak görünüyor.
+  - Yedekten önce boş alan kontrolü (veritabanı + WAL + 50 MB). Yetmezse açık bir hata veriyor.
+  - Veritabanına, `-wal`/`-shm` dosyalarına ve JSON yan dosyalarına dokunulmuyor (test ediliyor).
+- **Doğrulama:** `test_backup_retention.py` eklendi, tüm testler geçti.
+- **Kalan:** Yedekler hâlâ aynı diskte. VPS'e geçince gece yedeği sunucu dışına alınacak ([yapılacaklar](../yapılacaklar.md)).
+
 ### 19 Ekim: cilt sayfasında fiyat geçmişi ve alarm yerleşimi
 
 - **Sorun:** Masaüstünde iki bölüm yan yana sıkışıyordu. Başlıklar farklı hizadaydı (alarm kutunun içinde, geçmiş dışında), alarm kutusu kısa kalıyordu, grafik dar sütundaydı.

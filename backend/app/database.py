@@ -94,6 +94,37 @@ SessionLocal: sessionmaker[Session] = sessionmaker(
 )
 
 
+#: Backups of the DB kept next to it (pre-migration, P0, ISBN-fix, foreign
+#: edition clean-up). Before a new backup is written only the newest
+#: BACKUP_KEEP - 1 older ones stay, so the volume holds at most BACKUP_KEEP:
+#: on 19 Oct 2026 seven migrations in three days, each with a full copy and
+#: none ever deleted, filled the Railway volume and the app refused to start.
+BACKUP_KEEP = 2
+#: Free space the backup needs beyond the DB's own size.
+BACKUP_HEADROOM_BYTES = 50 * 1024 * 1024
+
+
+def db_backups(source: Path) -> list[Path]:
+    """The DB's backup files next to it, oldest first. Never the DB, its
+    -wal / -shm, or other sidecars (catalog-state / isbn-safety JSON)."""
+    prefix = source.name + "."
+    found = [p for p in source.parent.iterdir()
+             if p.is_file() and p.name.startswith(prefix)
+             and (p.name.endswith(".bak") or ".bak-" in p.name)]
+    return sorted(found, key=lambda p: (p.stat().st_mtime, p.name))
+
+
+def prune_backups(source: Path, keep: int) -> list[Path]:
+    """Delete all but the newest ``keep`` backups of ``source``."""
+    backups = db_backups(source)
+    removed = backups[: max(0, len(backups) - keep)]
+    for path in removed:
+        size = path.stat().st_size
+        path.unlink(missing_ok=True)
+        logger.warning("old backup removed: %s (%.1f MB)", path.name, size / 1e6)
+    return removed
+
+
 def backup_before_migration(url: str, head: str) -> Path | None:
     """Online-backup a file SQLite DB before Alembic changes its schema.
 
@@ -126,8 +157,18 @@ def backup_before_migration(url: str, head: str) -> Path | None:
             current = row[0] if row else None
     if current == head:
         return None
+    import shutil
     from uuid import uuid4
     from .services.safety_backup import copy_backup, rehearse_restore
+
+    prune_backups(source, BACKUP_KEEP - 1)
+    wal = source.with_name(source.name + "-wal")
+    needed = source.stat().st_size + (wal.stat().st_size if wal.is_file() else 0) + BACKUP_HEADROOM_BYTES
+    free = shutil.disk_usage(source.parent).free
+    if free < needed:
+        raise RuntimeError(
+            f"Not enough disk for the pre-migration backup: {free / 1e6:.0f} MB free, "
+            f"{needed / 1e6:.0f} MB needed next to {source}. Free space or enlarge the volume.")
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     target = source.with_name(f"{source.name}.pre-migration-{current or 'unversioned'}-{stamp}-{uuid4().hex[:8]}.bak")
