@@ -22,9 +22,12 @@ import type { PriceAlert } from "@/types";
 export function PriceAlertForm({
   volumeId,
   initialAlert,
+  suggestion = null,
 }: {
   volumeId: number;
   initialAlert: PriceAlert | null;
+  /** A target to show as the example (about 10 % under today's best price). */
+  suggestion?: number | null;
 }) {
   const [alert, setAlert] = useState<PriceAlert | null>(initialAlert);
   const [input, setInput] = useState<string>(
@@ -79,7 +82,8 @@ export function PriceAlertForm({
   }
 
   return (
-    <div className="max-w-xl space-y-2">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+      <div className="min-w-0 space-y-1 sm:max-w-md">
       {alert && (
         <p className="text-sm text-ink-2">
           Mevcut alarm:{" "}
@@ -98,6 +102,13 @@ export function PriceAlertForm({
         </p>
       )}
 
+      <p className="text-sm text-muted">
+        Stokta bir mağazada fiyat bu seviyeye inince hesabındaki e-posta adresine haber veririz.
+        Fiyat tekrar yükselip yeniden inerse yine yazarız.
+      </p>
+      </div>
+
+      <div className="space-y-1.5 sm:shrink-0">
       <div className="flex flex-wrap items-center gap-2">
         <label className="sr-only" htmlFor={`price-alert-${volumeId}`}>
           Fiyat eşiği (TL)
@@ -106,7 +117,7 @@ export function PriceAlertForm({
           id={`price-alert-${volumeId}`}
           type="text"
           inputMode="decimal"
-          placeholder="Örn. 150 TL"
+          placeholder={suggestion ? `Örn. ${suggestion} TL` : "Örn. 150 TL"}
           value={input}
           disabled={pending}
           onChange={(e) => {
@@ -153,10 +164,7 @@ export function PriceAlertForm({
       </div>
 
       {error && <p className="text-xs text-bad">{error}</p>}
-      <p className="text-xs text-faint">
-        Stokta bir mağazada fiyat bu seviyeye inince hesabındaki e-posta adresine haber veririz.
-        Fiyat tekrar yükselip yeniden inerse yine yazarız.
-      </p>
+      </div>
     </div>
   );
 }

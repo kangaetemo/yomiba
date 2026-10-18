@@ -26,6 +26,15 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 19 Ekim: cilt sayfasında fiyat geçmişi ve alarm yerleşimi
+
+- **Sorun:** Masaüstünde iki bölüm yan yana sıkışıyordu. Başlıklar farklı hizadaydı (alarm kutunun içinde, geçmiş dışında), alarm kutusu kısa kalıyordu, grafik dar sütundaydı.
+- **Düzeltme:**
+  - İki bölüm alt alta ve tam genişlikte; başlıklar kutunun dışında. Kullanılmayan `Panel` yardımcısı kalktı.
+  - Alarm formu geniş ekranda yatay: açıklama solda, giriş ve düğme sağda. Örnek fiyat, en düşük fiyatın yaklaşık %10 altı (5'in katına yuvarlanmış).
+  - `PriceHistoryChart` artık kutunun ölçülen genişliğinde çiziliyor (`ResizeObserver`; ilk çizim 720). Yazılar her ekranda gerçek boyutunda; telefonda okunuyor. Yükseklik 220.
+- **Doğrulama:** Masaüstü ve 375px, geçici önizleme sayfasıyla. Ölçüm üretim derlemesinde (`next start`) doğrulandı. **Not:** headless Chrome'da geliştirme sunucusu JS'i ekran görüntüsüne kadar yüklemiyor; istemci davranışı üretim derlemesiyle kontrol edilmeli.
+
 ### 19 Ekim: Koleksiyonum güçlendirmesi
 
 - **Yapı:** Sayfa artık sekmeli: Koleksiyon / İstek listesi / Alarmlar (`components/collection/CollectionView.tsx`).

@@ -8,17 +8,19 @@
  * segment ever invents prices in between. A gap means no store had it in
  * stock. The line ends at today's best price (the one the page shows).
  * Hover or tap shows the date, price and store at that moment.
+ *
+ * Drawn at the box's real width (measured), so labels keep their size on a
+ * phone and the line uses the room on a wide screen.
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TIME_ZONE, serverDate } from "@/lib/time";
 import { formatPrice } from "@/components/PriceBadge";
 import { formatTL } from "@/components/ui";
 import type { LowestPricePoint } from "@/types";
 
-const W = 720;
-const H = 240;
-const PAD = { top: 14, right: 72, bottom: 28, left: 52 };
+const H = 220;
+const PAD = { top: 14, right: 64, bottom: 28, left: 52 };
 const DAY = 86_400_000;
 const RANGES = [
   { key: "30", label: "30 gün", days: 30 },
@@ -72,6 +74,16 @@ export function PriceHistoryChart({
   const [rangeKey, setRangeKey] = useState<string>(spanDays > 30 ? "90" : "30");
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // Server render and first paint use 720; the measured width follows.
+  const [W, setW] = useState(720);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setW(Math.max(280, Math.round(entry.contentRect.width))));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[0];
   const t1 = now;
@@ -150,7 +162,7 @@ export function PriceHistoryChart({
         </div>
       )}
 
-      <div className="relative">
+      <div ref={boxRef} className="relative">
         <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} role="img" className="h-auto w-full touch-pan-y overflow-visible"
           aria-label={`En düşük fiyat geçmişi; şu an ${nowPrice !== null ? formatPrice(nowPrice) : "stokta yok"}, en düşük ${lowestStep ? formatPrice(lowestStep.price) : "—"}`}>
           {yTicks.map((v) => (

@@ -81,17 +81,6 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function Panel({ title, children, id }: { title: string; children: React.ReactNode; id?: string }) {
-  return (
-    <section aria-labelledby={id} className="space-y-3 rounded-2xl border border-line bg-surface p-5 shadow-card">
-      <h2 id={id} className="text-lg font-semibold text-ink">
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
 export default async function VolumePage({ params }: VolumePageProps) {
   const { series: seriesDetail, volumeId: numId } = await resolveVolume(await params);
 
@@ -355,33 +344,42 @@ export default async function VolumePage({ params }: VolumePageProps) {
             )}
           </section>
 
-          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
-            <Panel title="Fiyat alarmı" id="alarm-title">
+          {/* Full width, one under the other: the chart needs the room, and
+              both headings sit at the same place. */}
+          <section aria-labelledby="gecmis-title" className="min-w-0 space-y-3">
+            <h2 id="gecmis-title" className="text-lg font-semibold text-ink">
+              Fiyat geçmişi
+            </h2>
+            {lowestHistory.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-line-strong bg-surface/70 p-6 text-sm text-muted">
+                Henüz fiyat geçmişi yok. Fiyat her değiştiğinde buraya bir nokta eklenir.
+              </p>
+            ) : (
+              <PriceHistoryChart points={lowestHistory} now={renderedAt} current={best ? { price: best.price, store: best.stores.join(", ") } : null} />
+            )}
+          </section>
+          <section aria-labelledby="alarm-title" className="space-y-3">
+            <h2 id="alarm-title" className="text-lg font-semibold text-ink">
+              Fiyat alarmı
+            </h2>
+            <div className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
               {user ? (
-                <PriceAlertForm volumeId={numId} initialAlert={alertState?.alert ?? null} />
+                <PriceAlertForm
+                  volumeId={numId}
+                  initialAlert={alertState?.alert ?? null}
+                  suggestion={best ? Math.max(1, Math.floor((best.price * 0.9) / 5) * 5) : null}
+                />
               ) : (
                 <p className="text-sm text-muted">
-                  Hedef fiyatını kaydetmek için{" "}
+                  Fiyat istediğin seviyeye inince haber almak için{" "}
                   <LoginLink className="font-semibold text-ink underline decoration-line-strong underline-offset-4 hover:text-accent">
                     giriş yap
                   </LoginLink>
                   .
                 </p>
               )}
-            </Panel>
-            <section aria-labelledby="gecmis-title" className="min-w-0 space-y-3">
-              <h2 id="gecmis-title" className="text-lg font-semibold text-ink">
-                Fiyat geçmişi
-              </h2>
-              {lowestHistory.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-line-strong bg-surface/70 p-6 text-sm text-muted">
-                  Henüz fiyat geçmişi yok. Fiyat her değiştiğinde buraya bir nokta eklenir.
-                </p>
-              ) : (
-                <PriceHistoryChart points={lowestHistory} now={renderedAt} current={best ? { price: best.price, store: best.stores.join(", ") } : null} />
-              )}
-            </section>
-          </div>
+            </div>
+          </section>
         </div>
       </div>
 
