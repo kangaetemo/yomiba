@@ -77,6 +77,29 @@ class BkmScraper(BaseScraper):
     )
 
     def search(self, query: str) -> list[SearchResult]:
+        """Search BKM; when the plain query finds nothing of the series, retry
+        once as "<query> cilt".
+
+        BKM's engine ranks everyday words against its whole shop: "Mavi Kutu"
+        returns 50 boxed pencils and puzzles and none of the manga (sold as
+        "Blue Box - Mavi Kutu 2"); "Mavi Kutu cilt" lists all five volumes.
+        The retry costs a request only when the first search came back empty
+        for the series."""
+        results = self._search_once(query)
+        core = normalize_text(parse_volume_title(query).base_title or query)
+        if not core or "cilt" in normalize_text(query).split():
+            return results
+        if any(core in normalize_text(r.title) for r in results):
+            return results
+        first_stats, first_gone = self.stats, set(self.gone_urls)
+        retry = self._search_once(f"{query} cilt")
+        self.gone_urls |= first_gone
+        self.stats["retry_query"] = f"{query} cilt"
+        self.stats["first_query"] = {k: first_stats.get(k) for k in ("raw_products", "rejected", "accepted")}
+        seen = {r.product_url for r in retry}
+        return retry + [r for r in results if r.product_url not in seen]
+
+    def _search_once(self, query: str) -> list[SearchResult]:
         self.stats = {
             "source": None,
             "pages_fetched": 0,

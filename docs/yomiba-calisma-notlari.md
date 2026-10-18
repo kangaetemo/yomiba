@@ -26,6 +26,17 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 19 Ekim: BKM "Mavi Kutu"yu bulamıyordu
+
+- **Bulgu:** Mavi Kutu 2'nin BKM ilanı 5 Ekim'den beri güncellenmiyordu ("stok belirsiz"), oysa ürün BKM'de stokta.
+  - BKM'nin arama motoru tam "Mavi Kutu" sorgusunda mangayı hiç döndürmüyor; 50 sonucun hepsi kırtasiye ve oyuncak (mavi kutulu kalemler, yapbozlar).
+  - Mangalar BKM'de "Blue Box - Mavi Kutu N" adıyla duruyor. "Mavi Kutu cilt" ve "Mavi Kutu manga" sorguları beş cildi de buluyor; kategori süzgeci işe yaramıyor.
+- **Düzeltme** (`scrapers/bkm.py`):
+  - Düz sorgunun sonuçlarında seri adını taşıyan hiçbir ürün yoksa arama bir kez "<sorgu> cilt" ile tekrarlanıyor ve sonuçlar birleştiriliyor. İstatistikte `retry_query` olarak görünüyor.
+  - Seriyi zaten bulan sorgularda (ör. Berserk) ek istek atılmıyor.
+- **Doğrulama:** Canlı BKM'den 5 cilt geldi (2. cilt 161 TL, stokta). Gerçek sonuçlarla yapılan içe aktarma denemesinde beşi de doğru cilde bağlandı. Yeni test eklendi; tüm testler geçti.
+- **Not:** Seri adı sıradan kelimelerden oluşan başka seriler de bu yüzden BKM'de eksik kalmış olabilir. Bir sonraki fiyat turunda kendiliğinden düzelecekler.
+
 ### 19 Ekim: Amazon'dan gelen Prime Video dizisi
 
 - **Bulgu:** "İtiraf" 1. cildinde bir Amazon bağlantısı vardı ve diziye gidiyordu. Amazon'da "İtiraf" araması kitap yerine Prime Video'daki "İtiraf - 1. Sezon" dizisini (2022) döndürüyor; `/dp/<ASIN>` sayfası primevideo.com'a yönleniyor.

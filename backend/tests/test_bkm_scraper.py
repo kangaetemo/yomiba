@@ -321,3 +321,39 @@ def test_common_filter_rejects_merchandise_from_search():
     assert {r.title for r in results} == {
         "One Piece 54. Cilt", "One Piece 53. Cilt", "One Piece 52. Cilt",
     }
+
+
+def _item(n, title, category, gtin, link):
+    return {"ix": n, "id": str(n), "title": title, "category": category, "brand": "Akilcelen", "link": link,
+            "price": "230,00", "sale_price": "161,00", "price_sell": "161,00", "price_not_discounted": "230,00",
+            "image": None, "writer": "Kouji Miura", "publisher": "akilcelen", "stock_level": "1", "gtin": gtin}
+
+
+def test_retries_with_cilt_when_the_plain_query_finds_nothing_of_the_series():
+    """BKM answers "Mavi Kutu" with boxed pencils only; "Mavi Kutu cilt"
+    lists the manga ("Blue Box - Mavi Kutu 2")."""
+    queries = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "search_v2" in request.url.path:
+            params = json.loads(request.url.params.get("search_params"))
+            queries.append(params["query"])
+            if params["page_number"] > 1:
+                return httpx.Response(200, json={"res": [], "total_item_count": 2})
+            if params["query"] == "Mavi Kutu":
+                res = [_item(1, "Kalem Seti Mavi Kutu", "Kirtasiye", "8690000000001", "https://bkmkitap.com/kalem")]
+            else:
+                res = [_item(2, "Blue Box - Mavi Kutu 2", "Edebiyat Kitaplari", "9786256446649",
+                             "https://bkmkitap.com/blue-box-mavi-kutu-2")]
+            return httpx.Response(200, json={"res": res, "total_item_count": len(res)})
+        return httpx.Response(200, text=PRODUCT_PAGE)
+
+    s = make_scraper(handler, bkm_search_page_size=3)
+    results = s.search("Mavi Kutu")
+    assert [r.title for r in results] == ["Blue Box - Mavi Kutu 2"]
+    assert s.stats["retry_query"] == "Mavi Kutu cilt"
+    assert queries[0] == "Mavi Kutu" and "Mavi Kutu cilt" in queries
+    # A query that already finds the series is not repeated.
+    queries.clear()
+    s.search("Mavi Kutu cilt")
+    assert set(queries) == {"Mavi Kutu cilt"}
