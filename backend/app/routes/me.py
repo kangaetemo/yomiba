@@ -20,6 +20,7 @@ from ..models import PriceAlert, Publisher, Series, StoreListing, User, UserVolu
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..utils import from_cents
 from ..services import series_slugs
+from ..services.catalog_service import public_volume_condition
 from ..services.covers import cover_url
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -34,6 +35,9 @@ class MyVolumeOut(BaseModel):
     publisher: str
     cover_url: str | None = None
     best_price: float | None = None
+    #: Released, numbered volumes of the series (the collection page's
+    #: "12 / 30 cilt" progress).
+    series_volume_count: int = 0
 
 
 class MyCollectionItemOut(MyVolumeOut):
@@ -67,6 +71,13 @@ def _volume_fields(session: Session, volume_ids: list[int]) -> dict[int, dict]:
         .group_by(StoreListing.volume_id)
     ).all())
     slugs = series_slugs.slugs_for(session, [v.series_id for v, _, _ in rows])
+    series_ids = {v.series_id for v, _, _ in rows}
+    counts = dict(session.execute(
+        select(Volume.series_id, func.count(Volume.id))
+        .where(Volume.series_id.in_(series_ids), Volume.volume_number >= 0,
+               public_volume_condition(include_announced=False))
+        .group_by(Volume.series_id)
+    ).all())
     out = {}
     for volume, series_title, publisher in rows:
         phantom = volume.volume_number == UNNUMBERED_VOLUME
@@ -80,6 +91,7 @@ def _volume_fields(session: Session, volume_ids: list[int]) -> dict[int, dict]:
             "cover_url": cover_url(volume.cover_key),
             # Legacy phantom prices are frozen; never present them as current.
             "best_price": None if phantom else from_cents(best.get(volume.id)),
+            "series_volume_count": counts.get(volume.series_id, 0),
         }
     return out
 

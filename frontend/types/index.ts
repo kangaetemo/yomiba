@@ -472,6 +472,8 @@ export interface MyVolume {
   publisher: string;
   cover_url: string | null;
   best_price: number | null;
+  /** Released, numbered volumes of the series ("12 / 30 cilt"). */
+  series_volume_count?: number;
 }
 
 export interface MyCollectionItem extends MyVolume {

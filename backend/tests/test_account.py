@@ -195,3 +195,17 @@ def test_google_only_account_confirms_deletion_with_its_email_and_admins_cannot(
     admin.role = "ADMIN"
     db_session.commit()
     assert client.post("/auth/delete", json={"confirm": PASSWORD}).status_code == 400
+
+
+def test_my_lists_carry_the_series_volume_count(client, db_session):
+    """Koleksiyonum's "2 / 3 cilt" progress: released numbered volumes only."""
+    _register(client)
+    series = seed_catalog_series(db_session, "Berserk", "Gerekli Şeyler", volumes=(1, 2, 3, 4))
+    vols = {v.volume_number: v for v in db_session.scalars(select(Volume).where(Volume.series_id == series.id))}
+    for n, v in vols.items():
+        v.catalog_present = True
+        v.catalog_released = n != 4  # announced, not out yet
+    db_session.commit()
+    client.patch(f"/volume/{vols[1].id}/collection-status", json={"status": "owned"})
+    item = client.get("/me/collection").json()[0]
+    assert item["series_volume_count"] == 3

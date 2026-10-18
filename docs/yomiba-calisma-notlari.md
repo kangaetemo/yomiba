@@ -26,6 +26,23 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 19 Ekim: Koleksiyonum güçlendirmesi
+
+- **Yapı:** Sayfa artık sekmeli: Koleksiyon / İstek listesi / Alarmlar (`components/collection/CollectionView.tsx`).
+  - Sekme adreste duruyor (`?sekme=istek|alarm`); değiştirirken `history.replaceState` kullanılıyor, sunucuya yeniden istek gitmiyor.
+  - Bütün süzme ve sıralama tarayıcıda, eldeki listelerle yapılıyor (anında).
+- **Özet şeridi:** Bende var (cilt / seri), tamamlanan seri, istek listesi (stoktaki adet ve toplam en düşük fiyat), alarmlar (kaçı hedefte).
+- **Koleksiyon sekmesi:**
+  - Seri kartında "Sende 12 / 30 cilt" tamamlanma çubuğu, tamamlanmış seride "Tamamlandı".
+  - Filtreler: Tümü / Devam eden / Tamamlanan / Bende yok.
+  - Sıralama: A–Z / en çok cilt / tamamlanmaya en yakın / son güncellenen.
+  - Arama: seri adı ve yayınevi; Türkçe karakter ve büyük-küçük harf duyarsız.
+- **İstek listesi sekmesi:** Seri seri gruplanıyor; başlıkta cilt sayısı, stoktaki adet ve toplam fiyat var, ciltler numara sırasında. "Sadece stokta" filtresi ve sıralama (A–Z / toplamı en ucuz / son eklenen).
+- **Alarmlar sekmesi:** Tümü / Hedefte / Açık / Kapalı filtreleri, "Hedefte" rozeti, hedefe yakınlığa göre sıralama.
+- **Backend:** `/me/*` listeleri `series_volume_count` döndürüyor (serinin çıkmış, numaralı ciltleri).
+- **Doğrulama:** 941 test geçti (yeni: `test_my_lists_carry_the_series_volume_count`). `tsc`, `eslint` ve `npm run build` temiz. Üç sekme 375px'te, istek listesi koyu temada masaüstünde sahte veriyle ekran görüntüsünden kontrol edildi.
+- **Sıradaki fikirler** [yapılacaklar](../yapılacaklar.md) dosyasında.
+
 ### 19 Ekim: ilan sağlığı (otomatik kontrol, adım 1-2)
 
 - **Kendi kendine iyileşme:** Ürün sayfasındaki schema.org bilgisinden stok ve fiyat okuyan genel kontrol (`check_listing`) artık BKM, Kitapbulan ve Edessa'da da açık (önceden Kitapseç, Kitap Sepeti, İstanbul Kitapçısı).

@@ -103,6 +103,15 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
   - Ayrı bir istek listesi bulunduğu için koleksiyon durumlarındaki “İstediğim” seçeneğini kaldır.
   - Bir cildin kullanıcıda bulunmaması, onu istediği anlamına gelmez. “Bende yok” durumu cildi otomatik olarak istek listesine eklememeli.
   - Son etiketler ve düzen birlikte değerlendirilecek.
+- [x] **Koleksiyonum'u güçlendir (19 Ekim).** Sekmeler (Koleksiyon / İstek listesi / Alarmlar), özet şeridi, her sekmede arama, seri başına tamamlanma çubuğu ve filtreler, seri seri gruplanmış istek listesi ("Sadece stokta", toplam fiyat), alarmlarda "Hedefte" filtresi ([çalışma notları](docs/yomiba-calisma-notlari.md)).
+- [ ] **Koleksiyon için sonraki fikirler** (değerlendirilecek):
+  - Toplu işaretleme: seri sayfasında "1–12 bende var" gibi aralık seçimi; tek tek tıklamak yerine.
+  - "Sıradaki cildim": her seride sahip olunan son cildin bir sonrakini, fiyatıyla birlikte gösteren kısa liste.
+  - İstek listesindeki ciltler için mağaza bazlı sepet önerisi: "Hepsini Kitapseç'ten al: ₺X, kargo eşiği aşılıyor". Mağazaların kargo eşikleri gerekiyor.
+  - Yeni çıkan cilt bildirimi: takip edilen serinin yeni cildi çıkınca haber (e-posta / Telegram / mobil bildirim).
+  - Koleksiyonu paylaşma: herkese açık, salt okunur bir bağlantı (ör. /k/kullanici-adi).
+  - Dışa / içe aktarma: CSV ile yedek ya da başka bir uygulamadan taşıma.
+  - Koleksiyon değeri: sahip olunan ciltlerin bugünkü en düşük fiyatlarla toplamı.
 
 ## Üyelik ve cihazlar arası kullanım
 
