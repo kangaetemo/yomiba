@@ -9,7 +9,10 @@ Sizes the ways a wrong or missing ISBN turns into a wrong listing:
 * store products whose title names one volume and whose ISBN another
   (attached by title, rule ``title_over_isbn``);
 * contradictions the resolver left open, and the latest ISBN changes;
-* price outliers, malformed ISBNs and one product on several volumes.
+* price outliers, malformed ISBNs and one product on several volumes;
+* listings the store's search no longer returns (kept fresh only by their
+  product page: ``search_miss``), listings gone stale (hidden), and
+  suspicious listings (not a book, another publisher, off-site link).
 
 Never writes: every check is a SELECT over the current database.
 """
@@ -22,8 +25,10 @@ from statistics import median
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from ..models import (CatalogSeries, IsbnChange, IsbnIssue, Series, SharedIsbn, Store,
+from ..config import get_settings
+from ..models import (CatalogSeries, IsbnChange, IsbnIssue, PublisherAlias, Series, SharedIsbn, Store,
                       StoreListing, StoreObservation, Volume)
+from ..normalization import normalize_publisher, normalize_text
 from ..normalization.isbn import is_foreign_isbn, isbn_checksum_ok
 from ..utils import from_cents, utcnow
 from .series_slugs import slugs_for
@@ -35,6 +40,29 @@ LISTING_HIGH, LISTING_LOW = 1.8, 0.55
 #: A volume this far from its series' typical price is suspect.
 VOLUME_HIGH, VOLUME_LOW = 2.0, 0.5
 OBSERVATION_WINDOW = timedelta(days=90)
+#: An in-stock listing whose search sighting lags its last check this much
+#: is kept alive only by product-page re-checks.
+SEARCH_MISS_AFTER = timedelta(hours=48)
+#: Words in a store title that point to something other than this manga
+#: volume: a TV season, a disc, the novel, an art book. Whole words of the
+#: normalized title ("bolum" is NOT here: "Heartslabyul Bölümü" is a manga).
+SUSPECT_WORDS = frozenset({"sezon", "dvd", "bluray", "novel", "artbook", "kartpostal", "poster",
+                           "ekitap", "kindle", "sesli"})
+
+
+def _site(url: str | None) -> str | None:
+    from urllib.parse import urlparse
+
+    host = (urlparse(url or "").hostname or "").lower()
+    return host.removeprefix("www.") or None
+
+
+def _store_sites() -> dict[str, str]:
+    """store code -> the store's own host ("bkmkitap.com")."""
+    from ..scrapers import registry
+
+    return {code: site for code, cls in getattr(registry, "_SCRAPERS", {}).items()
+            if (site := _site(getattr(cls, "base_url", "")))}
 
 
 def _released(volume: Volume, today) -> bool:
@@ -211,7 +239,63 @@ def build_report(session: Session) -> dict:
                                    volumes=[ref(by_id[l.volume_id]) if l.volume_id in by_id
                                             else dict(volume_id=l.volume_id) for l, _ in rows]))
 
+    # 9. Listing freshness and suspicious listings.
+    now = utcnow()
+
+    def aware(dt):
+        return dt.replace(tzinfo=dt.tzinfo or now.tzinfo) if dt else None
+
+    newest: dict[int, object] = {}
+    for listing, store in all_listings:
+        checked = aware(listing.last_checked)
+        if checked and (store.id not in newest or checked > newest[store.id]):
+            newest[store.id] = checked
+    stale_window = timedelta(hours=get_settings().listing_stale_hours)
+    observations = {(o.store_id, o.product_url): o for o in session.scalars(select(StoreObservation))}
+    aliases: dict[int, set[str]] = defaultdict(set)
+    for alias, pid in session.execute(select(PublisherAlias.normalized_alias, PublisherAlias.publisher_id)):
+        aliases[pid].add(alias)
+    sites = _store_sites()
+    search_miss, stale_listings, suspect = [], [], []
+    for listing, store in all_listings:
+        v = by_id.get(listing.volume_id)
+        if v is None:
+            continue
+        checked, seen = aware(listing.last_checked), aware(listing.seen_in_search_at)
+        when = dict(last_checked=checked.isoformat() if checked else None,
+                    seen_in_search=seen.isoformat() if seen else None)
+        if listing.in_stock and checked and seen and checked - seen >= SEARCH_MISS_AFTER:
+            search_miss.append(dict(ref(v), **offer(listing, store), **when))
+        latest = newest.get(store.id)
+        if listing.in_stock and checked and latest and latest - checked > stale_window:
+            stale_listings.append(dict(ref(v), **offer(listing, store), **when))
+        reasons = []
+        site = sites.get(store.code)
+        host = _site(listing.product_url)
+        if site and host and host != site and not host.endswith("." + site):
+            reasons.append(f"başka siteye gidiyor ({host})")
+        obs = observations.get((store.id, listing.product_url))
+        if obs is not None:
+            words = set(normalize_text(obs.title or "").split())
+            hit = sorted(words & SUSPECT_WORDS)
+            if hit:
+                reasons.append("başlıkta: " + ", ".join(hit))
+            pub = normalize_publisher(obs.publisher) if obs.publisher else ""
+            ours = v.series.publisher
+            if pub and ours is not None:
+                known = {ours.normalized_name, *aliases[ours.id]}
+                if not any(k and (k in pub or pub in k) for k in known):
+                    reasons.append(f"yayınevi farklı ({obs.publisher})")
+        if reasons:
+            suspect.append(dict(ref(v), **offer(listing, store), title=obs.title if obs else None,
+                                reasons=reasons))
+    for rows in (search_miss, stale_listings, suspect):
+        rows.sort(key=lambda r: (r["store"], r["series"], r["volume_number"]))
+
     checks = [
+        ("search_miss", search_miss),
+        ("stale_listing", stale_listings),
+        ("suspect_listing", suspect),
         ("isbn_issues", issues),
         ("catalog_duplicate", duplicates),
         ("title_isbn_conflict", conflicts),

@@ -8,6 +8,9 @@ import { getIsbnHealth } from "@/services/isbn";
 import type { HealthCheckKey, HealthOffer, HealthRow, IsbnHealth } from "@/services/isbn";
 
 const checks: { key: HealthCheckKey; title: string; help: string }[] = [
+  { key: "search_miss", title: "Mağazanın aramasında artık çıkmayan ilanlar", help: "Ürün sayfası hâlâ stokta diyor (sistem oradan güncelliyor), ama mağazanın araması 48 saattir bu ürünü döndürmüyor. Genelde aramanın seri adını başka ürünlerle karıştırmasıdır (BKM'de “Mavi Kutu” gibi); tarayıcının sorgusu düzeltilmeli." },
+  { key: "stale_listing", title: "Bayatlamış ilanlar (sitede gizli)", help: "Mağaza taranıyor ama bu ilan uzun süredir güncellenmedi; sitede gösterilmiyor. Ürün kaldırılmış ya da arama artık bulamıyor olabilir. Ürün sayfası okunabilen mağazalarda (BKM, Kitapseç, Kitap Sepeti, Kitapbulan, Edessa, İstanbul Kitapçısı) sistem önce sayfadan kontrol eder." },
+  { key: "suspect_listing", title: "Şüpheli ilanlar", help: "Başlığı kitap dışı ya da başka bir baskıyı gösteriyor (sezon, DVD, novel…), yayınevi bizdekinden farklı ya da bağlantı mağazanın sitesi dışına gidiyor. Kontrol edin; yanlışsa cilt sayfasından kaldırın." },
   { key: "isbn_issues", title: "Otomatik çözülemeyen ISBN çelişkileri", help: "Kanıtlar çelişiyor; sistem hiçbir şeyi değiştirmedi. Cilt sayfasındaki admin ISBN panelinden karar verebilirsiniz." },
   { key: "catalog_duplicate", title: "Mangakol’un iki farklı kitaba verdiği ISBN’ler", help: "Kaynak hatası (Blue Lock 28/29 gibi). Bu ISBN hiçbir cilde kendiliğinden yazılmaz; mağaza kanıtı ya da admin kararı bekler. Aynı kitabın baskıları burada sayılmaz." },
   { key: "title_isbn_conflict", title: "Başlığı bir cildi, ISBN’i başka cildi gösteren ürünler", help: "Mağazanın başlığına göre bağlandı (son 90 gün). Mağazanın ISBN’i ya da bizim ISBN’imiz yanlış; buradan kontrol edin, gerekirse cilt sayfasından düzeltin." },
@@ -73,6 +76,11 @@ function details(key: HealthCheckKey, row: HealthRow) {
       return <>{problems[row.problem ?? ""] ?? row.problem}</>;
     case "shared_product":
       return <><a href={row.url} target="_blank" rel="noreferrer" className="text-new hover:underline">{row.store}</a> · {(row.volumes ?? []).map((v, i) => <span key={i}>{i ? ", " : ""}<VolumeLink slug={v.series_slug} series={v.series} number={v.volume_number} /></span>)}</>;
+    case "search_miss":
+    case "stale_listing":
+      return <><Offer offer={row} /> · son kontrol {row.last_checked ? formatDateTime(row.last_checked) : "—"} · aramada son görülme {row.seen_in_search ? formatDateTime(row.seen_in_search) : "—"}</>;
+    case "suspect_listing":
+      return <><Offer offer={row} />{row.title ? <> “{row.title}”</> : null} · {(row.reasons ?? []).join(" · ")}</>;
     case "recent_changes":
       return <>{row.old_isbn ?? "boş"} → {row.new_isbn ?? "boş"} · {sources[row.source ?? ""] ?? row.source} · {row.reason}{row.at ? ` · ${formatDateTime(row.at)}` : ""}</>;
   }

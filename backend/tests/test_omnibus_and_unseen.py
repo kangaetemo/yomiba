@@ -265,13 +265,19 @@ def test_store_without_flag_is_never_rechecked(db_session, import_service):
 
 
 def test_hidden_store_flags():
+    """Stores whose product pages carry schema.org offers are re-checked
+    there when their search misses a listing (BKM missed "Mavi Kutu";
+    checked live 19 Oct). Gerekli Şeyler's pages carry none."""
     from app.scrapers.bkm import BkmScraper
+    from app.scrapers.edessa import EdessaScraper
+    from app.scrapers.gerekliseyler import GerekliseylerScraper
+    from app.scrapers.kitapbulan import KitapbulanScraper
     from app.scrapers.kitapsec import KitapsecScraper
     from app.scrapers.kitapsepeti import KitapsepetiScraper
 
-    assert KitapsecScraper.verifies_unseen_listings
-    assert KitapsepetiScraper.verifies_unseen_listings
-    assert not BkmScraper.verifies_unseen_listings
+    for cls in (KitapsecScraper, KitapsepetiScraper, BkmScraper, KitapbulanScraper, EdessaScraper):
+        assert cls.verifies_unseen_listings, cls
+    assert not GerekliseylerScraper.verifies_unseen_listings
 
 
 # -- neutral order for equally cheap stores ----------------------------------------------

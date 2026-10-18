@@ -101,6 +101,9 @@ class EdessaScraper(BaseScraper):
     store_id = "edessa"
     store_name = "Edessa Kitabevi"
     base_url = "https://edessakitabevi.com"
+    #: Product pages carry schema.org offers: listings the search misses are
+    #: re-checked there (BaseScraper.check_listing).
+    verifies_unseen_listings = True
 
     def search(self, query: str) -> list[SearchResult]:
         self.stats = {

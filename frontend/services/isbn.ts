@@ -11,6 +11,7 @@ export type HealthVolumeRef = {
 export type HealthOffer = { store: string; url: string; in_stock: boolean; price: number | null };
 export type HealthRow = Partial<HealthVolume> & Partial<HealthOffer> & {
   listings?: number; in_stock?: number;
+  last_checked?: string | null; seen_in_search?: string | null; reasons?: string[];
   kind?: string; detail?: Record<string, unknown>;
   title?: string; title_volume?: HealthVolumeRef | null; isbn_volume?: HealthVolumeRef | null;
   ratio?: number; others_median?: number;
@@ -18,7 +19,7 @@ export type HealthRow = Partial<HealthVolume> & Partial<HealthOffer> & {
   problem?: string; volumes?: Partial<HealthVolume>[];
   old_isbn?: string | null; new_isbn?: string | null; source?: string; reason?: string | null; at?: string | null;
 };
-export type HealthCheckKey = "isbn_issues" | "catalog_duplicate" | "title_isbn_conflict" | "catalog_differs"
+export type HealthCheckKey = "search_miss" | "stale_listing" | "suspect_listing" | "isbn_issues" | "catalog_duplicate" | "title_isbn_conflict" | "catalog_differs"
   | "volume_price_outlier" | "listing_price_outlier" | "missing_isbn" | "invalid_isbn" | "shared_product"
   | "recent_changes";
 export type IsbnHealth = {

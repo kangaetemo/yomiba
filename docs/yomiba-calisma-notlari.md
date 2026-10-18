@@ -26,6 +26,20 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 19 Ekim: ilan sağlığı (otomatik kontrol, adım 1-2)
+
+- **Kendi kendine iyileşme:** Ürün sayfasındaki schema.org bilgisinden stok ve fiyat okuyan genel kontrol (`check_listing`) artık BKM, Kitapbulan ve Edessa'da da açık (önceden Kitapseç, Kitap Sepeti, İstanbul Kitapçısı).
+  - Arama bir ilanı döndürmezse sistem ürün sayfasını doğrudan açıp günceller.
+  - 19 Ekim canlı denemesi: üç mağazada da sayfa ile arama aynı sonucu verdi. Gerekli Şeyler ve Büyülü Dükkan sayfalarında bu bilgi yok. Komik Şeyler sayfaları bot korumasına takılıyor (503).
+- **Aramada son görülme** (migration `0023_listing_seen_in_search`): `store_listings.seen_in_search_at`. Arama günceller; sayfa kontrolü güncellemez.
+- **Sağlık raporuna üç yeni bölüm:**
+  - `search_miss`: Stokta, ama arama 48 saattir bulmuyor. Sayfa kontrolü ilanı canlı tutuyor; Mavi Kutu böyle görünürdü.
+  - `stale_listing`: Mağaza taranıyor ama ilan bayat, sitede gizli.
+  - `suspect_listing`: Başlıkta kitap dışı ya da başka baskıyı gösteren kelimeler (`sezon, dvd, bluray, novel, artbook, kartpostal, poster, ekitap, kindle, sesli`; "bölüm" bilerek yok), yayınevi farklı (takma adlar ve içerme dikkate alınıyor) ya da bağlantı mağazanın sitesi dışına gidiyor.
+- **Otomatik düşürme:** Ürün adresi o mağazanın sitesinde değilse ürün `foreign_url` ile reddediliyor ve ilanı siliniyor (`DROP_REASONS`).
+- **Doğrulama:** 940 test geçti (yeni: `test_listing_health.py`). `test_hidden_store_flags` yeni karara göre güncellendi. Frontend derlemesi temiz.
+- **Sıradaki adımlar:** (4) Telegram ile günlük özet, (3) mağaza nöbetçisi (işaret ürünleri ve ilan sayısındaki ani düşüş).
+
 ### 19 Ekim: BKM "Mavi Kutu"yu bulamıyordu
 
 - **Bulgu:** Mavi Kutu 2'nin BKM ilanı 5 Ekim'den beri güncellenmiyordu ("stok belirsiz"), oysa ürün BKM'de stokta.

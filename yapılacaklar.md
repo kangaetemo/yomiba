@@ -34,6 +34,10 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 - [ ] **Filminibul ↔ Yomiba çapraz yönlendirme.**
   - Filminibul'da mangadan uyarlanan film ve animelerin sayfasına "Mangası Yomiba'da: ₺X'den" kartı (TMDB "based on manga" anahtar kelimesi + Yomiba arama API'si).
   - Filminibul'un "Tarif et" aramasında manga ya da fiyat soran bir cümle algılanırsa Yomiba'ya yönlendirme.
+- [ ] **Otomatik hata yakalama (19 Ekim).**
+  - [x] Bayat ilanları ürün sayfasından iyileştirme; sağlık raporunda "arama kaçırıyor", "bayat" ve "şüpheli ilan" bölümleri; başka siteye giden ürünler otomatik düşüyor.
+  - [ ] Telegram ile günlük özet (BotFather'dan bot açılacak).
+  - [ ] Mağaza nöbetçisi: her mağazada 2-3 işaret ürünü ve ilan sayısında ani düşüş uyarısı.
 - [ ] **Mobil uygulama (iki proje).** İlk adım PWA olabilir (ana ekrana eklenebilir site), sonra React Native / Expo.
   - Yomiba'nın çerezle çalışan girişine mobil için token girişi gerekecek.
   - Fiyat alarmları e-posta yerine ya da yanında anlık bildirimle (FCM) gidebilir.

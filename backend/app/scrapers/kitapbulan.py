@@ -60,6 +60,9 @@ class KitapbulanScraper(BaseScraper):
     store_id = "kitapbulan"
     store_name = "Kitapbulan"
     base_url = "https://www.kitapbulan.com"
+    #: Product pages carry schema.org offers: listings the search misses are
+    #: re-checked there (BaseScraper.check_listing).
+    verifies_unseen_listings = True
     search_path = "/arama?q={query}"
     #: Minimum token length for the relevance guard ("v", "for" etc. are noise).
     _RELEVANCE_TOKEN_MIN_LEN = 3

@@ -69,6 +69,9 @@ class BkmScraper(BaseScraper):
     store_id = "bkm"
     store_name = "BKM Kitap"
     base_url = "https://www.bkmkitap.com"
+    #: Product pages carry schema.org offers: listings the search misses are
+    #: re-checked there (BaseScraper.check_listing).
+    verifies_unseen_listings = True
     #: WAW Labs search service behind www.bkmkitap.com/arama (paginated).
     search_endpoint = "https://bkm-best.wawlabs.com/search_v2"
     #: BKM's own suggestion feed (max 10 items) - fallback only.

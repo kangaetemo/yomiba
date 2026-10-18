@@ -73,7 +73,15 @@ logger = logging.getLogger("yomiba.import")
 
 #: Rejections that prove a product is another edition: its existing
 #: listing is removed (a foreign ISBN read later, e.g. Monster 9 = VIZ).
-DROP_REASONS = frozenset({"foreign_edition"})
+DROP_REASONS = frozenset({"foreign_edition", "foreign_url"})
+
+
+def _site(url: str) -> str | None:
+    """Host of ``url`` without "www." ("bkmkitap.com"), or None."""
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").lower()
+    return host.removeprefix("www.") or None
 
 #: Reserved publisher used when a result carries no publisher information and
 #: the edition cannot be determined unambiguously. It keeps unknown items
@@ -225,6 +233,8 @@ class ImportService:
         fetched = self._search_all(scrapers, query)
 
         for scraper, outcome in zip(scrapers, fetched):
+            # Products must live on this store's own site (see _precheck).
+            self._store_host = _site(getattr(scraper, "base_url", "") or "")
             store_report = StoreImportResult(
                 store_code=scraper.store_id, store_name=scraper.store_name
             )
@@ -529,7 +539,7 @@ class ImportService:
                 in_stock=check.in_stock,
             )
             try:
-                self._upsert_listing(volume, store, result)
+                self._upsert_listing(volume, store, result, from_search=False)
                 self.session.commit()
             except Exception:  # noqa: BLE001 - per-listing isolation
                 logger.exception("import: could not store re-check of %s", listing.product_url)
@@ -635,6 +645,13 @@ class ImportService:
         title = (result.title or "").strip()
         if not title or not result.product_url:
             self._reject("invalid_result")
+            return self.last_reason
+        # A "product" elsewhere is not this store's book (Amazon's /dp/ of a
+        # show redirects to primevideo.com). Its old listing is dropped.
+        store_host = getattr(self, "_store_host", None)
+        host = _site(result.product_url)
+        if store_host and host and host != store_host and not host.endswith("." + store_host):
+            self._reject("foreign_url")
             return self.last_reason
         # An admin removed this product from a volume: never attach it again,
         # not even through its ISBN (a store's wrong metadata is the usual cause).
@@ -1474,7 +1491,7 @@ class ImportService:
         return self._resolve_volume(series, book_isbn(result.isbn), number, result, title_verified=True)
 
     def _upsert_listing(
-        self, volume: Volume, store: Store, result: SearchResult
+        self, volume: Volume, store: Store, result: SearchResult, *, from_search: bool = True
     ) -> ImportAction:
         # Final write boundary: every resolution path must remain catalog-only.
         if not self._series_is_catalog(volume.series_id) or volume.catalog_present is False or volume.catalog_released is False:
@@ -1513,6 +1530,7 @@ class ImportService:
                 price=price_cents,
                 in_stock=result.in_stock,
                 last_checked=now,
+                seen_in_search_at=now if from_search else None,
                 image_url=result.image_url,
             )
             self.session.add(listing)
@@ -1557,6 +1575,8 @@ class ImportService:
         listing.in_stock = result.in_stock
         listing.product_url = result.product_url
         listing.last_checked = now
+        if from_search:
+            listing.seen_in_search_at = now
         if result.image_url and not listing.image_url:
             listing.image_url = result.image_url
 

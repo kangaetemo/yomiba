@@ -46,6 +46,10 @@ class StoreListing(Base):
     last_checked: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+    #: When the store's search last returned this product. ``last_checked``
+    #: also moves when only the product page was re-checked; a growing gap
+    #: means the search no longer finds it (health report: search_miss).
+    seen_in_search_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     image_url: Mapped[str | None] = mapped_column(String(1000))
 
     volume: Mapped[Volume] = relationship(back_populates="listings")
