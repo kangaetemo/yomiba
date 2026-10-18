@@ -26,6 +26,18 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 19 Ekim: Amazon'dan gelen Prime Video dizisi
+
+- **Bulgu:** "İtiraf" 1. cildinde bir Amazon bağlantısı vardı ve diziye gidiyordu. Amazon'da "İtiraf" araması kitap yerine Prime Video'daki "İtiraf - 1. Sezon" dizisini (2022) döndürüyor; `/dp/<ASIN>` sayfası primevideo.com'a yönleniyor.
+  - Başlık seri adıyla birebir aynı, seri de tek ciltlik olduğu için dizi başlıkla 1. cilde bağlanmıştı.
+  - ISBN, yayınevi ve fiyat olmaması onu durdurmuyordu.
+- **Düzeltme** (`scrapers/amazon.py`):
+  - Arama sayfasında "Prime Video" etiketi taşıyan ya da `/gp/video/` bağlantılı ürünler atlanıyor; sayaçta `not_a_book` olarak görünüyor.
+  - Ürün sayfası Amazon dışına yönleniyorsa ürün tamamen bırakılıyor (`_NotABook`).
+  - Kindle bu listede yok, çünkü basılı kitapların yanında da Kindle sürümü yazabiliyor.
+- **Etkisi:** Aynı şey anime dizileri olan başka serilerde de olabilirdi (ör. "… 1. Sezon"). Bu tür ilanlar artık yenilenmiyor ve 48 saat içinde bayatlayıp gizleniyor. Admin, cilt sayfasındaki kaldır düğmesiyle hemen de silebilir.
+- **Doğrulama:** Canlı Amazon araması artık boş dönüyor. Yeni test, yönlendirme kontrolü kapatılınca düşüyor. Tüm testler geçti.
+
 ### 18 Ekim: üyelik kontrolü, Google ile giriş, hesap sayfası
 
 - **Kontrol sonucu:** Temel sağlamdı:

@@ -59,10 +59,21 @@ NON_MANGA_KEYWORDS: tuple[str, ...] = (
     "kanvas",
 )
 
+#: Search results that are not a book at all: Prime Video shows (the
+#: series "İtiraf" found the 2022 TV show "İtiraf - 1. Sezon", attached to
+#: the one-shot by title). A book item may also offer a Kindle edition, so
+#: only formats that never sit beside a printed book are listed.
+_NOT_A_BOOK_RE = re.compile(r"\bPrime Video\b", re.I)
+_VIDEO_LINK_RE = re.compile(r"/gp/video/|primevideo\.com", re.I)
+
 _ASIN_RE = re.compile(r"/dp/([A-Z0-9]{10})")
 _OUT_OF_STOCK_RE = re.compile(
     r"stokta yok|stokta kalmad|stokta bulunam|out of stock|temporarily out", re.I
 )
+
+
+class _NotABook(ScraperError):
+    """The product turned out not to be a book (e.g. a Prime Video show)."""
 
 
 class AmazonScraper(BaseScraper):
@@ -93,6 +104,11 @@ class AmazonScraper(BaseScraper):
 
             title, link = self._extract_title_and_link(item)
             if not title:
+                continue
+            if _VIDEO_LINK_RE.search(link or "") or _NOT_A_BOOK_RE.search(item.get_text(" ", strip=True)):
+                logger.debug("amazon: filtering video product: %r", title)
+                self.stats.setdefault("rejected", {})
+                self.stats["rejected"]["not_a_book"] = self.stats["rejected"].get("not_a_book", 0) + 1
                 continue
             if self._is_non_manga(title):
                 logger.debug("amazon: filtering non-manga title: %r", title)
@@ -138,11 +154,15 @@ class AmazonScraper(BaseScraper):
         # search page rarely contains ISBN/publisher, so detail requests are
         # the normal path; they are capped to stay well-behaved.
         limit = self.settings.max_detail_requests
+        not_books: set[int] = set()
         for index, result in enumerate(results[:limit]):
             if result.isbn:
                 continue  # nothing to gain
             try:
                 results[index] = self._enrich_one(result)
+            except _NotABook as exc:
+                logger.info("amazon: dropping %s: %s", result.product_url, exc)
+                not_books.add(index)
             except ScraperError:
                 logger.warning(
                     "amazon: detail enrichment blocked/failed for %s (keeping search data)",
@@ -153,6 +173,7 @@ class AmazonScraper(BaseScraper):
                     "amazon: unexpected enrichment error for %s", result.product_url
                 )
 
+        results = [r for i, r in enumerate(results) if i not in not_books]
         results = filter_manga_results(results, stats=self.stats)
         results.sort(key=lambda r: r.relevance, reverse=True)
         return results
@@ -238,6 +259,10 @@ class AmazonScraper(BaseScraper):
             raise ScraperError(f"amazon: no ASIN in product URL {result.product_url}")
         asin = match.group(1)
         response = self.get(f"{self.base_url}/dp/{asin}")
+        final = urlparse(str(response.url))
+        if final.hostname and not final.hostname.endswith("amazon.com.tr"):
+            # /dp/<ASIN> of a show redirects to primevideo.com: not a book.
+            raise _NotABook(f"product page redirects to {final.hostname}")
         if looks_like_blocked_page(response.status_code, response.text):
             raise ScraperError(
                 f"amazon: detail page blocked (HTTP {response.status_code}) for ASIN {asin}"

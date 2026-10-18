@@ -136,3 +136,41 @@ def test_common_filter_rejects_merchandise_from_search():
     # still dropped (by the unrelated-series gate)
     results = scraper.search("berserk")
     assert {r.title for r in results} == {"Berserk 1", "Berserk 2", "Berserk 3"}
+
+
+def _video_item(asin, title, extra="", href=None):
+    return (
+        f'<div data-asin="{asin}" data-component-type="s-search-result" class="s-result-item">'
+        f'<h2 class="a-size-mini"><a href="{href or "/dp/" + asin}" class="a-link-normal">'
+        f"<span>{title}</span></a></h2>{extra}</div>"
+    )
+
+
+def test_prime_video_shows_are_not_books():
+    """The one-shot "Itiraf" got the 2022 Prime Video show by title: a video
+    item (label or video link) is skipped on the search page, and a product
+    whose page redirects to primevideo.com is dropped after the fact."""
+    search_html = fixture_text("amazon_search.html").replace(
+        "</body>",
+        _video_item("B0VIDEO001", "Berserk", "<span>2022</span><span>Prime Video</span>")
+        + _video_item("B0VIDEO002", "Berserk", href="/gp/video/detail/B0VIDEO002")
+        + _video_item("B0VIDEO003", "Berserk")
+        + "</body>",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "s?k=" in url:
+            return httpx.Response(200, text=search_html)
+        if "/dp/B0VIDEO003" in url:
+            return httpx.Response(301, headers={"Location": "https://www.primevideo.com/-/tr/detail/X"})
+        if "primevideo.com" in url:
+            return httpx.Response(200, text="<title>Prime Video: Berserk</title>")
+        if "/dp/" in url:
+            return httpx.Response(200, text=fixture_text("amazon_detail.html"))
+        return httpx.Response(404)
+
+    scraper = AmazonScraper(client=httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True))
+    results = scraper.search("berserk")
+    assert {r.title for r in results} == {"Berserk 1", "Berserk 2", "Berserk 3"}
+    assert scraper.stats["rejected"]["not_a_book"] == 2
