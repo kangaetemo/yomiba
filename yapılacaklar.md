@@ -1,6 +1,6 @@
 # Yomiba — Yapılacaklar
 
-Son güncelleme: 18 Ekim 2026
+Son güncelleme: 19 Ekim 2026
 
 Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içerir. Maddeler henüz tamamlanmış sayılmaz; uygulama ayrıntıları ve öncelikleri istişare sırasında netleştirilecek. Tamamlanan işler, kararlar ve doğrulama sonuçları [Yomiba çalışma notlarına](docs/yomiba-calisma-notlari.md) tarihli olarak yazılır.
 
@@ -39,6 +39,13 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
   - `utm_source=yomiba&utm_medium=referral` eklenecek.
   - Her mağazanın adresi parametreyle hâlâ açılıyor mu, kontrol edilecek.
   - SEO'ya doğrudan etkisi yok. Amaç, mağazaların Yomiba trafiğini kendi istatistiklerinde görmesi; ortaklık ya da komisyon görüşmesinde kanıt olur.
+- [ ] **Amazon ortaklık + Creators API.**
+  - PA-API 5 2026 baharında kapandı; yerine Creators API geldi. Erişim için Amazon Ortaklık hesabı ve satış eşiği gerekiyor (bildirilen: ~10 satış).
+  - Takip kodu (tag) gelince Amazon linklerine eklenecek, sayfaya zorunlu "Amazon Ortağı olarak uygun alışverişlerden kazanç elde ediyoruz" notu konacak.
+  - Eşik dolunca Amazon, API'den ISBN ile çekilecek ve scraper kapatılacak.
+  - Fiyat saklama ve gösterme kuralları sözleşmeden okunacak; Amazon'un fiyat geçmişinde tutulup tutulmayacağına bakılacak.
+  - Kullanıcı, eşik için iş arkadaşının kendi kartıyla gerçekten istediği ürünleri almasını planlıyor; iade yok, ödeme karşılığı yok, siparişler günlere yayılacak.
+- [ ] **19 Ekim çökmesinden sonra kontrol:** Railway loglarında `old backup removed` ve `pre-migration backup written` satırları; volume doluluğu düşmüş mü, site açık mı.
 - [ ] **Filminibul ↔ Yomiba çapraz yönlendirme.**
   - Filminibul'da mangadan uyarlanan film ve animelerin sayfasına "Mangası Yomiba'da: ₺X'den" kartı (TMDB "based on manga" anahtar kelimesi + Yomiba arama API'si).
   - Filminibul'un "Tarif et" aramasında manga ya da fiyat soran bir cümle algılanırsa Yomiba'ya yönlendirme.
