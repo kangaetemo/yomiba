@@ -18,7 +18,15 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
     - gece sunucu dışı yedek (DB + kapaklar),
     - erişilebilirlik takibi.
   - **Önce:** Yeni sunucuda `backend/outbound_smoke.py` ile mağaza erişimini test et. Bazı mağazalar yurt dışı veri merkezi IP'lerini engelleyebilir; sorun çıkarsa Türkiye'de bir VPS düşün.
-  - Sunucu: Hetzner düşünülüyor (stok sorunu; başka konum ya da ARM/CAX denenebilir).
+  - **Sunucu kararı (19 Ekim):** Hephosting **TRX-8G**: 4 vCPU Xeon Platinum 8173M, 8 GB ECC, 60 GB NVMe, 1 Gbit/s, KVM, Bursa DGN veri merkezi, her gece ücretsiz yedek. 249 TL + KDV/ay (lansman fiyatı, yenilemede aynı). Aylık ödeme; gerekirse panelden üst pakete geçilir.
+    - Karşılaştırılanlar: Hostopya VDS-5 (~288 TL, 2023, az yorum), Lunhost (saatlik ödeme), Netvay (2 kat pahalı, kesinti şikayetleri), Verunix (belirsiz eski donanım, "kaynak çalma" iddiası), Contabo VPS 4 (~5,50 €, yurt dışı IP).
+  - **"Sağlayıcı kaybolursa" önlemleri:**
+    - Litestream ile Yomiba DB'si sürekli sunucu dışına (Cloudflare R2 ya da Backblaze B2, ücretsiz katman).
+    - Kapaklar ve ayarlar için gece yedeği, aylık geri yükleme provası.
+    - Kurulum GitHub'da (Docker, Caddy, kurulum betiği): yeni sunucuda ~1 saatte ayağa kalkar.
+    - Alan adı ve DNS sunucu firmasından bağımsız (Cloudflare).
+    - Aylık ödeme; ilk haftalar Railway ve Vercel yedekte açık kalır.
+  - **Kullanıcının yapacakları:** TRX-8G siparişi (Ubuntu 24.04, panel yok, KVM ve root/SSH teyidi), Cloudflare hesabı (DNS + R2) ya da Backblaze B2, Filminibul alan adının nerede kayıtlı olduğunu kontrol.
   - Ziyaretçi sayacı: `@vercel/analytics` yerine kendi sunucumuzda çalışan bir sayaç (ör. Umami).
 - [ ] **Yomiba alan adı.** .com ve .app alınmış; karar bekliyor (ör. .com.tr / .tr / .net). VPS'te HTTPS ve alarm mailleri (Resend) için gerekli.
 - [ ] **SEO çalışmaları.** 18 Ekim tespiti: site haritası, `robots.txt` ve yapılandırılmış veri (JSON-LD) yok. Yapılacaklar:
