@@ -5,10 +5,13 @@
  * front. Tapping a cover at the side brings it to the front (its volume count
  * and price show up in the card); only the front cover, or the card, opens
  * the series, so the page never navigates by accident.
+ *
+ * With reduced motion the global CSS cancels the slide, so the two covers
+ * that swapped places and the price card fade in at their new spots instead.
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Cover, formatTL } from "@/components/ui";
 import { seriesPath } from "@/lib/paths";
 import { HERO_HISTORY_COOKIE, nextHeroHistory, parseHeroHistory } from "@/lib/heroSelection";
@@ -36,10 +39,26 @@ export function HeroShelf({ series }: { series: PopularSeries[] }) {
       // Random selection remains usable when storage is disabled.
     }
   }, [series]);
+
+  const covers = useRef(new Map<number, HTMLDivElement>());
+  const card = useRef<HTMLAnchorElement>(null);
+  const swapped = useRef<number[] | null>(null);
+  // Before paint, so the moved covers never flash at full opacity.
+  useLayoutEffect(() => {
+    const moved = swapped.current;
+    swapped.current = null;
+    if (!moved || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Web Animations are not shortened by the global reduced-motion CSS.
+    const fade = { duration: 200, easing: "ease-out" };
+    for (const i of moved) covers.current.get(i)?.animate([{ opacity: 0 }], fade);
+    card.current?.animate([{ opacity: 0 }], fade);
+  }, [order]);
+
   const front = series[order[0]];
   if (!front) return null;
 
   function bring(slot: number) {
+    swapped.current = [order[0], order[slot]];
     setOrder((o) => {
       const next = [...o];
       [next[0], next[slot]] = [next[slot], next[0]];
@@ -60,6 +79,10 @@ export function HeroShelf({ series }: { series: PopularSeries[] }) {
         return (
           <div
             key={s.id}
+            ref={(el) => {
+              if (el) covers.current.set(i, el);
+              else covers.current.delete(i);
+            }}
             className={`absolute top-[3%] left-1/2 w-[44%] transition-[translate,scale,rotate,opacity] duration-300 ease-out ${SLOTS[slot]}`}
           >
             <Cover url={s.cover_url} alt="" eager={slot === 0} className="w-full" />
@@ -78,6 +101,7 @@ export function HeroShelf({ series }: { series: PopularSeries[] }) {
       })}
       {front.lowest_price !== null && (
         <Link
+          ref={card}
           href={seriesPath(front.slug)}
           className="absolute bottom-0 left-1/2 z-30 w-[72%] max-w-72 -translate-x-1/2 rounded-xl border border-line bg-surface p-3.5 shadow-lift transition-colors hover:border-line-strong md:bg-surface/95 md:backdrop-blur"
         >
