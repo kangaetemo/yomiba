@@ -141,9 +141,34 @@ docker compose run --rm -v /srv/yomiba/data/covers:/restore rclone copy r2:yomib
 chown -R 10001:10001 /srv/yomiba/data && docker compose up -d
 ```
 
+## 8. Push'ta otomatik deploy (GitHub Actions)
+
+`.github/workflows/deploy.yml`: main'e push'ta "Application checks" geçince,
+her pazartesi 04:30'da (güncel taban imajlar ve paketler) ve elle (*Actions →
+Deploy → Run workflow*) sunucuda `guncelle.sh` çalışır. GitHub'daki anahtar
+sunucuda yalnızca bu betiğe kilitlidir; kabuk açamaz, port yönlendiremez.
+`guncelle.sh` kilit alır (iki deploy aynı anda çalışmaz), siteyi açılınca
+kontrol eder ve hata olursa iş akışı kırmızı biter.
+
+Kurulum (bir kez, sunucuda):
+
+```sh
+cd /srv/yomiba/app && git pull --ff-only
+ssh-keygen -t ed25519 -N "" -f /root/.ssh/github_deploy -C github-actions-deploy
+echo "command=\"/srv/yomiba/app/deploy/guncelle.sh\",restrict $(cat /root/.ssh/github_deploy.pub)" >> /root/.ssh/authorized_keys
+cat /root/.ssh/github_deploy                                     # -> DEPLOY_SSH_KEY
+echo "45.74.243.61 $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"   # -> DEPLOY_KNOWN_HOSTS
+```
+
+GitHub → repo *Settings → Secrets and variables → Actions → New repository
+secret*: `DEPLOY_SSH_KEY` (özel anahtarın tamamı, BEGIN/END satırları dahil),
+`DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST` = `45.74.243.61`. Sonra sunucudaki özel
+anahtarı sil: `rm /root/.ssh/github_deploy`. Sırlar yokken iş akışı uyarı verip
+atlar.
+
 ## Günlük işler
 
-- Güncelleme: `/srv/yomiba/app/deploy/guncelle.sh`
+- Güncelleme: main'e push yeterli (8. adım); elle: `/srv/yomiba/app/deploy/guncelle.sh`
 - Elle yedek: `/srv/yomiba/app/deploy/yedekle.sh` (log: `/var/log/yomiba-yedek.log`)
 - Geri yükleme provası: `gunzip -k` ile açılan yedekte
   `python restore_check.py --db <dosya> --rehearse`
@@ -152,7 +177,6 @@ chown -R 10001:10001 /srv/yomiba/data && docker compose up -d
 
 ## Henüz yok (sıradaki adımlar)
 
-- Push'ta GitHub Actions ile otomatik deploy; haftalık imaj yenileme.
 - Erişilebilirlik takibi (ör. UptimeRobot) ve Umami.
 - Filminibul aynı sunucuda, host Caddy'yi paylaşıyor (`/etc/caddy/site.caddy`, `api.caddy`); kendi kurulumu ayrı yürütülüyor.
 - `requirements.txt` sürümleri sabit değil; imaj için kilitli liste

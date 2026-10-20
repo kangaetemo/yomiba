@@ -1,0 +1,45 @@
+name: Deploy
+
+# Runs deploy/guncelle.sh on the VPS over SSH: after "Application checks"
+# passes on main, weekly (fresh base images and dependencies), or by hand.
+# The key in DEPLOY_SSH_KEY is pinned on the server to that one command.
+on:
+  workflow_run:
+    workflows: ["Application checks"]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: "30 1 * * 1" # Monday 04:30 Istanbul
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: deploy-vds
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Run guncelle.sh on the server
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then
+            echo "::warning::Deploy secrets are not set; skipping."
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The server's forced command ignores "deploy"; -T: no terminal.
+          ssh -T -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 "root@$HOST" deploy
