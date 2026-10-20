@@ -24,12 +24,28 @@ if (sandboxId) {
 }
 
 const nextConfig: NextConfig = {
+  // The VPS Docker image (frontend/Dockerfile) runs the standalone server;
+  // Vercel and local dev keep the default output.
+  output: process.env.NEXT_OUTPUT_STANDALONE === "1" ? "standalone" : undefined,
   // The live preview is served under a host like
   // https://3000-<sandboxId>.e2b.app. Next 16 blocks cross-origin dev
   // resource requests (HMR/dev chunks) from origins it does not know,
   // which would leave the page unhydrated in the preview — allow the
   // preview origin so client components (search, etc.) stay functional.
   allowedDevOrigins,
+  async redirects() {
+    // The site moved to the VPS (yomiba.net) on 2026-10-20. Vercel still
+    // serves the old Railway-backed copy; send every request there so no
+    // account or collection change lands in the retired database.
+    if (process.env.VERCEL !== "1") return [];
+    return [
+      {
+        source: "/:path*",
+        destination: "https://yomiba.net/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     // Trailing slash stripped: "https://api.example/" must not yield "//path".
     const backend = (process.env.BACKEND_URL || "http://127.0.0.1:8000")

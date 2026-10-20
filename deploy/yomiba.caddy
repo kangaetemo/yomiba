@@ -1,0 +1,19 @@
+# Yomiba site block for the server's host Caddy (shared with Filminibul).
+# Imported from /etc/caddy/Caddyfile:
+#   import /srv/yomiba/app/deploy/yomiba.caddy
+# Port must match FRONTEND_PORT in deploy/.env.
+
+yomiba.net {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:3001
+}
+
+www.yomiba.net {
+	redir https://yomiba.net{uri} permanent
+}

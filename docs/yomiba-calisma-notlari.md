@@ -1,6 +1,6 @@
 # Yomiba çalışma notları
 
-Son güncelleme: 18 Ekim 2026 (üyelik: Google ile giriş, hesap sayfası, uzayan oturum).
+Son güncelleme: 20 Ekim 2026 (VDS'e taşıma, yomiba.net).
 
 Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fazla cihazdan çalışıldığı için yerel kopya yerine her zaman main'deki sürüm esastır.
 
@@ -8,8 +8,8 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 - **Katalog kaynağı Mangakol.** Katalog senkronu seri, cilt, kapak, sayfa sayısı, yerel çıkış tarihi, yazar/çizer ve JP/TR yayın durumunu okur. Mangakol'un ISBN'i `catalog_isbn` olarak saklanır; cildin ISBN'ine ISBN çözücü karar verir (`services/isbn_resolver.py`). Arama sadece Mangakol kataloğundaki serileri gösterir.
 - **Fiyatlar mağazalardan gelir.** BKM, Kitapseç, Kitap Sepeti, Kitapbulan, Gerekli Şeyler, Edessa ve diğerleri taranır. Ürünler önce ISBN ile, olmazsa başlık ve yayınevi ile ciltlere eşlenir. ISBN her zaman başlıktan önce gelir.
-- **Kapaklar bizde.** Mangakol'dan bir kez indirilip Railway volume'da WebP olarak saklanır ve `/api/covers/...` üzerinden sunulur. İleride R2'ye taşınabilecek şekilde yazıldı.
-- **Deploy.** Backend Railway'de (SQLite, `/data` volume). Veritabanı güncellemeleri açılışta yedek alınarak otomatik çalışır. Frontend Vercel'de.
+- **Kapaklar bizde.** Mangakol'dan bir kez indirilip sunucu diskinde (`/srv/yomiba/data/covers`) WebP olarak saklanır ve `/api/covers/...` üzerinden sunulur. İleride R2'ye taşınabilecek şekilde yazıldı.
+- **Deploy.** 20 Ekim'den beri Hephosting VDS'te (https://yomiba.net): Docker Compose ile backend (SQLite, `/srv/yomiba/data`) ve frontend; önde host'taki Caddy (Filminibul ile ortak). Kurulum ve günlük işler: [deploy/README.md](../deploy/README.md). Güncelleme: sunucuda `deploy/guncelle.sh`. Veritabanı güncellemeleri açılışta yedek alınarak otomatik çalışır. Railway ve Vercel yedekte; Vercel her isteği yomiba.net'e yönlendiriyor.
 
 ## Çalışma düzeni
 
@@ -25,6 +25,17 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - Fiyatsız seriler raporu (`fiyatsızlar.txt`): Mağaza bazındaki sebep sayıları, sorgunun döndürdüğü tüm ürünler üzerinden toplanıyor. Örneğin BKM'de büyük bir `publisher_conflict` sayısı genelde "bu mağaza o seriyi satmıyor" demektir.
 
 ## Son günlerde yapılanlar
+
+### 20 Ekim: VDS'e taşındı, yomiba.net yayında
+
+- **Alan adı:** yomiba.net (.com ve .app başkasındaydı). DNS Cloudflare'de; `@` ve `www` A kaydı sunucuya, **DNS only**.
+- **Sunucu:** Hephosting TRX-8G, Ubuntu 24.04, Bursa (45.74.243.61). `deploy/kurulum.sh` ile Docker, ufw (22/80/443), unattended-upgrades (04:30 yeniden başlatma), fail2ban ve gece yedeği cron'u (03:30, son 7 yedek `/srv/yomiba/backups`) kuruldu.
+- **Mağaza erişimi:** `outbound_smoke.py` 12/12 PASS. Railway'de engelli Amazon TR, D&R ve Cizman Türkiye IP'sinden açılıyor; gerçek aramayla doğrulanana kadar `DISABLED_STORES` aynı kaldı.
+- **Veri taşıma:** `deploy/railway-tasima.sh`. Railway volume'unda yalnızca 171 MB boş yer vardı (DB 56 MB + kapaklar 142 MB), bu yüzden yedek ve arşiv konteynerin `/tmp`'sinde hazırlanıp `railway ssh` üzerinden base64 ile çekildi, sha256 ile doğrulandı. DB sunucuda `yomiba.db` adını aldı; `catalog-state.json` yan dosyası da taşındı.
+- **Caddy:** Sunucuda Filminibul taşıması için host'ta bir Caddy zaten 80/443'ü kullanıyordu. Yomiba'nın kendi Caddy'si `caddy` profiline alındı; frontend `127.0.0.1:3001`'de dinliyor, host Caddyfile `deploy/yomiba.caddy`'yi import ediyor. Filminibul 3000'de.
+- **Vercel:** `next.config.ts` Vercel'de (`VERCEL=1`) her isteği kalıcı olarak `https://yomiba.net`'e yönlendiriyor; eski siteye yazılan değişiklik kaybolmasın diye.
+- **Doğrulama:** Backend açılışta `Healthy`, https://yomiba.net sertifikayla açılıyor. Frontend Docker build'i yerelde denendi; Docker imajları yalnızca sunucuda çalıştırıldı (yerel Docker Desktop açılmadı).
+- **Kalan:** Sunucu dışı yedek (Litestream → R2), push'ta otomatik deploy, erişilebilirlik takibi, Google ile girişin yomiba.net için kurulması, Resend. Oturumlar alan adına bağlı olduğu için herkes yomiba.net'te bir kez yeniden giriş yapar. Railway ve Vercel ~2 hafta yedekte kalacak.
 
 ### 19 Ekim: Railway volume doldu, site çöktü
 

@@ -1,0 +1,71 @@
+# Yomiba on the VPS: Caddy (HTTPS) -> Next.js -> FastAPI. The backend is
+# reachable only inside this network (the browser goes through the frontend's
+# same-origin /api rewrite).
+#
+# The server's host Caddy (shared with Filminibul) owns 80/443 and proxies
+# yomiba.net to the frontend on 127.0.0.1:FRONTEND_PORT (see yomiba.caddy).
+# On a server without one, start the bundled Caddy instead:
+#   docker compose --profile caddy up -d
+#
+#   cd deploy && cp .env.example .env   # fill in, then:
+#   docker compose up -d --build
+
+name: yomiba
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  backend:
+    build: ../backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_ENV: production
+      DATABASE_URL: sqlite:////data/yomiba.db
+    volumes:
+      - ${DATA_DIR:-/srv/yomiba/data}:/data
+    # Let in-flight imports and SQLite writes finish on restart.
+    stop_grace_period: 60s
+    logging: *logging
+
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        BACKEND_URL: http://backend:8000
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3001}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging: *logging
+
+  caddy:
+    image: caddy:2.10-alpine
+    profiles: ["caddy"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-yomiba.net}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

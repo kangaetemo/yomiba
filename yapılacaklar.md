@@ -1,13 +1,14 @@
 # Yomiba — Yapılacaklar
 
-Son güncelleme: 19 Ekim 2026
+Son güncelleme: 20 Ekim 2026
 
 Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içerir. Maddeler henüz tamamlanmış sayılmaz; uygulama ayrıntıları ve öncelikleri istişare sırasında netleştirilecek. Tamamlanan işler, kararlar ve doğrulama sonuçları [Yomiba çalışma notlarına](docs/yomiba-calisma-notlari.md) tarihli olarak yazılır.
 
 ## Halka açılmadan önce (18 Ekim)
 
 - [ ] **Yomiba + Filminibul'u bir VPS'e taşı.** Sebep: Vercel ve Railway ücretsiz plan uyarıları; Vercel Hobby ticari kullanıma izin vermiyor.
-  - Plan: Docker Compose, önde Caddy (alan adına göre yönlendirme, otomatik HTTPS).
+  - **20 Ekim durumu:** Yomiba taşındı, **https://yomiba.net** VDS'te yayında ([çalışma notları](docs/yomiba-calisma-notlari.md)). Kalanlar: sunucu dışı yedek (Litestream → R2), push'ta otomatik deploy, haftalık imaj yenileme, erişilebilirlik takibi, Filminibul'un taşınmasının bitmesi (ayrı yürütülüyor).
+  - Plan: Docker Compose, önde Caddy (alan adına göre yönlendirme, otomatik HTTPS). Sunucuda Caddy host'ta kurulu ve Filminibul ile ortak; Yomiba `deploy/yomiba.caddy` ile bağlanıyor.
   - Yomiba backend tek süreç olarak, SQLite ve kapaklar yerel diskte (`backend/PRODUCTION.md`).
   - Filminibul (Next 14 + Supabase + Firebase + OpenAI + TMDB; GitHub Actions işleri): Next uygulaması VPS'e geçer.
   - Supabase şimdilik kalabilir; ama ücretsiz kotası dolmak üzere (2 Ekim: 393/500 MB), bu yüzden Postgres + pgvector'ü VPS'te çalıştırmak da seçenek.
@@ -17,18 +18,20 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
     - haftalık imaj yenileme,
     - gece sunucu dışı yedek (DB + kapaklar),
     - erişilebilirlik takibi.
-  - **Önce:** Yeni sunucuda `backend/outbound_smoke.py` ile mağaza erişimini test et. Bazı mağazalar yurt dışı veri merkezi IP'lerini engelleyebilir; sorun çıkarsa Türkiye'de bir VPS düşün.
+  - **Önce:** Yeni sunucuda `backend/outbound_smoke.py` ile mağaza erişimini test et. Bazı mağazalar yurt dışı veri merkezi IP'lerini engelleyebilir; sorun çıkarsa Türkiye'de bir VPS düşün. 20 Ekim: 12/12 PASS; Railway'de engelli olan Amazon TR, D&R ve Cizman da açıldı.
   - **Sunucu kararı (19 Ekim):** Hephosting **TRX-8G**: 4 vCPU Xeon Platinum 8173M, 8 GB ECC, 60 GB NVMe, 1 Gbit/s, KVM, Bursa DGN veri merkezi, her gece ücretsiz yedek. 249 TL + KDV/ay (lansman fiyatı, yenilemede aynı). Aylık ödeme; gerekirse panelden üst pakete geçilir.
     - Karşılaştırılanlar: Hostopya VDS-5 (~288 TL, 2023, az yorum), Lunhost (saatlik ödeme), Netvay (2 kat pahalı, kesinti şikayetleri), Verunix (belirsiz eski donanım, "kaynak çalma" iddiası), Contabo VPS 4 (~5,50 €, yurt dışı IP).
   - **"Sağlayıcı kaybolursa" önlemleri:**
     - Litestream ile Yomiba DB'si sürekli sunucu dışına (Cloudflare R2 ya da Backblaze B2, ücretsiz katman).
     - Kapaklar ve ayarlar için gece yedeği, aylık geri yükleme provası.
-    - Kurulum GitHub'da (Docker, Caddy, kurulum betiği): yeni sunucuda ~1 saatte ayağa kalkar.
+    - Kurulum GitHub'da (Docker, Caddy, kurulum betiği): yeni sunucuda ~1 saatte ayağa kalkar. 20 Ekim: kit yazıldı, adımlar [deploy/README.md](deploy/README.md).
     - Alan adı ve DNS sunucu firmasından bağımsız (Cloudflare).
     - Aylık ödeme; ilk haftalar Railway ve Vercel yedekte açık kalır.
   - **Kullanıcının yapacakları:** TRX-8G siparişi (Ubuntu 24.04, panel yok, KVM ve root/SSH teyidi), Cloudflare hesabı (DNS + R2) ya da Backblaze B2, Filminibul alan adının nerede kayıtlı olduğunu kontrol.
   - Ziyaretçi sayacı: `@vercel/analytics` yerine kendi sunucumuzda çalışan bir sayaç (ör. Umami).
-- [ ] **Yomiba alan adı.** .com ve .app alınmış; karar bekliyor (ör. .com.tr / .tr / .net). VPS'te HTTPS ve alarm mailleri (Resend) için gerekli.
+- [ ] **Railway ve Vercel'i kapat (yaklaşık 3 Kasım).** 20 Ekim'den beri yedekte. Önce: sunucu dışı yedek (R2) çalışıyor olmalı, Railway'deki zamanlayıcılar `0` yapılmalı. Vercel sürümü her isteği yomiba.net'e yönlendiriyor (`frontend/next.config.ts`, yalnızca `VERCEL=1` iken).
+- [ ] **Amazon TR, D&R ve Cizman'ı aç.** Türkiye IP'sinden ana sayfalar açılıyor; her birinde gerçek arama sonucu görülünce `.env` içinde `DISABLED_STORES` boşaltılacak. Edessa smoke testinde yok, aynı aramayla kontrol edilecek.
+- [x] **Yomiba alan adı.** 20 Ekim: **yomiba.net** alındı (.com ve .app başkasındaydı). DNS Cloudflare'de olacak; VPS'te HTTPS ve alarm mailleri (Resend) bu alan adıyla.
 - [ ] **SEO çalışmaları.** 18 Ekim tespiti: site haritası, `robots.txt` ve yapılandırılmış veri (JSON-LD) yok. Yapılacaklar:
   - `sitemap.xml` (seri + cilt sayfaları) ve `robots.txt`
   - cilt sayfalarına schema.org `Book` + `Offer` (ISBN, fiyat, stok, mağaza), seri sayfalarına `BookSeries`, gezinti için `BreadcrumbList`

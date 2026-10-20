@@ -1,0 +1,18 @@
+# Never bake local databases, backups or caches into the image.
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+*.db
+*.db-wal
+*.db-shm
+*.bak
+*.bak-*
+backups/
+covers/
+*.isbn-safety.json*
+*.catalog-state.json*
+.audit-cache/
+tests/
