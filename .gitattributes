@@ -3,3 +3,4 @@
 deploy/Caddyfile text eol=lf
 deploy/.env.example text eol=lf
 **/Dockerfile text eol=lf
+deploy/yomiba.caddy text eol=lf

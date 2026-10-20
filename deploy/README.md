@@ -1,13 +1,16 @@
 # Yomiba — VDS kurulumu (yomiba.net)
 
-Sunucu: Hephosting TRX-8G, Ubuntu 24.04. Yapı: Docker Compose; önde Caddy
-(otomatik HTTPS), arkada Next.js (`frontend`) ve FastAPI (`backend`). Dışarı
-yalnızca 80/443 açık; backend'e tarayıcı Next'in `/api` yönlendirmesiyle ulaşır.
+Sunucu: Hephosting TRX-8G, Ubuntu 24.04. Yapı: Docker Compose ile Next.js
+(`frontend`) ve FastAPI (`backend`); önde sunucunun kendi Caddy'si (otomatik
+HTTPS, Filminibul ile ortak). Frontend yalnızca `127.0.0.1:3001`'de dinler,
+backend'e tarayıcı Next'in `/api` yönlendirmesiyle ulaşır. Dışarı yalnızca
+80/443 açık.
 
 | Dosya | Görev |
 | --- | --- |
-| `docker-compose.yml` | Üç servis, log sınırı, `/srv/yomiba/data` → `/data` |
-| `Caddyfile` | `yomiba.net` → frontend, `www` → kök alan adına yönlendirme |
+| `docker-compose.yml` | backend + frontend, log sınırı, `/srv/yomiba/data` → `/data` |
+| `yomiba.caddy` | Host Caddy için site bloğu: `yomiba.net` → `127.0.0.1:3001`, `www` → kök |
+| `Caddyfile` | Yalnızca host Caddy'si olmayan bir sunucuda: `docker compose --profile caddy up -d` |
 | `.env.example` | Sunucudaki `deploy/.env` şablonu (sırlar repoya girmez) |
 | `kurulum.sh` | Yeni sunucunun tek seferlik kurulumu |
 | `guncelle.sh` | GitHub'daki son sürümü çekip yeniden başlatır |
@@ -73,7 +76,17 @@ adlandırılır. Sunucuda var olan bir `yomiba.db` veya `covers/` varsa durur.
 Son aktarımdan önce Railway'deki zamanlayıcılar kapatılırsa aradaki fiyat
 yazımları kaybolmaz; hesap/koleksiyon değişikliği yapılmamalı.
 
-## 5. Başlat ve doğrula
+## 5. Host Caddy'ye Yomiba'yı ekle (bir kez)
+
+```sh
+grep -q yomiba.caddy /etc/caddy/Caddyfile || echo 'import /srv/yomiba/app/deploy/yomiba.caddy' >> /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && systemctl reload caddy
+```
+
+`validate` hata verirse `reload` çalışmaz; Filminibul etkilenmez. `yomiba.caddy`
+değişince `git pull` sonrası yalnızca `systemctl reload caddy` yeterli.
+
+## 6. Başlat ve doğrula
 
 ```sh
 cd /srv/yomiba/app/deploy
@@ -103,6 +116,6 @@ kapatılmaz; geçiş oturunca `yomiba.vercel.app` → `yomiba.net` yönlendirili
   gece senkronu.
 - Push'ta GitHub Actions ile otomatik deploy; haftalık imaj yenileme.
 - Erişilebilirlik takibi (ör. UptimeRobot) ve Umami.
-- Filminibul'un aynı sunucuya alınması (Caddyfile'a ikinci site bloğu).
+- Filminibul aynı sunucuda, host Caddy'yi paylaşıyor (`/etc/caddy/site.caddy`, `api.caddy`); kendi kurulumu ayrı yürütülüyor.
 - `requirements.txt` sürümleri sabit değil; imaj için kilitli liste
   (`PRODUCTION.md`, "Dependencies").

@@ -1,6 +1,11 @@
-# Yomiba on the VPS: Caddy (HTTPS) -> Next.js -> FastAPI. Only Caddy is
-# published; the backend is reachable only inside this network (the browser
-# goes through the frontend's same-origin /api rewrite).
+# Yomiba on the VPS: Caddy (HTTPS) -> Next.js -> FastAPI. The backend is
+# reachable only inside this network (the browser goes through the frontend's
+# same-origin /api rewrite).
+#
+# The server's host Caddy (shared with Filminibul) owns 80/443 and proxies
+# yomiba.net to the frontend on 127.0.0.1:FRONTEND_PORT (see yomiba.caddy).
+# On a server without one, start the bundled Caddy instead:
+#   docker compose --profile caddy up -d
 #
 #   cd deploy && cp .env.example .env   # fill in, then:
 #   docker compose up -d --build
@@ -36,6 +41,8 @@ services:
     restart: unless-stopped
     environment:
       BACKEND_URL: http://backend:8000
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3001}:3000"
     depends_on:
       backend:
         condition: service_healthy
@@ -43,6 +50,7 @@ services:
 
   caddy:
     image: caddy:2.10-alpine
+    profiles: ["caddy"]
     restart: unless-stopped
     ports:
       - "80:80"
