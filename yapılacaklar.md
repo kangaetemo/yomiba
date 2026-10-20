@@ -1,6 +1,6 @@
 # Yomiba — Yapılacaklar
 
-Son güncelleme: 19 Ekim 2026
+Son güncelleme: 20 Ekim 2026
 
 Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içerir. Maddeler henüz tamamlanmış sayılmaz; uygulama ayrıntıları ve öncelikleri istişare sırasında netleştirilecek. Tamamlanan işler, kararlar ve doğrulama sonuçları [Yomiba çalışma notlarına](docs/yomiba-calisma-notlari.md) tarihli olarak yazılır.
 
@@ -23,12 +23,12 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
   - **"Sağlayıcı kaybolursa" önlemleri:**
     - Litestream ile Yomiba DB'si sürekli sunucu dışına (Cloudflare R2 ya da Backblaze B2, ücretsiz katman).
     - Kapaklar ve ayarlar için gece yedeği, aylık geri yükleme provası.
-    - Kurulum GitHub'da (Docker, Caddy, kurulum betiği): yeni sunucuda ~1 saatte ayağa kalkar.
+    - Kurulum GitHub'da (Docker, Caddy, kurulum betiği): yeni sunucuda ~1 saatte ayağa kalkar. 20 Ekim: kit yazıldı, adımlar [deploy/README.md](deploy/README.md).
     - Alan adı ve DNS sunucu firmasından bağımsız (Cloudflare).
     - Aylık ödeme; ilk haftalar Railway ve Vercel yedekte açık kalır.
   - **Kullanıcının yapacakları:** TRX-8G siparişi (Ubuntu 24.04, panel yok, KVM ve root/SSH teyidi), Cloudflare hesabı (DNS + R2) ya da Backblaze B2, Filminibul alan adının nerede kayıtlı olduğunu kontrol.
   - Ziyaretçi sayacı: `@vercel/analytics` yerine kendi sunucumuzda çalışan bir sayaç (ör. Umami).
-- [ ] **Yomiba alan adı.** .com ve .app alınmış; karar bekliyor (ör. .com.tr / .tr / .net). VPS'te HTTPS ve alarm mailleri (Resend) için gerekli.
+- [x] **Yomiba alan adı.** 20 Ekim: **yomiba.net** alındı (.com ve .app başkasındaydı). DNS Cloudflare'de olacak; VPS'te HTTPS ve alarm mailleri (Resend) bu alan adıyla.
 - [ ] **SEO çalışmaları.** 18 Ekim tespiti: site haritası, `robots.txt` ve yapılandırılmış veri (JSON-LD) yok. Yapılacaklar:
   - `sitemap.xml` (seri + cilt sayfaları) ve `robots.txt`
   - cilt sayfalarına schema.org `Book` + `Offer` (ISBN, fiyat, stok, mağaza), seri sayfalarına `BookSeries`, gezinti için `BreadcrumbList`
