@@ -26,6 +26,14 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 20 Ekim: sunucu dışı yedek (Cloudflare R2)
+
+- **Kurulum:** R2 bucket `yomiba-yedek`, yalnızca bu bucket'a yetkili token; anahtarlar sunucuda `deploy/r2.env` (repoda yok). `.env` içinde `COMPOSE_PROFILES=r2`.
+- **Litestream 0.3.13** (`litestream` servisi): DB'yi 60 saniyede bir `litestream/` altına kopyalıyor, 7 gün geriye dönülebiliyor. İlk snapshot 15,7 MB (sıkıştırılmış).
+- **Gece kopyası:** `yedekle.sh` doğrulanmış yedeği `gunluk/` altına (30 gün) ve kapakları `covers/` altına kopyalıyor (rclone `copy`; yerelde silinen kapak R2'de kalır).
+- **Geri yükleme provası:** R2'den `litestream restore` ile açılan DB, `restore_check.py` ile doğrulandı. Satır sayıları ve tablo özetleri (sha256) gece yedeğiyle birebir aynı: 511 seri, 2496 cilt, 13.469 ilan, 94.000 fiyat kaydı, 4 kullanıcı, 65 koleksiyon, 22 istek listesi kaydı. Prova ayda bir tekrarlanacak ([deploy/README.md](../deploy/README.md), 7. adım).
+- **Not:** rclone her çalışmada `Config file ... not found - using defaults` yazıyor; ayarlar ortam değişkenlerinden geldiği için zararsız.
+
 ### 20 Ekim: VDS'e taşındı, yomiba.net yayında
 
 - **Alan adı:** yomiba.net (.com ve .app başkasındaydı). DNS Cloudflare'de; `@` ve `www` A kaydı sunucuya, **DNS only**.
@@ -35,7 +43,7 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - **Caddy:** Sunucuda Filminibul taşıması için host'ta bir Caddy zaten 80/443'ü kullanıyordu. Yomiba'nın kendi Caddy'si `caddy` profiline alındı; frontend `127.0.0.1:3001`'de dinliyor, host Caddyfile `deploy/yomiba.caddy`'yi import ediyor. Filminibul 3000'de.
 - **Vercel:** `next.config.ts` Vercel'de (`VERCEL=1`) her isteği kalıcı olarak `https://yomiba.net`'e yönlendiriyor; eski siteye yazılan değişiklik kaybolmasın diye.
 - **Doğrulama:** Backend açılışta `Healthy`, https://yomiba.net sertifikayla açılıyor. Frontend Docker build'i yerelde denendi; Docker imajları yalnızca sunucuda çalıştırıldı (yerel Docker Desktop açılmadı).
-- **Kalan:** Sunucu dışı yedek (Litestream → R2), push'ta otomatik deploy, erişilebilirlik takibi, Google ile girişin yomiba.net için kurulması, Resend. Oturumlar alan adına bağlı olduğu için herkes yomiba.net'te bir kez yeniden giriş yapar. Railway ve Vercel ~2 hafta yedekte kalacak.
+- **Kalan:** Push'ta otomatik deploy, erişilebilirlik takibi, Google ile girişin yomiba.net için kurulması, Resend. Oturumlar alan adına bağlı olduğu için herkes yomiba.net'te bir kez yeniden giriş yapar. Railway ve Vercel ~2 hafta yedekte kalacak.
 
 ### 19 Ekim: Railway volume doldu, site çöktü
 
