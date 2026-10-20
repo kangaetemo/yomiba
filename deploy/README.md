@@ -54,30 +54,24 @@ docker compose run --rm --no-deps -e APP_ENV=development backend python outbound
 
 ## 4. DB ve kapakları Railway'den taşı
 
-Railway'de çalışan servisin içinde çevrimiçi yedek al (düz kopya değil):
+Sunucuda bir kez: Railway CLI (`curl -fsSL https://railway.com/install.sh | sh`),
+`railway login --browserless`, `/root` içinde `railway link` (canlı backend
+servisi) ve `ssh-keygen -t ed25519` (ilk `railway ssh` anahtarı hesaba ekler).
+Sonra backend durdurulmuşken:
 
 ```sh
-railway ssh
-python db_backup.py --source <railway DB yolu> --output /data/tasima.db
-python restore_check.py --db /data/tasima.db
-tar czf /data/tasima.tar.gz -C /data tasima.db covers
-sha256sum /data/tasima.tar.gz
+cd /srv/yomiba/app/deploy && docker compose down
+./railway-tasima.sh
 ```
 
-Arşivi sunucuya aktar (yöntemi taşıma sırasında birlikte netleştiriyoruz),
-`sha256sum` ile karşılaştır, sonra sunucuda:
+Betik Railway volume'una hiçbir şey yazmaz (volume dolunca site çöküyor):
+çevrimiçi yedeği ve kapak arşivini konteynerin `/tmp`'sinde hazırlar, base64
+ile çeker, sha256 ile karşılaştırır, `/tmp`'yi temizler. DB `yomiba.db` adıyla
+yerleşir; yanındaki `catalog-state.json` / `isbn-safety.json` da yeniden
+adlandırılır. Sunucuda var olan bir `yomiba.db` veya `covers/` varsa durur.
 
-```sh
-cd /srv/yomiba/data
-tar xzf /root/tasima.tar.gz
-mv tasima.db yomiba.db
-chown -R 10001:10001 /srv/yomiba/data
-chmod 600 yomiba.db
-```
-
-Son aktarım sırasında Railway'deki servis durdurulur ki aradaki yeni kayıtlar
-(hesap, koleksiyon) kaybolmasın. Arşivi ve `/data/tasima.*` dosyalarını iş
-bitince Railway volume'undan sil (volume dolunca site çöküyor).
+Son aktarımdan önce Railway'deki zamanlayıcılar kapatılırsa aradaki fiyat
+yazımları kaybolmaz; hesap/koleksiyon değişikliği yapılmamalı.
 
 ## 5. Başlat ve doğrula
 
