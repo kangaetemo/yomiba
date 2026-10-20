@@ -34,7 +34,7 @@ curl -fsSL https://raw.githubusercontent.com/kangaetemo/yomiba/main/deploy/kurul
 bash kurulum.sh
 ```
 
-Ardından `/srv/yomiba/app/deploy/.env` dosyasını doldur: `ACME_EMAIL`,
+Ardından `/srv/yomiba/app/deploy/.env` dosyasını doldur:
 `AUTH_DEVICE_SECRET` (`openssl rand -hex 32`), Google ve SMTP değerleri.
 Zamanlayıcılar (`CATALOG_SYNC_ENABLED`, `PRICE_REFRESH_ENABLED`) DB doğrulanana
 kadar `0` kalır.

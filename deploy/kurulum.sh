@@ -78,7 +78,7 @@ EOF
 cat <<EOF
 
 Kurulum bitti. Sıradakiler (deploy/README.md):
-  1) $ROOT/app/deploy/.env dosyasını doldur (ACME_EMAIL, AUTH_DEVICE_SECRET, ...).
+  1) $ROOT/app/deploy/.env dosyasını doldur (AUTH_DEVICE_SECRET, Google, SMTP).
   2) Railway'den alınan yomiba.db + covers/ -> $ROOT/data/ (sahibi 10001:10001).
   3) cd $ROOT/app/deploy && docker compose up -d --build
 SSH: anahtarla girişi denedikten sonra /etc/ssh/sshd_config içinde
