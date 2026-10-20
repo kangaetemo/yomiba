@@ -33,6 +33,19 @@ const nextConfig: NextConfig = {
   // which would leave the page unhydrated in the preview — allow the
   // preview origin so client components (search, etc.) stay functional.
   allowedDevOrigins,
+  async redirects() {
+    // The site moved to the VPS (yomiba.net) on 2026-10-20. Vercel still
+    // serves the old Railway-backed copy; send every request there so no
+    // account or collection change lands in the retired database.
+    if (process.env.VERCEL !== "1") return [];
+    return [
+      {
+        source: "/:path*",
+        destination: "https://yomiba.net/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     // Trailing slash stripped: "https://api.example/" must not yield "//path".
     const backend = (process.env.BACKEND_URL || "http://127.0.0.1:8000")
