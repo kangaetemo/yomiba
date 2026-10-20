@@ -7,7 +7,7 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 ## Halka açılmadan önce (18 Ekim)
 
 - [ ] **Yomiba + Filminibul'u bir VPS'e taşı.** Sebep: Vercel ve Railway ücretsiz plan uyarıları; Vercel Hobby ticari kullanıma izin vermiyor.
-  - **20 Ekim durumu:** Yomiba taşındı, **https://yomiba.net** VDS'te yayında ([çalışma notları](docs/yomiba-calisma-notlari.md)). Sunucu dışı yedek de çalışıyor (Litestream → R2, geri yükleme provası geçti). Kalanlar: push'ta otomatik deploy, haftalık imaj yenileme, erişilebilirlik takibi, Filminibul'un taşınmasının bitmesi (ayrı yürütülüyor).
+  - **20 Ekim durumu:** Yomiba taşındı, **https://yomiba.net** VDS'te yayında ([çalışma notları](docs/yomiba-calisma-notlari.md)). Sunucu dışı yedek de çalışıyor (Litestream → R2, geri yükleme provası geçti). Push'ta otomatik deploy ve haftalık imaj yenileme de çalışıyor. Kalanlar: erişilebilirlik takibi, Filminibul'un taşınmasının bitmesi (ayrı yürütülüyor).
   - Plan: Docker Compose, önde Caddy (alan adına göre yönlendirme, otomatik HTTPS). Sunucuda Caddy host'ta kurulu ve Filminibul ile ortak; Yomiba `deploy/yomiba.caddy` ile bağlanıyor.
   - Yomiba backend tek süreç olarak, SQLite ve kapaklar yerel diskte (`backend/PRODUCTION.md`).
   - Filminibul (Next 14 + Supabase + Firebase + OpenAI + TMDB; GitHub Actions işleri): Next uygulaması VPS'e geçer.

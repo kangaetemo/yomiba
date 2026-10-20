@@ -26,6 +26,13 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 20 Ekim: push'ta otomatik deploy
+
+- **İş akışı:** `.github/workflows/deploy.yml`. main'e push'ta "Application checks" geçince, her pazartesi 04:30'da (güncel taban imajlar ve paketler) ve elle *Actions → Deploy → Run workflow* ile sunucuda `deploy/guncelle.sh` çalışır.
+- **Güvenlik:** GitHub'daki anahtar sunucuda `command="…/guncelle.sh",restrict` ile yalnızca o betiğe kilitli. Sırlar: `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (sunucunun ed25519 host anahtarı), `DEPLOY_HOST`. Özel anahtar sunucudan silindi.
+- **`guncelle.sh`:** kilit alıyor (iki deploy aynı anda çalışmaz), çektikten sonra kendini yeni sürümüyle yeniden başlatıyor, konteynerlerin sağlıklı olmasını bekliyor ve sitenin açıldığını kontrol ediyor; hata olursa iş akışı kırmızı biter.
+- **Doğrulama:** 9f25852 push'unda testler geçti, Deploy iş akışı SSH ile `guncelle.sh`'yi çalıştırıp başarıyla bitti (yalnızca belge değiştiği için build önbellekten geldi).
+
 ### 20 Ekim: Railway durduruldu
 
 - **Sebep:** VDS için eklenen `backend/Dockerfile`, Railway'in Railpack yerine Docker ile build almasına yol açtı. Railway'in başlatma komutu kabuksuz çalıştığı için `$PORT` açılmadı, sağlık kontrolü düştü. Başarısız deploy eskisinin yerine geçmediği için eski deploy zamanlayıcılar açık olarak çalışmaya devam ediyordu.
@@ -48,7 +55,7 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - **Caddy:** Sunucuda Filminibul taşıması için host'ta bir Caddy zaten 80/443'ü kullanıyordu. Yomiba'nın kendi Caddy'si `caddy` profiline alındı; frontend `127.0.0.1:3001`'de dinliyor, host Caddyfile `deploy/yomiba.caddy`'yi import ediyor. Filminibul 3000'de.
 - **Vercel:** `next.config.ts` Vercel'de (`VERCEL=1`) her isteği kalıcı olarak `https://yomiba.net`'e yönlendiriyor; eski siteye yazılan değişiklik kaybolmasın diye.
 - **Doğrulama:** Backend açılışta `Healthy`, https://yomiba.net sertifikayla açılıyor. Frontend Docker build'i yerelde denendi; Docker imajları yalnızca sunucuda çalıştırıldı (yerel Docker Desktop açılmadı).
-- **Kalan:** Push'ta otomatik deploy, erişilebilirlik takibi, Google ile girişin yomiba.net için kurulması, Resend. Oturumlar alan adına bağlı olduğu için herkes yomiba.net'te bir kez yeniden giriş yapar. Railway ve Vercel ~2 hafta yedekte kalacak.
+- **Kalan:** erişilebilirlik takibi, Google ile girişin yomiba.net için kurulması, Resend. Oturumlar alan adına bağlı olduğu için herkes yomiba.net'te bir kez yeniden giriş yapar. Railway ve Vercel ~2 hafta yedekte kalacak.
 
 ### 19 Ekim: Railway volume doldu, site çöktü
 
