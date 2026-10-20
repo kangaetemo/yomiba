@@ -29,7 +29,7 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
     - Aylık ödeme; ilk haftalar Railway ve Vercel yedekte açık kalır.
   - **Kullanıcının yapacakları:** TRX-8G siparişi (Ubuntu 24.04, panel yok, KVM ve root/SSH teyidi), Cloudflare hesabı (DNS + R2) ya da Backblaze B2, Filminibul alan adının nerede kayıtlı olduğunu kontrol.
   - Ziyaretçi sayacı: `@vercel/analytics` yerine kendi sunucumuzda çalışan bir sayaç (ör. Umami).
-- [ ] **Railway ve Vercel'i kapat (yaklaşık 3 Kasım).** 20 Ekim'den beri yedekte. Sunucu dışı yedek 20 Ekim'de kuruldu; kalan ön koşul Railway'deki zamanlayıcıların `0` yapılması. Vercel sürümü her isteği yomiba.net'e yönlendiriyor (`frontend/next.config.ts`, yalnızca `VERCEL=1` iken).
+- [ ] **Railway ve Vercel'i sil (yaklaşık 3 Kasım).** Railway servisi 20 Ekim'de durduruldu (GitHub bağlantısı kesildi, aktif deploy kaldırıldı); volume donmuş kopya olarak duruyor. Sunucu dışı yedek R2'de. Vercel sürümü her isteği yomiba.net'e yönlendiriyor (`frontend/next.config.ts`, yalnızca `VERCEL=1` iken).
 - [ ] **Amazon TR, D&R ve Cizman'ı aç.** Türkiye IP'sinden ana sayfalar açılıyor; her birinde gerçek arama sonucu görülünce `.env` içinde `DISABLED_STORES` boşaltılacak. Edessa smoke testinde yok, aynı aramayla kontrol edilecek.
 - [x] **Yomiba alan adı.** 20 Ekim: **yomiba.net** alındı (.com ve .app başkasındaydı). DNS Cloudflare'de olacak; VPS'te HTTPS ve alarm mailleri (Resend) bu alan adıyla.
 - [ ] **SEO çalışmaları.** 18 Ekim tespiti: site haritası, `robots.txt` ve yapılandırılmış veri (JSON-LD) yok. Yapılacaklar:

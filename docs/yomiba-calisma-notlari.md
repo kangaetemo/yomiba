@@ -9,7 +9,7 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - **Katalog kaynağı Mangakol.** Katalog senkronu seri, cilt, kapak, sayfa sayısı, yerel çıkış tarihi, yazar/çizer ve JP/TR yayın durumunu okur. Mangakol'un ISBN'i `catalog_isbn` olarak saklanır; cildin ISBN'ine ISBN çözücü karar verir (`services/isbn_resolver.py`). Arama sadece Mangakol kataloğundaki serileri gösterir.
 - **Fiyatlar mağazalardan gelir.** BKM, Kitapseç, Kitap Sepeti, Kitapbulan, Gerekli Şeyler, Edessa ve diğerleri taranır. Ürünler önce ISBN ile, olmazsa başlık ve yayınevi ile ciltlere eşlenir. ISBN her zaman başlıktan önce gelir.
 - **Kapaklar bizde.** Mangakol'dan bir kez indirilip sunucu diskinde (`/srv/yomiba/data/covers`) WebP olarak saklanır ve `/api/covers/...` üzerinden sunulur. İleride R2'ye taşınabilecek şekilde yazıldı.
-- **Deploy.** 20 Ekim'den beri Hephosting VDS'te (https://yomiba.net): Docker Compose ile backend (SQLite, `/srv/yomiba/data`) ve frontend; önde host'taki Caddy (Filminibul ile ortak). Kurulum ve günlük işler: [deploy/README.md](../deploy/README.md). Güncelleme: sunucuda `deploy/guncelle.sh`. Veritabanı güncellemeleri açılışta yedek alınarak otomatik çalışır. Railway ve Vercel yedekte; Vercel her isteği yomiba.net'e yönlendiriyor.
+- **Deploy.** 20 Ekim'den beri Hephosting VDS'te (https://yomiba.net): Docker Compose ile backend (SQLite, `/srv/yomiba/data`) ve frontend; önde host'taki Caddy (Filminibul ile ortak). Kurulum ve günlük işler: [deploy/README.md](../deploy/README.md). Güncelleme: main'e push (GitHub Actions, testler geçince) ya da sunucuda `deploy/guncelle.sh`. Veritabanı güncellemeleri açılışta yedek alınarak otomatik çalışır. Railway durduruldu (volume duruyor); Vercel her isteği yomiba.net'e yönlendiriyor.
 
 ## Çalışma düzeni
 
@@ -25,6 +25,11 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 - Fiyatsız seriler raporu (`fiyatsızlar.txt`): Mağaza bazındaki sebep sayıları, sorgunun döndürdüğü tüm ürünler üzerinden toplanıyor. Örneğin BKM'de büyük bir `publisher_conflict` sayısı genelde "bu mağaza o seriyi satmıyor" demektir.
 
 ## Son günlerde yapılanlar
+
+### 20 Ekim: Railway durduruldu
+
+- **Sebep:** VDS için eklenen `backend/Dockerfile`, Railway'in Railpack yerine Docker ile build almasına yol açtı. Railway'in başlatma komutu kabuksuz çalıştığı için `$PORT` açılmadı, sağlık kontrolü düştü. Başarısız deploy eskisinin yerine geçmediği için eski deploy zamanlayıcılar açık olarak çalışmaya devam ediyordu.
+- **Yapılan:** Railway'in "start command'ı kabukla sar" önerisi uygulanmadı (imaj uid 10001 ile çalışıyor, Railway volume'u root'a ait; DB'ye yazamazdı). Servisin GitHub bağlantısı kesildi ve aktif deploy kaldırıldı. Volume ~3 Kasım'a kadar donmuş kopya olarak duruyor.
 
 ### 20 Ekim: sunucu dışı yedek (Cloudflare R2)
 
