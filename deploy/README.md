@@ -102,6 +102,45 @@ Sorun yoksa `.env` içinde zamanlayıcıları `1` yap ve
 `docker compose up -d backend` çalıştır. İlk haftalarda Railway ve Vercel
 kapatılmaz; geçiş oturunca `yomiba.vercel.app` → `yomiba.net` yönlendirilir.
 
+## 7. Sunucu dışı yedek (Cloudflare R2)
+
+İki katman, ikisi de `yomiba-yedek` bucket'ına:
+
+- **Litestream** (`litestream` servisi): DB değişikliklerini en geç 60 saniyede
+  `litestream/` altına kopyalar; 7 gün geriye herhangi bir ana dönülebilir.
+- **Gece kopyası** (`yedekle.sh` → `rclone`): doğrulanmış gece yedeği
+  `gunluk/` altına (30 gün), kapaklar `covers/` altına. Kapaklarda `copy`
+  kullanılır; sunucuda silinen kapak R2'den silinmez.
+
+Kurulum (bir kez): Cloudflare'de R2'yi aç (ücretsiz katman için de ödeme
+yöntemi istiyor), `yomiba-yedek` bucket'ını oluştur, yalnızca bu bucket için
+*Object Read & Write* yetkili API token al. Sonra sunucuda:
+
+```sh
+cd /srv/yomiba/app/deploy
+install -m 600 r2.env.example r2.env && nano r2.env      # endpoint + iki anahtar
+grep -q '^COMPOSE_PROFILES=' .env && sed -i 's/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=r2/' .env || echo 'COMPOSE_PROFILES=r2' >> .env
+docker compose up -d && docker compose logs --tail 30 litestream
+./yedekle.sh
+```
+
+Litestream logunda `initialized db` ve `replicating to` satırları görünmeli,
+`error` olmamalı. Ardından **geri yükleme provası** (ayda bir tekrarlanır):
+
+```sh
+docker compose run --rm --no-deps litestream restore -o /data/backups/prova.db /data/yomiba.db
+docker compose run --rm --no-deps -T backend python restore_check.py --db /data/backups/prova.db
+rm -f /srv/yomiba/data/backups/prova.db*
+```
+
+Sunucu tamamen kaybolursa: yeni sunucuda 2. ve 5. adımlar ve `r2.env`, sonra:
+
+```sh
+docker compose run --rm --no-deps litestream restore -o /data/yomiba.db /data/yomiba.db
+docker compose run --rm -v /srv/yomiba/data/covers:/restore rclone copy r2:yomiba-yedek/covers /restore
+chown -R 10001:10001 /srv/yomiba/data && docker compose up -d
+```
+
 ## Günlük işler
 
 - Güncelleme: `/srv/yomiba/app/deploy/guncelle.sh`
@@ -109,11 +148,10 @@ kapatılmaz; geçiş oturunca `yomiba.vercel.app` → `yomiba.net` yönlendirili
 - Geri yükleme provası: `gunzip -k` ile açılan yedekte
   `python restore_check.py --db <dosya> --rehearse`
 - Loglar: `docker compose logs --tail 200 backend`
+- R2 durumu: `docker compose logs --tail 50 litestream`; gece kopyası `/var/log/yomiba-yedek.log`
 
 ## Henüz yok (sıradaki adımlar)
 
-- Sunucu dışı sürekli yedek: Litestream → Cloudflare R2 (DB), kapaklar için
-  gece senkronu.
 - Push'ta GitHub Actions ile otomatik deploy; haftalık imaj yenileme.
 - Erişilebilirlik takibi (ör. UptimeRobot) ve Umami.
 - Filminibul aynı sunucuda, host Caddy'yi paylaşıyor (`/etc/caddy/site.caddy`, `api.caddy`); kendi kurulumu ayrı yürütülüyor.

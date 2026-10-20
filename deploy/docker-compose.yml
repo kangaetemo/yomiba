@@ -66,6 +66,44 @@ services:
       - frontend
     logging: *logging
 
+  # Off-site backup to Cloudflare R2 (deploy/r2.env). Enabled with
+  # COMPOSE_PROFILES=r2 in .env once r2.env is filled in.
+  litestream:
+    image: litestream/litestream:0.3.13
+    profiles: ["r2"]
+    restart: unless-stopped
+    # Same uid as the backend: Litestream writes yomiba.db-litestream/ and
+    # takes over WAL checkpoints next to the DB.
+    user: "10001:10001"
+    command: replicate
+    env_file:
+      - path: r2.env
+        required: false
+    volumes:
+      - ./litestream.yml:/etc/litestream.yml:ro
+      - ${DATA_DIR:-/srv/yomiba/data}:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging: *logging
+
+  # One-shot copies run by yedekle.sh (nightly backups and covers to R2).
+  rclone:
+    image: rclone/rclone:1.68.2
+    profiles: ["tools"]
+    env_file:
+      - path: r2.env
+        required: false
+    environment:
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      # A bucket-scoped token may not list or create buckets.
+      RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+    volumes:
+      - ${DATA_DIR:-/srv/yomiba/data}/covers:/covers:ro
+      - ${BACKUP_DIR:-/srv/yomiba/backups}:/backups:ro
+    logging: *logging
+
 volumes:
   caddy_data:
   caddy_config:

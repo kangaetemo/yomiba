@@ -1,0 +1,18 @@
+# Continuous replication of the Yomiba DB to Cloudflare R2.
+# Credentials and endpoint come from deploy/r2.env.
+dbs:
+  - path: /data/yomiba.db
+    replicas:
+      - type: s3
+        endpoint: ${RCLONE_CONFIG_R2_ENDPOINT}
+        region: auto
+        bucket: ${R2_BUCKET}
+        path: litestream/yomiba.db
+        access-key-id: ${RCLONE_CONFIG_R2_ACCESS_KEY_ID}
+        secret-access-key: ${RCLONE_CONFIG_R2_SECRET_ACCESS_KEY}
+        # At most one minute of writes at risk; keeps R2 write operations
+        # (~45k/month) far below the free tier.
+        sync-interval: 60s
+        snapshot-interval: 24h
+        # Point-in-time restore window.
+        retention: 168h

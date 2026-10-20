@@ -46,3 +46,6 @@ research/
 skills-lock.json
 fiyatsızlar.txt
 /yomiba-*.tar.gz
+
+# Server-only secrets (deploy kit)
+r2.env
