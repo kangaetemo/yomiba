@@ -50,3 +50,15 @@ def test_invalid_google_tokens_are_refused(bad):
 def test_nothing_is_accepted_without_a_client_id():
     with pytest.raises(GoogleTokenError):
         verify_google_credential(token(), [])
+
+
+@pytest.mark.parametrize(("claims", "owns"), [
+    ({"email": "okur@gmail.com"}, True),
+    ({"email": "Okur@GoogleMail.com"}, True),
+    ({"email": "okur@sirket.com.tr", "hd": "sirket.com.tr"}, True),
+    ({"email": "okur@example.com"}, False),                      # a Google account on another provider's address
+    ({"email": "okur@example.com", "hd": "baska.com"}, False),
+    ({"email": ""}, False),
+])
+def test_google_owns_only_gmail_and_its_workspace_domains(claims, owns):
+    assert google_auth.google_owns_mailbox(claims) is owns

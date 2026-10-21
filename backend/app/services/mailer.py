@@ -52,16 +52,18 @@ def _message(row: EmailOutbox, sender: str) -> EmailMessage:
     return msg
 
 
-def send_pending(session: Session, *, connect=_connect) -> dict[str, int]:
-    """Send due queued mails; commits after each. Returns counts."""
+def send_pending(session: Session, *, connect=_connect, ids: list[int] | None = None) -> dict[str, int]:
+    """Send due queued mails (only ``ids`` when given); commits after each.
+    Returns counts."""
     settings = get_settings()
     counts = {"sent": 0, "failed": 0}
     if not settings.smtp_host:
         return counts
     now = utcnow()
-    rows = list(session.scalars(
-        select(EmailOutbox).where(EmailOutbox.sent_at.is_(None), EmailOutbox.attempts < MAX_ATTEMPTS)
-        .order_by(EmailOutbox.id).limit(BATCH)))
+    query = select(EmailOutbox).where(EmailOutbox.sent_at.is_(None), EmailOutbox.attempts < MAX_ATTEMPTS)
+    if ids is not None:
+        query = query.where(EmailOutbox.id.in_(ids))
+    rows = list(session.scalars(query.order_by(EmailOutbox.id).limit(BATCH)))
     due = []
     for row in rows:
         at = row.next_attempt_at if row.next_attempt_at.tzinfo else row.next_attempt_at.replace(tzinfo=now.tzinfo)

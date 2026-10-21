@@ -23,6 +23,10 @@ class User(Base):
     #: Google account id ("sub") for "Google ile giriş"; unique when set.
     #: A Google-only account has no password_hash and is_active=True.
     google_sub: Mapped[str | None] = mapped_column(String(255), unique=True)
+    #: When the owner proved they read this mailbox (a link we mailed, or a
+    #: Google account that is authoritative for it). NULL: never proved, so
+    #: whoever registered may not own the address.
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 

@@ -17,7 +17,7 @@ from . import __version__
 from .config import get_settings, prepare_staging_database, safe_database_target, validate_runtime_settings
 from .database import get_db
 from .readiness import check_database_ready, expected_revision
-from .login_rate_limit import LoginRateLimiter
+from .login_rate_limit import LoginRateLimiter, RegistrationLimiter, SlidingLimiter
 from .routes import api_router
 
 logger = logging.getLogger("yomiba")
@@ -140,6 +140,9 @@ def create_app(auto_init: bool = True) -> FastAPI:
     app.state.auto_init = auto_init
     app.state.ready = False
     app.state.login_limiter = LoginRateLimiter()
+    app.state.register_limiter = RegistrationLimiter()
+    # Account mails (verification, Google link) per account.
+    app.state.mail_limiter = SlidingLimiter(3, 3600)
 
     @app.middleware("http")
     async def reject_cross_origin_writes(request: Request, call_next):
