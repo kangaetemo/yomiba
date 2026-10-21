@@ -102,10 +102,15 @@ def fallback_queries(session: Session, query: str) -> list[str]:
     def plain(text: str) -> str:
         return " ".join(re.sub(r"[^\w\s]", " ", text).split())
 
+    # An apostrophe suffix is also tried joined: Kitapseç sells "Junji
+    # İtonun Kedi Günlüğü" and finds nothing for "İto nun" (2026-10-21).
+    def joined(text: str) -> str:
+        return plain(re.sub(r"['’]", "", text))
+
     sent = plain(query) == " ".join(query.split())
     seen = {normalize_text(query)} if sent else set()
     out: list[str] = []
-    for candidate in map(plain, candidates):
+    for candidate in (c for text in candidates for c in (plain(text), joined(text))):
         key = normalize_text(candidate)
         if len(candidate) >= 3 and key and key not in seen:
             seen.add(key)

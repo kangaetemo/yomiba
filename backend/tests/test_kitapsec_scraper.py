@@ -196,3 +196,15 @@ def test_common_filter_rejects_merchandise_from_search():
     assert scraper.stats["rejected"].get("non_manga") == 1
     # the other fixture books are untouched
     assert any("Berserk Cilt 2" in r.title for r in results)
+
+
+def test_query_is_sent_ascii_folded():
+    # Live 2026-10-21: "Titana Saldırı" -> 0 results, "Titana Saldiri" -> 33.
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.params["a"])
+        return httpx.Response(200, text=EMPTY_PAGE)
+
+    make_scraper(handler).search("Junji İtonun Kedi Günlüğü")
+    assert asked == ["Junji itonun Kedi Gunlugu"]
