@@ -14,6 +14,7 @@ import type {
   PriceHistory,
   SearchResponse,
   SeriesDetail,
+  SitemapFeed,
   VolumeDetail,
   WishlistState,
 } from "@/types";
@@ -26,6 +27,11 @@ export function getHomeFeed(popular = 24, oneShot = 48): Promise<HomeFeed> {
 /** Every one shot, in-stock first (the home shelf shows a rotating handful). */
 export function getAllOneShots(): Promise<{ one_shots: PopularSeries[] }> {
   return getJson<{ one_shots: PopularSeries[] }>("/one-shots");
+}
+
+/** Every public series page and its volume numbers (sitemap.xml). */
+export function getSitemapEntries(): Promise<SitemapFeed> {
+  return getJson<SitemapFeed>("/sitemap");
 }
 
 /** All dated catalog volumes in a month, including announced releases. */

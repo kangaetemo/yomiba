@@ -35,9 +35,10 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
 - [ ] **Admin analiz sayfası (`/admin/analiz`).** 21 Ekim: kod hazır, PR'da. Çerezsiz, kendi sunucumuzda: ziyaretçi, oturum, sayfa görüntüleme, sayfada kalma süresi, hemen çıkma, mağaza tıklamaları (mağaza, cilt ve seri bazında), aramalar ve sonuçsuz aramalar, trafik kaynakları ve kampanya etiketleri, cihaz/tarayıcı/ülke, gün-saat dağılımı; her ölçü önceki dönemle karşılaştırmalı. Vercel Analytics kaldırıldı.
   - Yayına çıkınca: birkaç gün sonra sayılar mantıklı mı bak; Cloudflare proxy kapalıysa ülke boş kalır.
 - [ ] **SEO çalışmaları.** 18 Ekim tespiti: site haritası, `robots.txt` ve yapılandırılmış veri (JSON-LD) yok. Yapılacaklar:
-  - `sitemap.xml` (seri + cilt sayfaları) ve `robots.txt`
-  - cilt sayfalarına schema.org `Book` + `Offer` (ISBN, fiyat, stok, mağaza), seri sayfalarına `BookSeries`, gezinti için `BreadcrumbList`
-  - sayfa başlığı ve açıklamaları ("Solo Leveling 5. Cilt fiyatları — N mağazada ₺X'den"), canonical adresler, paylaşım önizlemeleri (Open Graph görselleri)
+  - [x] `sitemap.xml` (seri + cilt sayfaları) ve `robots.txt` (21 Ekim, PR'da)
+  - [x] cilt sayfalarına schema.org `Book` (+ fiyat varsa `Product` / `AggregateOffer`), seri sayfalarına `BookSeries`, gezinti için `BreadcrumbList` (21 Ekim, PR'da)
+  - [x] sayfa başlığı ve açıklamaları ("Berserk Cilt 1 fiyatları"), canonical adresler, paylaşım önizlemeleri (kapak görseli) (21 Ekim, PR'da)
+  - [ ] Tüm seriler sayfası (A–Z): seri sayfalarına şu an yalnızca ana sayfa rafları ve arama ulaşıyor; iç bağlantı için gerekli.
   - Google Search Console ve Bing Webmaster kaydı. Bing, ChatGPT gibi yapay zekâ aramalarını da besliyor; sayfaların yapay zekâ cevaplarında kaynak gösterilmesi için temiz, taranabilir sayfalar ve yapılandırılmış veri önemli.
 - [ ] **Mağaza bağlantılarına kaynak etiketi.** Şu an mağaza linkleri `rel="noopener noreferrer"` ile açılıyor; `noreferrer` yüzünden mağaza ziyaretçinin Yomiba'dan geldiğini hiç görmüyor.
   - [x] `noreferrer` kaldırıldı (`noopener` kaldı).

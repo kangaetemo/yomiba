@@ -8,7 +8,11 @@ import type { PopularSeries } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "One shot serileri" };
+export const metadata: Metadata = {
+  title: "One shot serileri",
+  description: "Tek ciltte biten mangaların Türk kitapçılarındaki fiyatlarını karşılaştır.",
+  alternates: { canonical: "/one-shot" },
+};
 
 const TR = new Intl.Collator("tr");
 

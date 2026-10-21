@@ -11,6 +11,7 @@ from . import import_ as import_routes
 from . import me as me_routes
 from . import search as search_routes
 from . import series as series_routes
+from . import sitemap as sitemap_routes
 from . import volume as volume_routes
 from . import isbn as isbn_routes
 from . import analytics as analytics_routes
@@ -22,6 +23,7 @@ api_router.include_router(search_routes.router)
 api_router.include_router(drops_routes.router)
 api_router.include_router(home_routes.router)
 api_router.include_router(series_routes.router)
+api_router.include_router(sitemap_routes.router)
 api_router.include_router(volume_routes.router)
 api_router.include_router(import_routes.router)
 api_router.include_router(me_routes.router)

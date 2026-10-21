@@ -6,14 +6,16 @@ import { Cover, formatTL, volumeTitle } from "@/components/ui";
 import { SortBar } from "@/components/SortBar";
 import { Segmented } from "@/components/Segmented";
 import { EditionLinks } from "@/components/EditionLinks";
+import { JsonLd, breadcrumbs } from "@/components/JsonLd";
 import { ReportIssue } from "@/components/ReportIssue";
 import { VolumeCard } from "@/components/VolumeCard";
 import { VolumeTile } from "@/components/VolumeTile";
 import { ApiError } from "@/lib/api";
 import { oneShotVolumeNumber, seriesPath, volumePath } from "@/lib/paths";
+import { SITE_URL, openGraph } from "@/lib/site";
 import { currentUserOrNull } from "@/services/auth";
 import { getSeries } from "@/services/catalog";
-import type { CollectionStatus, SeriesVolume } from "@/types";
+import type { CollectionStatus, SeriesDetail, SeriesVolume } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -64,11 +66,33 @@ function cheapestInStock(volumes: SeriesVolume[]): SeriesVolume | null {
   return best;
 }
 
+/** Search snippet: what the series is and where its prices start. */
+function seriesDescription(detail: SeriesDetail): string {
+  const cheapest = cheapestInStock(detail.volumes);
+  const inStock = detail.volumes.filter((v) => v.in_stock_count > 0).length;
+  const by = detail.author ? `${detail.author} imzalı, ` : "";
+  const parts = [
+    `${detail.title} mangası (${by}${detail.publisher}): ${detail.volumes.length} cildin fiyatlarını Türk kitapçılarında karşılaştır.`,
+    cheapest ? `En ucuz cilt ${formatTL(cheapest.best_price)}, ${inStock} cilt stokta.` : null,
+    "Koleksiyonunu takip et, eksik ciltler için fiyat alarmı kur.",
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
 export async function generateMetadata({ params }: SeriesPageProps): Promise<Metadata> {
   const { slug } = await params;
   try {
     const detail = await getSeries(slug);
-    return { title: `${detail.title} — ${detail.publisher}` };
+    const title = `${detail.title} — ${detail.publisher}`;
+    const description = seriesDescription(detail);
+    const url = seriesPath(detail.slug);
+    return {
+      title,
+      description,
+      // Filters and sort orders (?sort=, ?view=) are the same page.
+      alternates: { canonical: url },
+      openGraph: openGraph({ title, description, url, image: detail.cover_url }),
+    };
   } catch {
     return { title: "Seri bulunamadı" };
   }
@@ -146,8 +170,32 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
 
   const chip = "inline-flex min-h-9 items-center rounded-lg border px-3 text-sm transition-colors";
 
+  const pageUrl = `${SITE_URL}${seriesPath(detail.slug)}`;
+  const structured = [
+    {
+      "@context": "https://schema.org",
+      "@type": "BookSeries",
+      name: detail.title,
+      url: pageUrl,
+      inLanguage: "tr",
+      publisher: { "@type": "Organization", name: detail.publisher },
+      ...(detail.author ? { author: { "@type": "Person", name: detail.author } } : {}),
+      ...(detail.cover_url ? { image: new URL(detail.cover_url, SITE_URL).href } : {}),
+      hasPart: detail.volumes.map((v) => ({
+        "@type": "Book",
+        name: `${detail.title} ${volumeTitle(v.number)}`,
+        url: `${SITE_URL}${volumePath(detail.slug, v.number)}`,
+      })),
+    },
+    breadcrumbs([
+      { name: "Yomiba", url: SITE_URL },
+      { name: detail.title, url: pageUrl },
+    ]),
+  ];
+
   return (
     <div className="space-y-10">
+      {structured.map((data, i) => <JsonLd key={i} data={data} />)}
       <nav aria-label="Konum" className="text-sm text-muted">
         <Link href="/" className="hover:text-accent">
           ← Ana sayfa

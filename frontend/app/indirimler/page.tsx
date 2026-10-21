@@ -4,7 +4,11 @@ import { DealGrid } from "@/components/home/HotDeals";
 import { getPriceDrops } from "@/services/catalog";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Tüm indirimler", description: "Mangalarda gözlediğimiz güncel fiyat düşüşleri." };
+export const metadata: Metadata = {
+  title: "Tüm indirimler",
+  description: "Mangalarda gözlediğimiz güncel fiyat düşüşleri.",
+  alternates: { canonical: "/indirimler" },
+};
 const PAGE_SIZE = 24;
 const SORTS = { recent: "En son düşen", percent: "En yüksek oran", saving: "En çok TL ucuzlayan", price: "En düşük fiyat" } as const;
 type Sort = keyof typeof SORTS;
