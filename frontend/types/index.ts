@@ -17,7 +17,8 @@ export interface PopularSeries {
   in_stock_offers: number;
   /** Lowest current in-stock price of any volume. */
   lowest_price: number | null;
-  /** One shots only: release date of the single volume (YYYY-MM-DD). */
+  /** One shots: release date of the single volume; new series: of the
+   * first volume (YYYY-MM-DD). */
   release_date?: string | null;
 }
 
@@ -53,6 +54,9 @@ export interface HomeFeed {
    * optional so an older backend without it still renders. */
   one_shots?: PopularSeries[];
   new_volumes: NewVolume[];
+  /** Series by the release date of their first volume, newest first;
+   * optional so an older backend without it still renders. */
+  new_series?: PopularSeries[];
   stats: { series: number; stores: number; offers: number };
 }
 
