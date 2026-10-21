@@ -219,6 +219,8 @@ class CoverFetchReport:
     without_source: int = 0
     #: Provisional (pre-release) covers replaced by a new image.
     replaced: int = 0
+    #: Store covers forgotten (listing gone / volume not out).
+    dropped: int = 0
     remaining: int = 0
 
 
@@ -291,6 +293,12 @@ class CoverFetcher:
         ).all()
         out: list[tuple[str, str, str]] = []
         seen: set[str] = set()
+        # A store "selling" a volume that is not out in Turkey is a foreign
+        # edition (Kitapbulan's English Fairy Tail, 2026-10): before release
+        # only the catalog's own (Mangakol) image is used.
+        is_out = volume_is_out(volume)
+        if not is_out:
+            listings = []
         for code, url in sorted(listings, key=lambda r: rank.get(r[0], len(rank))):
             if url and url.startswith(("http://", "https://")) and url not in seen and not _is_mangakol(url):
                 for variant in larger_variants(url):
@@ -301,7 +309,8 @@ class CoverFetcher:
         mangakol: list[tuple[str, str, str]] = []
         if volume.cover_url and volume.cover_url not in seen:
             if not _is_mangakol(volume.cover_url):
-                out.append(("catalog", volume.cover_url, volume.cover_url))
+                if is_out:  # else: a store image the importer back-filled
+                    out.append(("catalog", volume.cover_url, volume.cover_url))
             elif self.settings.cover_allow_mangakol:
                 mangakol = [("mangakol", u, volume.cover_url) for u in larger_variants(volume.cover_url)]
         return mangakol + out if self.settings.cover_prefer_mangakol else out + mangakol
@@ -333,12 +342,41 @@ class CoverFetcher:
             )
         )
 
+    def drop_orphan_store_covers(self) -> int:
+        """Forget store covers whose listing is gone (deleted as a wrong
+        match, cleanup_stale_listings.py) and store / back-filled covers of
+        volumes that are not out (a foreign edition, see ``_sources``): the
+        volume is fetched again from its remaining sources."""
+        listing_left = exists().where(
+            StoreListing.volume_id == Volume.id,
+            StoreListing.store_id == Store.id,
+            Store.code == func.substr(Volume.cover_source, 7),
+        )
+        today = utcnow().date()
+        not_out = or_(Volume.catalog_released.is_(False), Volume.release_date > today)
+        from_store = Volume.cover_source.like("store:%")
+        volumes = self.session.scalars(select(Volume).where(
+            Volume.cover_key.isnot(None),
+            or_(
+                and_(from_store, ~listing_left),
+                and_(or_(from_store, Volume.cover_source == "catalog"), not_out),
+            ),
+        )).all()
+        for volume in volumes:
+            logger.info("covers: dropping %s cover of volume %s", volume.cover_source, volume.id)
+            volume.cover_key = volume.cover_source = volume.cover_origin_url = None
+            volume.cover_provisional = volume.cover_checked_at = None
+        if volumes:
+            self.session.commit()
+        return len(volumes)
+
     def run(self, budget: int) -> CoverFetchReport:
         """Store covers for pending volumes; ``budget`` caps downloads.
         Volumes with store offers go first (they are the ones on pages).
         A provisional cover is replaced only by a different image from a
         different source URL; it stays until one turns up."""
         report = CoverFetchReport()
+        report.dropped = self.drop_orphan_store_covers()
         has_listing = exists().where(StoreListing.volume_id == Volume.id)
         queue = self.session.scalars(
             self._pending().order_by(has_listing.desc(), Volume.series_id, Volume.volume_number)

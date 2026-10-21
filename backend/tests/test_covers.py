@@ -384,3 +384,45 @@ def test_mark_provisional_covers_script(db_session, engine, store, monkeypatch, 
     assert vols[2].cover_checked_at is None and vols[3].cover_checked_at is not None
     assert vols[2].cover_origin_url == MANGAKOL
     assert "geçici, yenilenecek: 1" in capsys.readouterr().out
+
+
+# -- wrong store covers ---------------------------------------------------------------------------
+
+def test_store_images_are_not_used_before_release(db_session, store):
+    vol = _volume_with_offers(db_session, {"kitapbulan": BKM_IMG}, catalog_cover="https://cdn.example/en.jpg")
+    vol.catalog_released = False
+    db_session.commit()
+    fetcher, download = _fetcher(db_session, store, {BKM_IMG: _image(), "https://cdn.example/en.jpg": _image()})
+    report = fetcher.run(budget=10)
+    assert download.asked == [] and report.without_source == 1 and vol.cover_key is None
+
+
+def test_cover_of_a_deleted_listing_is_dropped_and_refetched(db_session, store):
+    vol = _volume_with_offers(db_session, {"kitapbulan": BKM_IMG}, catalog_cover=MANGAKOL)
+    fetcher, _ = _fetcher(db_session, store, {BKM_IMG: _image()}, cover_prefer_mangakol=False)
+    fetcher.run(budget=10)
+    assert vol.cover_source == "store:kitapbulan"
+
+    db_session.delete(db_session.scalar(select(StoreListing).where(StoreListing.volume_id == vol.id)))
+    db_session.commit()
+    fetcher, download = _fetcher(db_session, store, {MANGAKOL_FULL: _image_b()})
+    report = fetcher.run(budget=10)
+    assert report.dropped == 1 and download.asked == [MANGAKOL_FULL]
+    assert vol.cover_source == "mangakol"
+
+
+def test_store_cover_of_an_unreleased_volume_is_dropped(db_session, store):
+    vol = _volume_with_offers(db_session, {"kitapbulan": BKM_IMG}, catalog_cover=None)
+    fetcher, _ = _fetcher(db_session, store, {BKM_IMG: _image()})
+    fetcher.run(budget=10)
+    vol.catalog_released = False  # e.g. Fairy Tail 38: not out in Turkey
+    db_session.commit()
+    report = fetcher.run(budget=10)
+    assert report.dropped == 1 and vol.cover_key is None and vol.cover_source is None
+
+
+def test_kept_store_cover_is_not_dropped(db_session, store):
+    vol = _volume_with_offers(db_session, {"bkm": BKM_IMG}, catalog_cover=None)
+    fetcher, _ = _fetcher(db_session, store, {BKM_IMG: _image()})
+    fetcher.run(budget=10)
+    assert fetcher.run(budget=10).dropped == 0 and vol.cover_source == "store:bkm"
