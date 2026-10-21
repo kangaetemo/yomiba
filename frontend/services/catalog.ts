@@ -14,6 +14,7 @@ import type {
   PriceHistory,
   SearchResponse,
   SeriesDetail,
+  SeriesIndexItem,
   SitemapFeed,
   VolumeDetail,
   WishlistState,
@@ -27,6 +28,11 @@ export function getHomeFeed(popular = 24, oneShot = 48): Promise<HomeFeed> {
 /** Every one shot, in-stock first (the home shelf shows a rotating handful). */
 export function getAllOneShots(): Promise<{ one_shots: PopularSeries[] }> {
   return getJson<{ one_shots: PopularSeries[] }>("/one-shots");
+}
+
+/** Every catalog series with a released or announced volume (A–Z page). */
+export function getSeriesIndex(): Promise<{ series: SeriesIndexItem[] }> {
+  return getJson<{ series: SeriesIndexItem[] }>("/series");
 }
 
 /** Every public series page and its volume numbers (sitemap.xml). */

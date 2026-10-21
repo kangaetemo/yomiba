@@ -61,6 +61,14 @@ const SECTIONS = [
   { href: "/#populer", label: "Popüler" },
 ];
 
+/** Crawlable links to every list page, on every page. */
+const FOOTER_LINKS = [
+  { href: "/seriler", label: "Tüm seriler" },
+  { href: "/one-shot", label: "One shot" },
+  { href: "/takvim", label: "Yayın takvimi" },
+  { href: "/indirimler", label: "İndirimler" },
+];
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -92,6 +100,9 @@ export default async function RootLayout({
                   {s.label}
                 </Link>
               ))}
+              <Link href="/seriler" className={navLink}>
+                Tüm seriler
+              </Link>
             </nav>
             <nav aria-label="Hesap" className="flex items-center gap-1.5 text-sm sm:gap-3">
               <ThemeToggle />
@@ -154,6 +165,17 @@ export default async function RootLayout({
               Türkiye&apos;deki manga baskılarının fiyatını mağazalar arasında karşılaştırır,
               koleksiyonunu ve istek listeni tek yerde tutar.
             </p>
+            <nav aria-label="Site" className="pt-2">
+              <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                {FOOTER_LINKS.map((l) => (
+                  <li key={l.href}>
+                    <Link href={l.href} className="inline-flex min-h-9 items-center text-ink-2 hover:text-accent">
+                      {l.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
             <p className="text-xs text-faint">
               Fiyatlar mağazaların kamuya açık sayfalarından toplanır ve gecikmeli olabilir.
             </p>

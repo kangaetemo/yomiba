@@ -17,6 +17,7 @@ export function PopularSeries({ series }: { series: Series[] }) {
         folio="01"
         eyebrow="Keşfet"
         title="Popüler seriler"
+        action={{ href: "/seriler", label: "Tüm seriler" }}
         lead="Kitapçıların çok satan listelerinde öne çıkan, yeni cildi gelen ve okurların takip ettiği seriler. Hepsi şu an stokta."
       />
       <SeriesGrid series={series} />
