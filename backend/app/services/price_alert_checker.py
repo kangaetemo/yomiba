@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from html import escape
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -40,6 +41,20 @@ def best_offer(session: Session, volume_id: int) -> StoreListing | None:
     return min(fresh, key=lambda l: (l.price, l.store.name if l.store else "")) if fresh else None
 
 
+def store_link(url: str, medium: str = "email") -> str:
+    """Tag an outbound store link so the store sees the visit came from
+    Yomiba (same rule as the frontend's ``storeLink``): the store's own query
+    string is kept and an existing ``utm_source`` is not overwritten."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https"):
+        return url
+    if any(k == "utm_source" for k, _ in parse_qsl(parts.query, keep_blank_values=True)):
+        return url
+    tag = f"utm_source=yomiba&utm_medium={medium}"
+    # Appended as text: re-encoding the store's own query could change it.
+    return urlunsplit(parts._replace(query=f"{parts.query}&{tag}" if parts.query else tag))
+
+
 def _tl(cents: int) -> str:
     value = from_cents(cents)
     text = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -49,12 +64,13 @@ def _tl(cents: int) -> str:
 def _mail(alert: PriceAlert, volume: Volume, user: User, offer: StoreListing, url: str) -> tuple[str, str, str]:
     title = f"{volume.series.title} · Cilt {volume.volume_number}"
     store = offer.store.name if offer.store else "bir mağaza"
+    store_url = store_link(offer.product_url)
     subject = f"Fiyat alarmı: {title} {_tl(offer.price)}"
     text = (
         f"Merhaba {user.display_name},\n\n"
         f"{title} için kurduğun fiyat alarmı çaldı: {store} şu an {_tl(offer.price)} "
         f"(alarm fiyatın {_tl(alert.threshold_price)}).\n\n"
-        f"Mağazaya git: {offer.product_url}\n"
+        f"Mağazaya git: {store_url}\n"
         f"Cildin bütün fiyatları: {url}\n\n"
         "Fiyat yeniden alarm fiyatının üstüne çıkıp tekrar düşerse yine haber veririz. "
         "Alarmı cilt sayfasından değiştirebilir ya da kapatabilirsin.\n\n"
@@ -65,7 +81,7 @@ def _mail(alert: PriceAlert, volume: Volume, user: User, offer: StoreListing, ur
         f"<p><strong>{escape(title)}</strong> için kurduğun fiyat alarmı çaldı: "
         f"{escape(store)} şu an <strong>{escape(_tl(offer.price))}</strong> "
         f"(alarm fiyatın {escape(_tl(alert.threshold_price))}).</p>"
-        f'<p><a href="{escape(offer.product_url)}">Mağazaya git</a> · '
+        f'<p><a href="{escape(store_url)}">Mağazaya git</a> · '
         f'<a href="{escape(url)}">Cildin bütün fiyatları</a></p>'
         "<p>Fiyat yeniden alarm fiyatının üstüne çıkıp tekrar düşerse yine haber veririz. "
         "Alarmı cilt sayfasından değiştirebilir ya da kapatabilirsin.</p><p>Yomiba</p>"

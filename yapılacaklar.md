@@ -38,8 +38,8 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
   - sayfa başlığı ve açıklamaları ("Solo Leveling 5. Cilt fiyatları — N mağazada ₺X'den"), canonical adresler, paylaşım önizlemeleri (Open Graph görselleri)
   - Google Search Console ve Bing Webmaster kaydı. Bing, ChatGPT gibi yapay zekâ aramalarını da besliyor; sayfaların yapay zekâ cevaplarında kaynak gösterilmesi için temiz, taranabilir sayfalar ve yapılandırılmış veri önemli.
 - [ ] **Mağaza bağlantılarına kaynak etiketi.** Şu an mağaza linkleri `rel="noopener noreferrer"` ile açılıyor; `noreferrer` yüzünden mağaza ziyaretçinin Yomiba'dan geldiğini hiç görmüyor.
-  - `noreferrer` kaldırılacak (`noopener` kalır).
-  - `utm_source=yomiba&utm_medium=referral` eklenecek.
+  - [x] `noreferrer` kaldırıldı (`noopener` kaldı).
+  - [x] Cilt sayfasındaki mağaza linklerine `utm_source=yomiba&utm_medium=referral`, fiyat alarmı e-postasındakilere `utm_medium=email` eklendi.
   - Her mağazanın adresi parametreyle hâlâ açılıyor mu, kontrol edilecek.
   - SEO'ya doğrudan etkisi yok. Amaç, mağazaların Yomiba trafiğini kendi istatistiklerinde görmesi; ortaklık ya da komisyon görüşmesinde kanıt olur.
 - [ ] **Amazon ortaklık + Creators API.**
