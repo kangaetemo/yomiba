@@ -189,6 +189,14 @@ export interface SeriesDetail {
   one_shot?: boolean;
 }
 
+/** GET /series: one row of the A–Z list (and publisher pages). */
+export interface SeriesIndexItem extends PopularSeries {
+  publisher_slug: string;
+  upcoming: boolean;
+  /** Set when the series page would only redirect to its single volume. */
+  only_volume: number | null;
+}
+
 /** GET /sitemap: catalog series with the volume numbers their pages list. */
 export interface SitemapFeed {
   series: { slug: string; volumes: (number | null)[]; upcoming: boolean }[];
