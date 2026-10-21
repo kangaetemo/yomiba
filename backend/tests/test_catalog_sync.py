@@ -603,3 +603,34 @@ def test_legacy_exclusion_does_not_block_catalog_sync(db_session):
     # No duplicate Series is opened.
     survivors = [s for s in _series(db_session) if s.id == series_id]
     assert len(survivors) == 1
+
+
+def test_sync_retries_entry_when_database_is_locked(db_session, monkeypatch):
+    """A commit by another connection between the merge's reads and its
+    first write fails that write at once in WAL mode ("database is
+    locked"); the entry is retried instead of skipped (2026-10-21)."""
+    import sqlite3
+
+    from sqlalchemy.exc import OperationalError
+
+    from app.services import catalog_sync
+
+    monkeypatch.setattr(catalog_sync.time, "sleep", lambda _s: None)
+    real_merge = CatalogSyncService._merge_manga
+    calls = {"n": 0}
+
+    def flaky_merge(self, manga, report):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OperationalError("UPDATE series", {}, sqlite3.OperationalError("database is locked"))
+        return real_merge(self, manga, report)
+
+    monkeypatch.setattr(CatalogSyncService, "_merge_manga", flaky_merge)
+    manga = _manga("noragami", "Noragami", pub=None, volumes=(1, 2),
+                   original="Noragami: Stray God | Noragami")
+    report = CatalogSyncService(db_session, scraper=FakeMangakolScraper([manga])).sync()
+
+    assert calls["n"] == 2
+    assert report.manga_failed == 0
+    series = db_session.scalars(select(Series)).one()
+    assert series.original_title == "noragami stray god | noragami"

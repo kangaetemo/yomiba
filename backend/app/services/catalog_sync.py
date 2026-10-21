@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -33,6 +35,19 @@ from ..scrapers.mangakol import (
     MangakolCatalogScraper,
 )
 from ..utils import utcnow
+
+#: Attempts per catalog entry when SQLite reports "database is locked".
+#: The merge reads first and writes later in one transaction; in WAL mode a
+#: commit by another connection in between (page-view analytics, cover
+#: worker) fails the first write at once, without the busy timeout. A fresh
+#: transaction then succeeds (Wotakoi, Noragami, Ningen Shikkaku,
+#: 2026-10-21).
+_LOCKED_ATTEMPTS = 3
+
+
+def _is_locked(exc: Exception) -> bool:
+    return isinstance(exc, OperationalError) and "database is locked" in str(exc)
+
 
 logger = logging.getLogger("yomiba.catalog")
 
@@ -203,8 +218,7 @@ class CatalogSyncService:
             report.volumes_retired, report.release_status_updated, report.announced_volumes,
         )
         try:
-            with self.session.begin_nested():
-                series = self._merge_manga(manga, report)
+            series = self._merge_with_retry(manga, report, counts_before)
         except Exception as exc:  # noqa: BLE001 - isolation by design
             (
                 report.series_created, report.series_merged,
@@ -226,6 +240,26 @@ class CatalogSyncService:
             except Exception:  # noqa: BLE001 - ISBNs are best effort
                 logger.exception("catalog sync: ISBN backfill failed for /manga/%s", manga.slug)
                 self.session.rollback()
+
+    def _merge_with_retry(self, manga: CatalogManga, report: CatalogSyncReport, counts_before):
+        """``_merge_manga`` in a savepoint, retried on "database is locked"
+        (see ``_LOCKED_ATTEMPTS``) in a fresh transaction."""
+        for attempt in range(1, _LOCKED_ATTEMPTS + 1):
+            try:
+                with self.session.begin_nested():
+                    return self._merge_manga(manga, report)
+            except OperationalError as exc:
+                if attempt == _LOCKED_ATTEMPTS or not _is_locked(exc):
+                    raise
+                (
+                    report.series_created, report.series_merged,
+                    report.volumes_added, report.covers_backfilled,
+                    report.volumes_retired, report.release_status_updated, report.announced_volumes,
+                ) = counts_before
+                self.session.rollback()
+                logger.warning("catalog sync: database locked for /manga/%s; retry %d",
+                               manga.slug, attempt)
+                time.sleep(attempt)
 
     # ------------------------------------------------------------------
     # Merge logic
