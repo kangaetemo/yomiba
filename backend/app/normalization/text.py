@@ -34,6 +34,13 @@ def _strip_accents(text: str) -> str:
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
+def ascii_fold(value: str) -> str:
+    """Turkish letters and accents to ASCII, everything else kept:
+    "Titana Saldırı" -> "Titana Saldiri" (Turkish capitals come out lower
+    case). For store searches that miss non-ASCII queries (Kitapseç)."""
+    return _strip_accents(value.translate(_TURKISH_FOLD))
+
+
 def normalize_text(value: str | None) -> str:
     """Return a canonical comparison key for ``value``.
 

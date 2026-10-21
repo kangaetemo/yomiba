@@ -767,3 +767,12 @@ def test_fallback_queries_drop_punctuation(db_session):
     seed_catalog_series(db_session, "Tokyo Gül", "P", original="tokyo gul")
     db_session.commit()
     assert fallback_queries(db_session, "Tokyo Gül") == []
+
+
+def test_fallback_queries_also_join_apostrophe_suffixes(db_session):
+    """Kitapseç sells "Junji İtonun Kedi Günlüğü" and finds nothing for
+    "Junji İto nun Kedi Günlüğü" (2026-10-21)."""
+    from app.services.background_import import fallback_queries
+
+    assert fallback_queries(db_session, "Junji İto'nun Kedi Günlüğü: Yon&Muu") == [
+        "Junji İto nun Kedi Günlüğü", "Junji İtonun Kedi Günlüğü"]

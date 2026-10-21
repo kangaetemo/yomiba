@@ -7,6 +7,7 @@ ad-hoc string handling.
 
 from .text import (
     ORIGINAL_TITLE_SEPARATOR,
+    ascii_fold,
     normalize_publisher,
     normalize_text,
     original_title_parts,
@@ -16,6 +17,7 @@ from .volume import VolumeParseResult, VolumeRange, parse_volume_range, parse_vo
 from .isbn import normalize_isbn
 
 __all__ = [
+    "ascii_fold",
     "normalize_text",
     "normalize_publisher",
     "original_title_parts",

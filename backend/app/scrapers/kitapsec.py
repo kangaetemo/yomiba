@@ -3,6 +3,7 @@
 Data source (public, no authentication):
 
 ``GET https://www.kitapsec.com/Arama/index.php?a=<query>&AnaKat=&arama=<page>-1-0a0-0-0-0-0-0``
+(the query is sent ASCII-folded: a Turkish letter makes it find nothing)
 
 The results grid is server-side rendered and every row carries schema.org
 **microdata** (``itemtype="https://schema.org/Product"``) with:
@@ -36,7 +37,7 @@ import logging
 import re
 from urllib.parse import quote_plus, urljoin
 
-from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
+from ..normalization import ascii_fold, normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
 from .base import BaseScraper, ScraperError
 from .common import looks_like_blocked_page, parse_tr_price
 from .search_result import SearchResult
@@ -83,7 +84,11 @@ class KitapsecScraper(BaseScraper):
 
         items: list[dict] = []
         seen_urls: set[str] = set()
-        q = quote_plus(query)
+        # The search finds nothing once the query has a Turkish letter
+        # ("Titana Saldırı": 0, "Titana Saldiri": 33; live 2026-10-21) but
+        # matches ASCII against Turkish titles ("Kedi Gunlugu" finds
+        # "Kedi Günlüğü").
+        q = quote_plus(ascii_fold(query))
 
         for page in range(1, max_pages + 1):
             url = f"{self.base_url}{self.search_path}?a={q}&AnaKat=&arama={page}-1-0a0-0-0-0-0-0"
