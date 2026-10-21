@@ -71,6 +71,10 @@ class Settings:
     # How many product detail pages a single search may additionally request
     # (used to enrich results with metadata such as ISBN / publisher).
     max_detail_requests: int = int(os.getenv("SCRAPER_MAX_DETAIL_REQUESTS", "15"))
+    # Product pages re-read per series and store for listings the search no
+    # longer returns (verify_unseen_listings). Long series lose dozens of
+    # sold-out volumes from search (Kitap Sepeti Naruto: 33).
+    unseen_recheck_max: int = int(os.getenv("UNSEEN_RECHECK_MAX", "40"))
 
     # BKM paginated search (WAW Labs ``search_v2`` endpoint) limits.
     # Pagination always stops at whichever bound is hit first, so a search

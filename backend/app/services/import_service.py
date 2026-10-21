@@ -30,6 +30,7 @@ import continues with the remaining stores.
 from __future__ import annotations
 
 import logging
+import random
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -506,8 +507,12 @@ class ImportService:
         For stores that hide sold-out products from search: without this
         the listing kept its last "in stock" until the 48 h stale window.
         Unknown answers leave the listing alone (the stale window still
-        applies). Bounded by ``max_detail_requests``. Returns the number of
-        listings updated; the caller's session is committed per listing.
+        applies). Bounded by ``unseen_recheck_max``; when more are unseen a
+        random sample is checked, so every listing gets its turn (a fixed
+        first-N by id left the rest of a long series stale for good: Kitap
+        Sepeti, 248 "stok belirsiz" listings on 2026-10-21). Returns the
+        number of listings updated; the caller's session is committed per
+        listing.
         """
         if not getattr(scraper, "verifies_unseen_listings", False) or not series_ids:
             return 0
@@ -522,8 +527,11 @@ class ImportService:
             .order_by(StoreListing.id)
         ).all()
         unseen = [(l, v) for l, v in rows if l.last_checked is None or _aware(l.last_checked) < since]
+        budget = max(0, get_settings().unseen_recheck_max)
+        if len(unseen) > budget:
+            unseen = random.sample(unseen, budget)
         updated = 0
-        for listing, volume in unseen[: max(0, get_settings().max_detail_requests)]:
+        for listing, volume in unseen:
             try:
                 check = scraper.check_listing(listing.product_url)
             except Exception:  # noqa: BLE001 - one page must not stop the rest
