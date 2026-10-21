@@ -39,7 +39,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import get_settings
 from ..models import CatalogSeries, ImportRecord, Series, StoreListing, Volume
-from ..normalization import normalize_text
+from ..normalization import normalize_text, original_title_parts, original_title_parts
 from ..scrapers.registry import get_scrapers
 from ..utils import utcnow
 from .import_service import _SUBTITLE_SEPARATOR_RE, ImportReport, ImportService
@@ -66,7 +66,7 @@ def normalized_query_key(query: str) -> str:
 def fallback_queries(session: Session, query: str) -> list[str]:
     """Shorter/alternative store queries for a catalog title that matched
     nothing: the title before each subtitle separator (longest first),
-    then the catalog's original (foreign) title. Store searches often
+    then each of the catalog's original (foreign) titles. Store searches often
     return nothing for the full subtitled title. Matching still runs
     against the catalog, so a broader query can never create series or
     volumes.
@@ -89,8 +89,9 @@ def fallback_queries(session: Session, query: str) -> list[str]:
         .where(Series.title == query, Series.original_title.is_not(None))
         .limit(1)
     )
-    if original:
-        candidates.append(original)
+    # Each spelling on its own: "tokyo revengers | toukyou revengers" ->
+    # "tokyo revengers", then "toukyou revengers".
+    candidates.extend(original_title_parts(original))
     seen = {normalize_text(query)}
     out: list[str] = []
     for candidate in candidates:

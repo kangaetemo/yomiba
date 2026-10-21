@@ -449,14 +449,14 @@ def test_sync_original_title_collapses_duplicate_parts(db_session):
 
 
 def test_sync_original_title_keeps_distinct_parts(db_session):
-    """Two genuinely different parts stay in the key (space-joined)."""
+    """Two genuinely different parts stay in the key, each still separable."""
     manga = _manga(
         "x", "X", pub=None, volumes=(1,),
         original="Naruto | Naruto Shippuden",
     )
     CatalogSyncService(db_session, scraper=FakeMangakolScraper([manga])).sync()
     series = db_session.scalars(select(Series)).one()
-    assert series.original_title == "naruto naruto shippuden"
+    assert series.original_title == "naruto | naruto shippuden"
 
 
 def test_sync_original_title_idempotent_and_never_erased(db_session):

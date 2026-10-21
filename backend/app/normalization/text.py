@@ -59,6 +59,23 @@ def normalize_text(value: str | None) -> str:
     return text
 
 
+#: Joins the parts of ``Series.original_title`` (mangakol lists several
+#: spellings: "Tokyo Revengers | Toukyou Revengers"). ``normalize_text``
+#: never emits "|", so the parts can always be told apart again.
+ORIGINAL_TITLE_SEPARATOR = " | "
+
+
+def original_title_parts(value: str | None) -> list[str]:
+    """The distinct titles inside a stored ``Series.original_title`` key.
+
+    >>> original_title_parts("tokyo revengers | toukyou revengers")
+    ['tokyo revengers', 'toukyou revengers']
+    >>> original_title_parts("berserk")
+    ['berserk']
+    """
+    return [part.strip() for part in (value or "").split("|") if part.strip()]
+
+
 def normalize_publisher(value: str | None) -> str:
     """Normalize a publisher name to its comparison key.
 
