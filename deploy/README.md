@@ -176,6 +176,9 @@ atlar.
 - R2 durumu: `docker compose logs --tail 50 litestream`; gece kopyası `/var/log/yomiba-yedek.log`
 - Mağaza ilanı eksik ya da "stok belirsiz" görünüyorsa, mağaza bazında rapor (hiçbir şeyi değiştirmez):
   `docker compose run --rm --no-deps -T backend python store_gaps_report.py > /tmp/eksik.txt`
+  Raporda uzun süredir "belirsiz" kalan yanlış eşleşmeleri (yabancı baskı, başka kitap, kaldırılmış ürün)
+  temizlemek için önce listele, sonra `--apply` ile sil:
+  `docker compose run --rm --no-deps -T backend python cleanup_stale_listings.py`
 - Backend işlemci yiyorsa: `sudo /srv/yomiba/app/deploy/cpu-teshis.sh > /tmp/cpu.txt 2>&1`
   (docker stats, iş parçacıkları, WAL boyu, log/istek sayıları ve py-spy profili;
   hiçbir şeyi değiştirmez, ~80 sn sürer)
