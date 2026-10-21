@@ -222,3 +222,66 @@ def test_common_filter_rejects_merchandise_from_search():
     assert scraper.stats["rejected"].get("non_manga") == 1
     # the other fixture books are untouched
     assert any("One Piece. Volume 99" in r.title for r in results)
+
+
+# -- paging cost (VDS CPU, 2026-10-21) ----------------------------------------------
+
+def _card_page(*titles: str, padding: int = 0) -> str:
+    """A search page with one card per title, optionally inside a large
+    storefront (menus/footer) that the parser must skip."""
+    card = (
+        '<div class="col-6 col-sm-6 col-md-4 col-lg-3 col-xl-3 mb-2 product-item">'
+        '<a href="/atlas-yayincilik" class="fw-bold brand-title">Atlas Yayıncılık</a>'
+        '<a href="/{slug}" class="product-title">{title}</a>'
+        '<div class="fw-black current-price"><span class="product-price">184,00</span> TL</div>'
+        "</div>"
+    )
+    menu = "".join(f'<li class="menu-item"><a href="/k/{i}">Kategori {i}</a></li>' for i in range(padding))
+    cards = "".join(card.format(slug=t.lower().replace(" ", "-"), title=t) for t in titles)
+    return (
+        f"<html><body><nav><ul>{menu}</ul></nav><div id='product-list-panel'>"
+        f"<div class='row'>{cards}</div></div><footer><ul>{menu}</ul></footer></body></html>"
+    )
+
+
+def _pages_handler(pages: list[str]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/arama":
+            page = _page_of(request)
+            return httpx.Response(200, text=pages[page - 1] if page <= len(pages) else EMPTY_PAGE)
+        return httpx.Response(404)
+    return handler
+
+
+def test_cards_parse_inside_large_storefront_page():
+    page = _card_page("One Piece 1", "One Piece 2", padding=2000)
+    scraper = make_scraper(_pages_handler([page]))
+    results = scraper.search("one piece")
+    assert sorted(r.volume_number for r in results) == [1, 2]
+    assert all(r.publisher == "Atlas Yayıncılık" and r.price == Decimal("184.00") for r in results)
+
+
+def test_stops_after_two_pages_without_relevant_cards():
+    pages = [
+        _card_page("One Piece 1", "One Piece 2"),
+        _card_page("Sam ve Watson 1", "Dedektif Kedi 2"),
+        _card_page("Sam ve Watson 3", "Dedektif Kedi 4"),
+        _card_page("One Piece 3"),  # never fetched
+    ]
+    scraper = make_scraper(_pages_handler(pages))
+    results = scraper.search("one piece")
+    assert sorted(r.volume_number for r in results) == [1, 2]
+    assert scraper.stats["pages_fetched"] == 3
+    assert scraper.stats["stop_reason"] == "no_relevant_items"
+
+
+def test_one_unrelated_page_does_not_stop_paging():
+    pages = [
+        _card_page("One Piece 1"),
+        _card_page("Sam ve Watson 1"),
+        _card_page("One Piece 2"),
+    ]
+    scraper = make_scraper(_pages_handler(pages))
+    results = scraper.search("one piece")
+    assert sorted(r.volume_number for r in results) == [1, 2]
+    assert scraper.stats["stop_reason"] == "empty_page"
