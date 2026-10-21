@@ -63,7 +63,8 @@ def main() -> None:
         total[store_id] += 1
         listed[store_id][series_id].add(number)
         checked = _aware(checked)
-        if checked is None or newest[store_id] - checked > window:
+        # -1 rows with listings are legacy phantoms, already hidden.
+        if number >= 0 and (checked is None or newest[store_id] - checked > window):
             stale[store_id][series_id].append(number)
 
     for store_id in sorted(stores, key=lambda s: stores[s]):
