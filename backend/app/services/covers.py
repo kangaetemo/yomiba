@@ -13,6 +13,18 @@ Sources (``cover_source`` records which one won):
   * the volume's catalog ``cover_url`` when it is NOT a Mangakol image
     (a store image the importer back-filled).
 
+Provisional covers: before a volume is out, the only image is usually the
+Japanese original (Mangakol shows it for "Yakında" volumes, pre-order
+pages often do too). A cover stored then is marked ``cover_provisional``.
+Mangakol's image taken in the first ``MANGAKOL_SETTLE`` days after release
+counts as provisional too (Mangakol may not have swapped it yet). Once the
+volume is out (catalog release date passed / no longer "Yakında")
+it is looked at again daily, for ``PROVISIONAL_GIVE_UP`` after release, and
+replaced by the first candidate that is a different image from a different
+source URL than the stored one (``cover_origin_url``): a store's product
+photo or a new Mangakol image. The catalog sync re-queues a volume when
+Mangakol swaps its image for a recently released volume.
+
 Storage is behind :class:`CoverStore`. ``LocalCoverStore`` writes into a
 directory (on Railway: next to the SQLite DB on the mounted volume) and the
 ``/covers/{key}`` route serves it. An object store (Cloudflare R2 / S3) is
@@ -30,13 +42,13 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable, Protocol
 from urllib.parse import urlparse
 
 import httpx
-from sqlalchemy import exists, func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -55,6 +67,13 @@ STORE_PRIORITY = (
 MANGAKOL_HOSTS = ("mangakol.com",)
 #: A source that failed is tried again after this long.
 RETRY_AFTER = timedelta(days=7)
+#: A provisional cover of a volume that is out is looked at again this often…
+PROVISIONAL_RETRY_AFTER = timedelta(days=1)
+#: …until this long after the volume's release date.
+PROVISIONAL_GIVE_UP = timedelta(days=120)
+#: Mangakol may keep the announcement (Japanese) image for a while after
+#: release: its image taken this soon after release is provisional too.
+MANGAKOL_SETTLE = timedelta(days=14)
 MAX_IMAGE_BYTES = 6 * 1024 * 1024
 COVER_WIDTH = 480
 
@@ -198,6 +217,8 @@ class CoverFetchReport:
     downloads: int = 0
     stored: int = 0
     without_source: int = 0
+    #: Provisional (pre-release) covers replaced by a new image.
+    replaced: int = 0
     remaining: int = 0
 
 
@@ -219,6 +240,29 @@ def larger_variants(url: str) -> list[str]:
     return [url]
 
 
+def volume_is_out(volume: Volume, today: date | None = None) -> bool:
+    """The volume is on sale in Turkey: not "Yakında" in the catalog and its
+    release date (when known) is not in the future."""
+    if volume.catalog_released is False:
+        return False
+    today = today or utcnow().date()
+    return volume.release_date is None or volume.release_date <= today
+
+
+def is_provisional(volume: Volume, source: str | None, stored_on: date | None = None) -> bool:
+    """Whether a cover from ``source`` stored on ``stored_on`` (today) is
+    likely the Japanese original rather than the Turkish cover."""
+    stored_on = stored_on or utcnow().date()
+    if not volume_is_out(volume, stored_on):
+        return True
+    return (source == "mangakol" and volume.release_date is not None
+            and stored_on < volume.release_date + MANGAKOL_SETTLE)
+
+
+def is_mangakol_url(url: str | None) -> bool:
+    return bool(url) and _is_mangakol(url)
+
+
 def _is_mangakol(url: str) -> bool:
     host = urlparse(url).netloc.lower()
     return any(host == h or host.endswith("." + h) for h in MANGAKOL_HOSTS)
@@ -234,44 +278,66 @@ class CoverFetcher:
 
     def candidates(self, volume: Volume) -> list[tuple[str, str]]:
         """(source tag, url) in trial order; see the module docstring."""
+        return [(tag, url) for tag, url, _ in self._sources(volume)]
+
+    def _sources(self, volume: Volume) -> list[tuple[str, str, str]]:
+        """(source tag, url, origin url) — the origin is the source's own URL
+        before :func:`larger_variants`, recorded as ``cover_origin_url``."""
         rank = {code: i for i, code in enumerate(STORE_PRIORITY)}
         listings = self.session.execute(
             select(Store.code, StoreListing.image_url)
             .join(Store, Store.id == StoreListing.store_id)
             .where(StoreListing.volume_id == volume.id, StoreListing.image_url.isnot(None))
         ).all()
-        out: list[tuple[str, str]] = []
+        out: list[tuple[str, str, str]] = []
         seen: set[str] = set()
         for code, url in sorted(listings, key=lambda r: rank.get(r[0], len(rank))):
             if url and url.startswith(("http://", "https://")) and url not in seen and not _is_mangakol(url):
                 for variant in larger_variants(url):
                     if variant not in seen:
-                        out.append((f"store:{code}", variant))
+                        out.append((f"store:{code}", variant, url))
                         seen.add(variant)
                 seen.add(url)
-        mangakol: list[tuple[str, str]] = []
+        mangakol: list[tuple[str, str, str]] = []
         if volume.cover_url and volume.cover_url not in seen:
             if not _is_mangakol(volume.cover_url):
-                out.append(("catalog", volume.cover_url))
+                out.append(("catalog", volume.cover_url, volume.cover_url))
             elif self.settings.cover_allow_mangakol:
-                mangakol = [("mangakol", u) for u in larger_variants(volume.cover_url)]
+                mangakol = [("mangakol", u, volume.cover_url) for u in larger_variants(volume.cover_url)]
         return mangakol + out if self.settings.cover_prefer_mangakol else out + mangakol
 
     def _pending(self):
-        cutoff = utcnow() - RETRY_AFTER
+        now = utcnow()
+        today = now.date()
+        missing = and_(
+            Volume.cover_key.is_(None),
+            (Volume.cover_checked_at.is_(None)) | (Volume.cover_checked_at < now - RETRY_AFTER),
+        )
+        # A pre-release cover of a volume that is out now (see volume_is_out).
+        provisional = and_(
+            Volume.cover_key.isnot(None),
+            Volume.cover_provisional.is_(True),
+            or_(Volume.catalog_released.is_(None), Volume.catalog_released.is_(True)),
+            or_(Volume.release_date.is_(None), and_(
+                Volume.release_date <= today,
+                Volume.release_date >= today - PROVISIONAL_GIVE_UP,
+            )),
+            (Volume.cover_checked_at.is_(None)) | (Volume.cover_checked_at < now - PROVISIONAL_RETRY_AFTER),
+        )
         return (
             select(Volume)
             .where(
-                Volume.cover_key.is_(None),
                 Volume.volume_number >= 0,
                 Volume.series_id.in_(select(CatalogSeries.series_id)),
-                (Volume.cover_checked_at.is_(None)) | (Volume.cover_checked_at < cutoff),
+                or_(missing, provisional),
             )
         )
 
     def run(self, budget: int) -> CoverFetchReport:
         """Store covers for pending volumes; ``budget`` caps downloads.
-        Volumes with store offers go first (they are the ones on pages)."""
+        Volumes with store offers go first (they are the ones on pages).
+        A provisional cover is replaced only by a different image from a
+        different source URL; it stays until one turns up."""
         report = CoverFetchReport()
         has_listing = exists().where(StoreListing.volume_id == Volume.id)
         queue = self.session.scalars(
@@ -281,10 +347,13 @@ class CoverFetcher:
             if report.downloads >= budget:
                 break
             report.volumes += 1
-            sources = self.candidates(volume)
+            replacing = volume.cover_key is not None
+            sources = self._sources(volume)
+            if replacing:
+                sources = [s for s in sources if s[2] != volume.cover_origin_url]
             if not sources:
                 report.without_source += 1
-            for tag, url in sources:
+            for tag, url, origin in sources:
                 if report.downloads >= budget:
                     break
                 report.downloads += 1
@@ -293,9 +362,14 @@ class CoverFetcher:
                 if webp is None:
                     continue
                 key = f"v/{volume.id}-{hashlib.sha256(webp).hexdigest()[:12]}.webp"
+                if key == volume.cover_key:
+                    continue  # the same picture under another address
                 self.store.save(key, webp, "image/webp")
-                volume.cover_key, volume.cover_source = key, tag
+                volume.cover_key, volume.cover_source, volume.cover_origin_url = key, tag, origin
+                # A replacement is a new image after release: the Turkish one.
+                volume.cover_provisional = (not volume_is_out(volume)) if replacing else is_provisional(volume, tag)
                 report.stored += 1
+                report.replaced += replacing
                 break
             volume.cover_checked_at = utcnow()
             self.session.commit()

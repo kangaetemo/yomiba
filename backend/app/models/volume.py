@@ -75,6 +75,13 @@ class Volume(Base):
     cover_key: Mapped[str | None] = mapped_column(String(200))
     cover_source: Mapped[str | None] = mapped_column(String(40))
     cover_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: True while the stored cover was taken before the volume was out —
+    #: usually the Japanese original. Once the volume is out the cover
+    #: worker looks for another image (the Turkish edition) until it finds
+    #: one. ``cover_origin_url`` is the source URL the stored cover came
+    #: from, so that same image is not taken again as the "replacement".
+    cover_provisional: Mapped[bool | None] = mapped_column(Boolean)
+    cover_origin_url: Mapped[str | None] = mapped_column(String(1000))
 
     series: Mapped[Series] = relationship(back_populates="volumes")
     listings: Mapped[list[StoreListing]] = relationship(

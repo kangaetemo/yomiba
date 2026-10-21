@@ -1578,7 +1578,10 @@ class ImportService:
         listing.last_checked = now
         if from_search:
             listing.seen_in_search_at = now
-        if result.image_url and not listing.image_url:
+        # Follow the store's current photo: a pre-order page often shows the
+        # Japanese cover and switches to the Turkish one on release, which
+        # is what replaces a provisional cover (services/covers.py).
+        if result.image_url and listing.image_url != result.image_url:
             listing.image_url = result.image_url
 
         # At most one unchanged observation per day supplies real coverage

@@ -35,6 +35,7 @@ from ..scrapers.mangakol import (
     MangakolCatalogScraper,
 )
 from ..utils import utcnow
+from .covers import PROVISIONAL_GIVE_UP, is_mangakol_url, volume_is_out
 
 #: Attempts per catalog entry when SQLite reports "database is locked".
 #: The merge reads first and writes later in one transaction; in WAL mode a
@@ -79,6 +80,9 @@ class CatalogSyncReport:
     release_status_updated: int = 0
     announced_volumes: int = 0
     covers_backfilled: int = 0
+    #: Volumes whose Mangakol image changed (e.g. the Japanese placeholder
+    #: swapped for the Turkish cover); recent ones are queued for a new cover.
+    covers_changed: int = 0
     #: Legacy merge counters are retained for API compatibility; P0 leaves them zero.
     publishers_merged: int = 0
     #: Series absorbed into a same-title series under the merged publisher.
@@ -214,7 +218,7 @@ class CatalogSyncService:
         """Merge one catalog entry and backfill its ISBNs (isolated)."""
         counts_before = (
             report.series_created, report.series_merged,
-            report.volumes_added, report.covers_backfilled,
+            report.volumes_added, report.covers_backfilled, report.covers_changed,
             report.volumes_retired, report.release_status_updated, report.announced_volumes,
         )
         try:
@@ -222,7 +226,7 @@ class CatalogSyncService:
         except Exception as exc:  # noqa: BLE001 - isolation by design
             (
                 report.series_created, report.series_merged,
-                report.volumes_added, report.covers_backfilled,
+                report.volumes_added, report.covers_backfilled, report.covers_changed,
                 report.volumes_retired, report.release_status_updated, report.announced_volumes,
             ) = counts_before
             logger.exception(
@@ -253,7 +257,7 @@ class CatalogSyncService:
                     raise
                 (
                     report.series_created, report.series_merged,
-                    report.volumes_added, report.covers_backfilled,
+                    report.volumes_added, report.covers_backfilled, report.covers_changed,
                     report.volumes_retired, report.release_status_updated, report.announced_volumes,
                 ) = counts_before
                 self.session.rollback()
@@ -350,6 +354,10 @@ class CatalogSyncService:
                 if existing.cover_url is None and volume.cover_url:
                     existing.cover_url = volume.cover_url
                     report.covers_backfilled += 1
+                elif (volume.cover_url and existing.cover_url != volume.cover_url
+                      and is_mangakol_url(existing.cover_url)):
+                    self._catalog_cover_changed(existing, volume.cover_url)
+                    report.covers_changed += 1
                 # The omnibus span follows the catalog source (only a known
                 # span overwrites; a page without one never erases it).
                 if covers and (existing.covers_from, existing.covers_to) != covers:
@@ -368,6 +376,25 @@ class CatalogSyncService:
             )
             report.volumes_added += 1
         return series
+
+    @staticmethod
+    def _catalog_cover_changed(volume: Volume, url: str) -> None:
+        """Mangakol shows a new image for the volume. A stored Mangakol cover
+        of a volume that came out lately is queued to be replaced (services/covers.py, provisional covers); older volumes keep
+        theirs, so a Mangakol CDN move does not re-download the catalog."""
+        volume.cover_url = url
+        if volume.cover_key is None or volume.cover_source != "mangakol":
+            return
+        if not volume_is_out(volume):
+            # A new pre-release image is no Turkish cover either: it must
+            # not count as the replacement once the volume is out.
+            if volume.cover_provisional:
+                volume.cover_origin_url = url
+            return
+        recent = utcnow().date() - PROVISIONAL_GIVE_UP
+        if volume.release_date is None or volume.release_date >= recent:
+            volume.cover_provisional = True
+            volume.cover_checked_at = None
 
     def _backfill_isbns(self, series: Series, manga: CatalogManga, report: CatalogSyncReport) -> None:
         """Read each released volume's catalog page: page count, local
