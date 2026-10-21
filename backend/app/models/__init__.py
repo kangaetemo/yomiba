@@ -24,6 +24,7 @@ from .isbn_evidence import IsbnChange, IsbnIssue, SharedIsbn, StoreObservation
 from .email_outbox import EmailOutbox
 from .series_popularity import SeriesPopularity
 from .analytics import AnalyticsEvent, AnalyticsSalt
+from .content_report import ContentReport
 
 __all__ = [
     "Publisher",
@@ -50,4 +51,5 @@ __all__ = [
     "SeriesPopularity",
     "AnalyticsEvent",
     "AnalyticsSalt",
+    "ContentReport",
 ]

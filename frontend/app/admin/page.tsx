@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AdminControls } from "@/components/admin/AdminControls";
 import { currentUser } from "@/services/auth";
+import { getOpenReportCount } from "@/services/reports";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
@@ -12,6 +13,7 @@ export default async function AdminPage() {
   const user = await currentUser();
   if (!user) redirect("/login?next=%2Fadmin");
   if (user.role !== "ADMIN") redirect("/");
+  const openReports = await getOpenReportCount().then((r) => r.new).catch(() => null);
   return (
     <div className="space-y-6">
       <header className="space-y-1">
@@ -26,6 +28,13 @@ export default async function AdminPage() {
       <Link href="/admin/analiz" className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
         <h2 className="font-semibold text-ink">Analiz →</h2>
         <p className="mt-1 text-sm text-muted">Ziyaretçiler, en çok bakılan seri ve ciltler, mağazalara giden tıklamalar, aramalar ve trafik kaynakları.</p>
+      </Link>
+      <Link href="/admin/bildirimler" className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
+        <h2 className="font-semibold text-ink">
+          Hata bildirimleri →{" "}
+          {openReports ? <span className="ml-1 rounded-full bg-accent px-2 py-0.5 text-xs text-on-accent">{openReports} yeni</span> : null}
+        </h2>
+        <p className="mt-1 text-sm text-muted">Ziyaretçilerin seri ve cilt sayfalarından bildirdiği yanlış fiyat, stok, eşleşme ve cilt bilgileri.</p>
       </Link>
       <Link href="/admin/isbn/saglik" className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
         <h2 className="font-semibold text-ink">ISBN Sağlık Raporu →</h2>
