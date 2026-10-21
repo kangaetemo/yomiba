@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import random
+import threading
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -17,6 +18,20 @@ from .common import has_block_marker, looks_like_blocked_page, parse_tr_price
 from .search_result import SearchResult
 
 logger = logging.getLogger("yomiba.scraper")
+
+#: store id -> next free request slot (monotonic), shared by every scraper
+#: instance of the process: concurrent imports take turns per store.
+_store_slots: dict[str, float] = {}
+_store_slots_lock = threading.Lock()
+
+
+def _reserve_store_slot(store_id: str, min_interval: float) -> float:
+    """Book the next request slot of ``store_id``; return seconds to wait."""
+    with _store_slots_lock:
+        now = time.monotonic()
+        slot = max(now, _store_slots.get(store_id, 0.0))
+        _store_slots[store_id] = slot + min_interval
+    return slot - now
 
 
 @dataclass(frozen=True)
@@ -105,13 +120,18 @@ class BaseScraper:
         return has_block_marker(response.text)
 
     def _throttle(self) -> None:
-        """Per-store politeness: keep a minimum gap between requests."""
+        """Per-store politeness: keep a minimum gap between requests, both
+        within this instance and across all concurrent imports."""
         min_interval = self.settings.scraper_min_request_interval_seconds
-        if min_interval <= 0:
-            return
-        wait = self._last_request_at + min_interval - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
+        if min_interval > 0:
+            wait = self._last_request_at + min_interval - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+        store_interval = self.settings.scraper_store_min_interval_seconds
+        if store_interval > 0:
+            wait = _reserve_store_slot(self.store_id or type(self).__name__, store_interval)
+            if wait > 0:
+                time.sleep(wait)
         self._last_request_at = time.monotonic()
 
     def _sleep_backoff(self, attempt: int, retry_after: str | None = None) -> None:

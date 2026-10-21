@@ -247,6 +247,13 @@ class Settings:
     scraper_min_request_interval_seconds: float = float(
         os.getenv("SCRAPER_MIN_REQUEST_INTERVAL_SECONDS", "0.5")
     )
+    #: Minimum gap between two requests to one store from ALL concurrent
+    #: imports together (process-wide). 0.25s equals the peak two import
+    #: workers could reach before, so raising IMPORT_MAX_CONCURRENT_JOBS
+    #: never sends a store more requests per second than that.
+    scraper_store_min_interval_seconds: float = float(
+        os.getenv("SCRAPER_STORE_MIN_INTERVAL_SECONDS", "0.25")
+    )
 
 
 STAGING_DB_PATH = Path("/data/yomiba-staging.db")

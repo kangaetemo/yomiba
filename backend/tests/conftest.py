@@ -31,6 +31,7 @@ def fast_scraper_network(monkeypatch):
         get_settings(),
         scraper_retry_backoff_seconds=0.0,
         scraper_min_request_interval_seconds=0.0,
+        scraper_store_min_interval_seconds=0.0,
     )
     monkeypatch.setattr(scrapers.base, "get_settings", lambda: fast)
     yield
