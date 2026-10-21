@@ -20,7 +20,7 @@ from ..models import PriceAlert, Publisher, Series, StoreListing, User, UserVolu
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..utils import from_cents
 from ..services import series_slugs
-from ..services.catalog_service import public_volume_condition
+from ..services.catalog_service import fresh_listing_condition, public_volume_condition
 from ..services.covers import cover_url
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -64,10 +64,12 @@ def _volume_fields(session: Session, volume_ids: list[int]) -> dict[int, dict]:
         .join(Publisher, Publisher.id == Series.publisher_id)
         .where(Volume.id.in_(volume_ids))
     ).all()
+    # Same rule as the volume page and the alert mail: a stale listing's
+    # "in stock" is not trusted, so it never sets the list price.
     best = dict(session.execute(
         select(StoreListing.volume_id, func.min(StoreListing.price))
         .where(StoreListing.volume_id.in_(volume_ids), StoreListing.in_stock.is_(True),
-               StoreListing.price.isnot(None))
+               StoreListing.price.isnot(None), fresh_listing_condition(session))
         .group_by(StoreListing.volume_id)
     ).all())
     slugs = series_slugs.slugs_for(session, [v.series_id for v, _, _ in rows])

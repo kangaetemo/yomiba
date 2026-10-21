@@ -46,7 +46,7 @@ from ..models import (
     WishlistItem,
 )
 from ..services import series_slugs
-from ..services.catalog_service import public_volume_condition
+from ..services.catalog_service import fresh_listing_condition, public_volume_condition
 from ..services.covers import cover_url
 from ..utils import from_cents, utcnow
 
@@ -117,7 +117,7 @@ def home(
         select(Volume.series_id, func.count(StoreListing.id), func.min(StoreListing.price))
         .join(StoreListing, StoreListing.volume_id == Volume.id)
         .where(Volume.series_id.in_(catalog), real, StoreListing.in_stock.is_(True),
-               StoreListing.price.isnot(None))
+               StoreListing.price.isnot(None), fresh_listing_condition(session))
         .group_by(Volume.series_id)
     ).all()
     volume_counts = dict(session.execute(
