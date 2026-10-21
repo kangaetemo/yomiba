@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { HomeHero } from "@/components/home/HomeHero";
 import { HotDeals } from "@/components/home/HotDeals";
 import { HowItWorks } from "@/components/home/HowItWorks";
@@ -9,6 +10,8 @@ import { getHomeFeed, getPriceDrops } from "@/services/catalog";
 import type { HomeFeed, PriceDrop } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 const DEAL_WINDOW_DAYS = 7;
 /** The feed carries a wider pool for the hero; the shelf shows the top of it. */

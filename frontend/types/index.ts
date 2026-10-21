@@ -189,6 +189,11 @@ export interface SeriesDetail {
   one_shot?: boolean;
 }
 
+/** GET /sitemap: catalog series with the volume numbers their pages list. */
+export interface SitemapFeed {
+  series: { slug: string; volumes: (number | null)[]; upcoming: boolean }[];
+}
+
 export interface VolumeStore {
   /** Listing id (admin removal). */
   id?: number | null;

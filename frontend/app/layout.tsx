@@ -8,6 +8,7 @@ import { SearchDialogButton } from "@/components/SearchDialog";
 import { THEME_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
 import { LoginLink } from "@/components/LoginLink";
 import { SiteTracker } from "@/components/SiteTracker";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 // Turkish needs latin-ext (ş, ğ, ı, İ).
 const body = Figtree({
@@ -23,12 +24,17 @@ const display = Fraunces({
 });
 
 export const metadata: Metadata = {
+  // Relative canonical / Open Graph URLs (and cover paths) resolve against it.
+  metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
   title: {
     default: "Yomiba — Manga fiyat karşılaştırma ve koleksiyon takibi",
     template: "%s | Yomiba",
   },
   description:
     "Manga fiyatlarını Türk mağazaları (BKM Kitap, Gerekli Şeyler, Kitap Sepeti ve diğerleri) arasında karşılaştırın, koleksiyonunuzu takip edin, fiyat alarmı kurun.",
+  openGraph: { type: "website", siteName: SITE_NAME, locale: "tr_TR" },
+  twitter: { card: "summary" },
 };
 
 /** Wordmark: "Yomiba" (読み場, "a place to read") with a hanko seal. */

@@ -8,6 +8,7 @@ import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { CollectionStatusPicker } from "@/components/CollectionStatusPicker";
 import { WishlistToggle } from "@/components/WishlistToggle";
 import { PriceAlertForm } from "@/components/PriceAlertForm";
+import { JsonLd, breadcrumbs } from "@/components/JsonLd";
 import { ReportIssue } from "@/components/ReportIssue";
 import { RemoveListingButton } from "@/components/admin/RemoveListingButton";
 import { VolumeIsbnPanel } from "@/components/admin/VolumeIsbnPanel";
@@ -15,10 +16,11 @@ import { Badge, Cover, formatDate, formatTL, volumeTitle } from "@/components/ui
 import { ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/time";
 import { oneShotVolumeNumber, parseVolumeSegment, seriesPath, volumePath } from "@/lib/paths";
+import { SITE_URL, openGraph } from "@/lib/site";
 import { volumeLabel as labelFor } from "@/lib/volumeLabel";
 import { currentUserOrNull } from "@/services/auth";
 import { getPriceAlert, getPriceHistory, getSeries, getVolume, getWishlist } from "@/services/catalog";
-import type { PriceAlert, PriceHistory, SeriesDetail, VolumeStore, WishlistState } from "@/types";
+import type { PriceAlert, PriceHistory, SeriesDetail, VolumeDetail, VolumeStore, WishlistState } from "@/types";
 import { LoginLink } from "@/components/LoginLink";
 
 export const dynamic = "force-dynamic";
@@ -31,12 +33,82 @@ export async function generateMetadata({
   params,
 }: VolumePageProps): Promise<Metadata> {
   try {
-    const { volumeId } = await resolveVolume(await params);
+    const { series, volumeId } = await resolveVolume(await params);
     const detail = await getVolume(volumeId);
-    return { title: `${detail.series.title} ${labelFor(detail.number)}` };
+    const name = volumeName(detail, oneShotVolumeNumber(series) !== null);
+    const title = `${name} fiyatları`;
+    const description = volumeDescription(detail, name);
+    const url = volumePath(detail.series.slug, detail.number);
+    return {
+      title,
+      description,
+      alternates: { canonical: url },
+      openGraph: openGraph({ title, description, url, image: detail.cover_url }),
+    };
   } catch {
     return { title: "Cilt bulunamadı" };
   }
+}
+
+/** "Berserk Cilt 3"; a one shot is just its series title. */
+function volumeName(detail: VolumeDetail, oneShot: boolean): string {
+  return oneShot ? detail.series.title : `${detail.series.title} ${labelFor(detail.number)}`;
+}
+
+/** Search snippet: the lowest price today and how many stores sell it. */
+function volumeDescription(detail: VolumeDetail, name: string): string {
+  const best = detail.unverified ? null : cheapest(detail.stores);
+  const inStock = detail.stores.filter((s) => s.stock && !s.stale && s.price !== null).length;
+  const parts = [
+    best
+      ? `${name} (${detail.series.publisher}) ${inStock} mağazada satışta, en ucuz fiyat ${formatTL(best.price)}.`
+      : `${name} (${detail.series.publisher}) için Türk kitapçılarındaki fiyatlar.`,
+    "Mağaza fiyatlarını ve stok durumunu karşılaştır, fiyat geçmişine bak, fiyat düşünce haber al.",
+  ];
+  return parts.join(" ");
+}
+
+/** schema.org Book for the volume; with buyable offers it is also a Product
+ * with an AggregateOffer (Google needs offers on a Product). */
+function volumeStructuredData(detail: VolumeDetail, name: string, url: string, best: number | null) {
+  const offers = detail.unverified
+    ? []
+    : detail.stores.filter((s) => s.stock && !s.stale && s.price !== null).map((s) => Number(s.price));
+  const image = detail.cover_url ? new URL(detail.cover_url, SITE_URL).href : undefined;
+  const book: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": offers.length > 0 && best !== null ? ["Book", "Product"] : "Book",
+    name,
+    url,
+    inLanguage: "tr",
+    bookFormat: "https://schema.org/Paperback",
+    publisher: { "@type": "Organization", name: detail.series.publisher },
+    isPartOf: { "@type": "BookSeries", name: detail.series.title, url: `${SITE_URL}${seriesPath(detail.series.slug)}` },
+  };
+  if (detail.number !== null && detail.number >= 0) book.volumeNumber = String(detail.number);
+  if (image) book.image = image;
+  if (detail.series.author) book.author = { "@type": "Person", name: detail.series.author };
+  if (detail.series.illustrator && detail.series.illustrator !== detail.series.author) {
+    book.illustrator = { "@type": "Person", name: detail.series.illustrator };
+  }
+  if (detail.isbn) {
+    book.isbn = detail.isbn;
+    if (/^\d{13}$/.test(detail.isbn)) book.gtin13 = detail.isbn;
+  }
+  if (detail.page_count) book.numberOfPages = detail.page_count;
+  if (detail.release_date) book.datePublished = detail.release_date;
+  if (offers.length > 0 && best !== null) {
+    book.brand = { "@type": "Brand", name: detail.series.publisher };
+    book.offers = {
+      "@type": "AggregateOffer",
+      priceCurrency: "TRY",
+      lowPrice: best.toFixed(2),
+      highPrice: Math.max(...offers).toFixed(2),
+      offerCount: offers.length,
+      availability: "https://schema.org/InStock",
+    };
+  }
+  return book;
 }
 
 /** Public URL -> volume: the series comes from the slug, the volume from its
@@ -130,9 +202,21 @@ export default async function VolumePage({ params }: VolumePageProps) {
   // A window of volumes around this one (the whole shelf can be long).
   const related = here < 0 ? siblings.slice(0, 8) : siblings.slice(Math.max(0, here - 3), Math.max(0, here - 3) + 8);
   const credits = detail.series.author && detail.series.author === detail.series.illustrator;
+  const name = volumeName(detail, isOneShot);
+  const pageUrl = `${SITE_URL}${volumePath(detail.series.slug, detail.number)}`;
+  const structured = [
+    volumeStructuredData(detail, name, pageUrl, best?.price ?? null),
+    breadcrumbs([
+      { name: "Yomiba", url: SITE_URL },
+      // A one shot's series page only redirects to this one.
+      ...(isOneShot ? [] : [{ name: detail.series.title, url: `${SITE_URL}${seriesPath(detail.series.slug)}` }]),
+      { name, url: pageUrl },
+    ]),
+  ];
 
   return (
     <div className="space-y-12">
+      {structured.map((data, i) => <JsonLd key={i} data={data} />)}
       <nav aria-label="Konum" className="flex flex-wrap items-center gap-2 text-sm">
         <Link href="/" className="text-muted hover:text-accent">
           Ana sayfa

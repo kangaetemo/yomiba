@@ -486,3 +486,14 @@ def test_admin_sees_stores_without_a_listing(seeded, db_session):
     seeded.cookies.clear()
     anonymous = seeded.get(f"/volume/{vol2}").json()
     assert anonymous["missing_stores"] == [] and anonymous["last_refresh_at"] is None
+
+
+def test_sitemap_lists_catalog_series_and_volumes(seeded):
+    data = seeded.get("/sitemap").json()
+    by_slug = {s["slug"]: s for s in data["series"]}
+    berserk = next(s for slug, s in by_slug.items() if slug.startswith("berserk") and "gluttony" not in slug)
+    assert berserk["volumes"] == [1, 2]
+    assert berserk["upcoming"] is False
+    # Every listed slug opens its series page.
+    for slug in by_slug:
+        assert seeded.get(f"/series/{slug}").status_code == 200
