@@ -53,6 +53,15 @@ NON_MANGA_KEYWORDS: tuple[str, ...] = (
 )
 
 
+#: An empty search page still shows sponsored products (Tarzan, comic sets)
+#: under "Toplam 0 ürün". If those render as showcase cards they must not
+#: count as results: the importer would skip its fallback queries and the
+#: series' real listings go stale (Büyülü Dükkan, "Akame, Keser!", 2026-10-21).
+_NO_RESULTS_RE = re.compile(
+    r"Toplam\s*0\s*ürün|kriterlere\s+uygun\s+ürün\s+bulunamam", re.I
+)
+
+
 class GerekliseylerScraper(BaseScraper):
     store_id = "gerekliseyler"
     store_name = "Gerekli Şeyler"
@@ -122,7 +131,7 @@ class GerekliseylerScraper(BaseScraper):
 
             soup = self.soup(response.text)
             cards = soup.select("div.showcase")
-            if not cards:
+            if not cards or _NO_RESULTS_RE.search(response.text):
                 self.stats["stop_reason"] = "empty_page"
                 break
 

@@ -208,3 +208,21 @@ def test_common_filter_rejects_merchandise_from_search():
     # the other fixture books are untouched (the model-kit and action
     # figure cards in the fixture are rejected by the store's own list)
     assert any("Berserk Cilt 16" in r.title for r in results)
+
+
+def test_empty_search_ignores_sponsored_cards():
+    """An empty search page still shows sponsored showcase cards under
+    "Toplam 0 ürün"; they are not results (Büyülü Dükkan, 2026-10-21)."""
+    page = SEARCH_P1.replace(
+        "<body>",
+        "<body><span>Toplam 0 ürün</span>"
+        "<p>Seçtiğiniz kriterlere uygun ürün bulunamamıştır.</p>",
+        1,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=page)
+
+    scraper = make_scraper(handler)
+    assert scraper.search("Akame, Keser!") == []
+    assert scraper.stats["stop_reason"] == "empty_page"
