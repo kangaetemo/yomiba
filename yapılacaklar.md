@@ -28,10 +28,12 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
     - Alan adı ve DNS sunucu firmasından bağımsız (Cloudflare).
     - Aylık ödeme; ilk haftalar Railway ve Vercel yedekte açık kalır.
   - **Kullanıcının yapacakları:** TRX-8G siparişi (Ubuntu 24.04, panel yok, KVM ve root/SSH teyidi), Cloudflare hesabı (DNS + R2) ya da Backblaze B2, Filminibul alan adının nerede kayıtlı olduğunu kontrol.
-  - Ziyaretçi sayacı: `@vercel/analytics` yerine kendi sunucumuzda çalışan bir sayaç (ör. Umami).
+  - Ziyaretçi sayacı: `@vercel/analytics` yerine kendi sunucumuzda çalışan bir sayaç. 21 Ekim: Umami yerine kendi sayacımız yazıldı (aşağıdaki analiz sayfası maddesi).
 - [ ] **Railway ve Vercel'i sil (yaklaşık 3 Kasım).** Railway servisi 20 Ekim'de durduruldu (GitHub bağlantısı kesildi, aktif deploy kaldırıldı); volume donmuş kopya olarak duruyor. Sunucu dışı yedek R2'de. Vercel sürümü her isteği yomiba.net'e yönlendiriyor (`frontend/next.config.ts`, yalnızca `VERCEL=1` iken).
 - [ ] **Amazon TR, D&R ve Cizman'ı aç.** Türkiye IP'sinden ana sayfalar açılıyor; her birinde gerçek arama sonucu görülünce `.env` içinde `DISABLED_STORES` boşaltılacak. Edessa smoke testinde yok, aynı aramayla kontrol edilecek.
 - [x] **Yomiba alan adı.** 20 Ekim: **yomiba.net** alındı (.com ve .app başkasındaydı). DNS Cloudflare'de olacak; VPS'te HTTPS ve alarm mailleri (Resend) bu alan adıyla.
+- [ ] **Admin analiz sayfası (`/admin/analiz`).** 21 Ekim: kod hazır, PR'da. Çerezsiz, kendi sunucumuzda: ziyaretçi, oturum, sayfa görüntüleme, sayfada kalma süresi, hemen çıkma, mağaza tıklamaları (mağaza, cilt ve seri bazında), aramalar ve sonuçsuz aramalar, trafik kaynakları ve kampanya etiketleri, cihaz/tarayıcı/ülke, gün-saat dağılımı; her ölçü önceki dönemle karşılaştırmalı. Vercel Analytics kaldırıldı.
+  - Yayına çıkınca: birkaç gün sonra sayılar mantıklı mı bak; Cloudflare proxy kapalıysa ülke boş kalır.
 - [ ] **SEO çalışmaları.** 18 Ekim tespiti: site haritası, `robots.txt` ve yapılandırılmış veri (JSON-LD) yok. Yapılacaklar:
   - `sitemap.xml` (seri + cilt sayfaları) ve `robots.txt`
   - cilt sayfalarına schema.org `Book` + `Offer` (ISBN, fiyat, stok, mağaza), seri sayfalarına `BookSeries`, gezinti için `BreadcrumbList`

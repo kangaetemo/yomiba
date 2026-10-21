@@ -26,6 +26,14 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 21 Ekim: admin analiz sayfası (kod, PR bekliyor)
+
+- **Kayıt:** Tarayıcı `POST /api/olay` ile dört olay gönderiyor: sayfa görüntüleme, mağaza tıklaması (başka siteye giden her bağlantı), arama (yazma bitince, sonuç sayısıyla) ve sayfada kalma süresi. Tablo `analytics_events` (migration `0024_analytics`), kod `backend/app/services/analytics.py`, istemci `frontend/lib/track.ts` + `components/SiteTracker.tsx`.
+- **Gizlilik:** Çerez yok. Ziyaretçi; IP + tarayıcıdan, her gün değişen ve ertesi gün silinen bir tuzla üretilen 16 karakterlik bir özetle sayılıyor, bu yüzden günler arası takip edilemiyor. Oturum kimliği sekmenin sessionStorage'ında (30 dk hareketsizlikte yenilenir). Ham kayıtlar 400 gün tutuluyor. Admin ziyaretleri, botlar ve dakikada 120'den fazla olay gönderen IP'ler sayılmıyor.
+- **Eşleştirme:** Sayfa adresi seri/cilde, tıklanan mağaza linki `utm_*` etiketleri atılarak `store_listings.product_url` ile ilana çözülüyor; ilan bulunamazsa mağaza alan adından bulunuyor.
+- **Rapor:** `GET /admin/analytics?days=1|7|30|90|365`, sayfa `/admin/analiz`. Vercel Analytics (`@vercel/analytics`) kaldırıldı; VDS'e geçişten beri zaten sayım yapmıyordu.
+- **Doğrulama:** Yeni testler dahil backend testleri geçti (yalnızca gerçek `yomiba.db` isteyen `test_task2_identity.py` ortamda çalışmadı). Yerelde örnek veriyle sayfa masaüstü, telefon ve koyu temada kontrol edildi; tarayıcıdan gerçek sayfa görüntüleme ve mağaza tıklaması kaydedilip doğru ilana bağlandı.
+
 ### 20 Ekim: push'ta otomatik deploy
 
 - **İş akışı:** `.github/workflows/deploy.yml`. main'e push'ta "Application checks" geçince, her pazartesi 04:30'da (güncel taban imajlar ve paketler) ve elle *Actions → Deploy → Run workflow* ile sunucuda `deploy/guncelle.sh` çalışır.
