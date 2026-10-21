@@ -80,7 +80,7 @@ An operator must verify its owner before a separate, explicit ownership transfer
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints.txt
 cp .env.example .env                                  # optional; defaults work
 
 # run (from the backend/ directory)

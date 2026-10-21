@@ -1,0 +1,43 @@
+name: Dependency audit
+
+# Known vulnerabilities in the pinned backend packages (constraints.txt) and
+# the frontend's production packages (package-lock.json). Separate from
+# "Application checks" so a newly published advisory turns this red without
+# blocking deploys; the weekly run catches advisories between pushes.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 5 * * 1" # Monday 08:00 Istanbul
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pip-audit==2.10.1
+      # constraints.txt pins every package, so nothing needs to be installed.
+      - run: pip-audit -r constraints.txt --no-deps --disable-pip
+  npm-audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+      # Dev-only tools (eslint) are not shipped in the image.
+      - run: npm audit --omit=dev --audit-level=high
