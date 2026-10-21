@@ -217,3 +217,70 @@ def test_enrichment_reaches_results_beyond_default_detail_limit():
     results = make_scraper(handler, max_detail_requests=1).search("berserk")
     assert len(results) > 1
     assert all(r.in_stock is False for r in results)
+
+
+# -- search service (aisearch.sendheap.com, live 2026-10-21) ---------------------
+
+AI_PAGE = (
+    "<html><body><div data-toggle=\"ai-search-result\" data-ai-key=\"k-123\"></div>"
+    "<div id='product-list-panel'></div></body></html>"
+)
+
+
+def _ai_product(n: int, **extra) -> dict:
+    return {
+        "id": str(n), "title": f"Naruto {n}. Cilt", "url": f"https://kitapsepeti.com/naruto-{n}",
+        "image": f"https://asset.kitapsepeti.com//naruto-{n}-K.jpg",
+        "brand": "Gerekli Şeyler Yayıncılık", "model": "Masaşi Kişimoto",
+        "price": 177.6, "list_price": 240, "in_stock": True, **extra,
+    }
+
+
+def ai_handler(found: int, seen: list):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "aisearch.sendheap.com":
+            seen.append(request)
+            page = int(request.url.params["page"])
+            first = (page - 1) * 20 + 1
+            numbers = range(first, min(found, first + 19) + 1)
+            products = [_ai_product(n, in_stock=n != 2) for n in numbers]
+            return httpx.Response(200, json={"found": found, "per_page": 20, "page": page, "results": products})
+        if request.url.path == "/arama":
+            return httpx.Response(200, text=AI_PAGE)
+        return httpx.Response(404, text="not found")
+    return handler
+
+
+def test_search_reads_the_search_service_when_the_page_has_no_cards():
+    seen: list[httpx.Request] = []
+    scraper = make_scraper(ai_handler(25, seen))
+    results = {r.volume_number: r for r in scraper.search("Naruto")}
+
+    assert len(results) == 25
+    first = results[1]
+    assert first.product_url == "https://www.kitapsepeti.com/naruto-1"  # www, like the listings
+    assert first.publisher == "Gerekli Şeyler Yayıncılık"
+    assert first.author == "Masaşi Kişimoto"
+    assert first.price == Decimal("177.6")
+    assert first.in_stock is True and results[2].in_stock is False
+    assert [int(r.url.params["page"]) for r in seen] == [1, 2]  # 25 found: stops after page 2
+    assert seen[0].headers["x-search-key"] == "k-123"
+    assert seen[0].url.params["q"] == "Naruto"
+    assert scraper.stats["pages_fetched"] == 2 and scraper.stats["stop_reason"] == "last_page"
+
+
+def test_search_service_respects_the_result_cap():
+    seen: list[httpx.Request] = []
+    scraper = make_scraper(ai_handler(200, seen), kitapsepeti_max_search_results=30)
+    assert len(scraper.search("Naruto")) == 30
+    assert len(seen) == 2 and scraper.stats["stop_reason"] == "max_results"
+
+
+def test_search_service_error_on_first_page_raises():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "aisearch.sendheap.com":
+            return httpx.Response(401, json={"error": "bad key"})
+        return httpx.Response(200, text=AI_PAGE)
+
+    with pytest.raises(ScraperError):
+        make_scraper(handler).search("Naruto")

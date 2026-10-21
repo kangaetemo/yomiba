@@ -10,6 +10,14 @@ Data sources (all public, no authentication):
      * ``.current-price span.product-price`` -> current price ("182,00")
    The pagination parameter is ``pg`` (page size is server-side, ~32 items).
 
+   Since October 2026 the page renders no cards: the results come from
+   the store's search service ``GET https://aisearch.sendheap.com/v1/search
+   ?q=<query>&page=<n>&per_page=20`` (JSON: ``found``, ``results`` with
+   ``title, url, brand, price, in_stock, image``; at most 20 per page),
+   called with the ``x-search-key`` header the page carries as
+   ``data-ai-key``. Live-verified 2026-10-21 (naruto: found 49).
+   The HTML cards above are still read when a page has them.
+
 2. Detail page (enrichment, best effort): schema.org JSON-LD
    ``Product+Book`` with ``isbn, publisher, author, inLanguage, offers``
    (``price`` + ``availability``).
@@ -35,7 +43,7 @@ from __future__ import annotations
 
 import logging
 import re
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import quote_plus, urljoin, urlparse
 
 from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
 from .base import BaseScraper, ScraperError
@@ -49,6 +57,12 @@ NON_MANGA_KEYWORDS: tuple[str, ...] = (
     "figur", "asorti", "puzzle", "kupa", "tisort", "tshirt",
     "poster", "pelus", "mousepad", "sabit", "kutulu fig",
 )
+
+
+#: Search service behind /arama (see the module docstring).
+AI_SEARCH_URL = "https://aisearch.sendheap.com/v1/search"
+AI_SEARCH_PER_PAGE = 20
+_AI_KEY_RE = re.compile(r'data-ai-key="([^"]+)"')
 
 
 class KitapsepetiScraper(BaseScraper):
@@ -124,6 +138,10 @@ class KitapsepetiScraper(BaseScraper):
             soup = self.soup(response.text)
             cards = soup.select("div.product-item")
             if not cards:
+                key = _AI_KEY_RE.search(response.text) if page == 1 else None
+                if key:
+                    self.stats["pages_fetched"] -= 1
+                    return self._ai_search_pages(query, key.group(1))
                 self.stats["stop_reason"] = "empty_page"
                 break
 
@@ -154,6 +172,72 @@ class KitapsepetiScraper(BaseScraper):
             self.stats["stop_reason"] = "max_pages"
 
         return items
+
+    def _ai_search_pages(self, query: str, key: str) -> list[dict]:
+        pages_limit, results_limit = self._limits()
+        max_results = max(1, results_limit)
+        headers = {
+            "Accept": "application/json",
+            "x-search-key": key,
+            "Origin": self.base_url,
+            "Referer": f"{self.base_url}/arama?q={quote_plus(query)}",
+        }
+        items: list[dict] = []
+        seen_urls: set[str] = set()
+        for page in range(1, max(1, pages_limit) + 1):
+            url = (f"{AI_SEARCH_URL}?q={quote_plus(query)}&page={page}"
+                   f"&per_page={AI_SEARCH_PER_PAGE}")
+            try:
+                data = self.get_json(url, headers=headers)
+            except ScraperError:
+                if page == 1:
+                    raise
+                logger.warning("%s: search page %s failed; keeping %s items",
+                               self.store_id, page, len(items))
+                self.stats["stop_reason"] = "page_error"
+                break
+            self.stats["pages_fetched"] += 1
+            products = data.get("results") if isinstance(data, dict) else None
+            if not products:
+                self.stats["stop_reason"] = "empty_page"
+                break
+            for product in products:
+                self.stats["raw_products"] += 1
+                item = self._product_to_item(product)
+                if item is None:
+                    continue
+                if item["url"] in seen_urls:
+                    self.stats["duplicates_skipped"] += 1
+                    continue
+                seen_urls.add(item["url"])
+                items.append(item)
+                if len(items) >= max_results:
+                    self.stats["stop_reason"] = "max_results"
+                    return items
+            if len(products) < AI_SEARCH_PER_PAGE or page * AI_SEARCH_PER_PAGE >= (data.get("found") or 0):
+                self.stats["stop_reason"] = "last_page"
+                break
+        else:
+            self.stats["stop_reason"] = "max_pages"
+        return items
+
+    @classmethod
+    def _product_to_item(cls, product: dict) -> dict | None:
+        title = re.sub(r"\s+", " ", str(product.get("title") or "")).strip()
+        path = urlparse(str(product.get("url") or "")).path
+        if not title or path in ("", "/"):
+            return None
+        in_stock = product.get("in_stock")
+        return {
+            "title": title,
+            # The service links the bare host; listings use the www one.
+            "url": cls.base_url + path,
+            "publisher": product.get("brand") or None,
+            "author": product.get("model") or None,
+            "price": parse_tr_price(product.get("price")),
+            "image": product.get("image") or None,
+            "in_stock": in_stock if isinstance(in_stock, bool) else True,
+        }
 
     @classmethod
     def _card_to_item(cls, card) -> dict | None:
@@ -217,9 +301,10 @@ class KitapsepetiScraper(BaseScraper):
                 series_title=parsed.base_title or None,
                 volume_number=parsed.volume_number,
                 publisher=item.get("publisher"),
+                author=item.get("author"),
                 price=item.get("price"),
                 currency="TRY",
-                in_stock=True,
+                in_stock=item.get("in_stock", True),
                 image_url=item.get("image"),
                 relevance=relevance,
             ),
