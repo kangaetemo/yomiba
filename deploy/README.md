@@ -174,6 +174,9 @@ atlar.
   `python restore_check.py --db <dosya> --rehearse`
 - Loglar: `docker compose logs --tail 200 backend`
 - R2 durumu: `docker compose logs --tail 50 litestream`; gece kopyası `/var/log/yomiba-yedek.log`
+- Backend işlemci yiyorsa: `sudo /srv/yomiba/app/deploy/cpu-teshis.sh > /tmp/cpu.txt 2>&1`
+  (docker stats, iş parçacıkları, WAL boyu, log/istek sayıları ve py-spy profili;
+  hiçbir şeyi değiştirmez, ~80 sn sürer)
 
 ## Henüz yok (sıradaki adımlar)
 
