@@ -534,7 +534,7 @@ def test_fallback_queries_head_and_original(db_session):
     assert fallback_queries(db_session, "Berserk") == []
     assert fallback_queries(db_session, "Zom 100: Ölülerin Yapılacaklar Listesi") == ["Zom 100"]
     assert fallback_queries(db_session, "Avatar: The Last Airbender - Uçurum") == [
-        "Avatar: The Last Airbender", "Avatar",
+        "Avatar The Last Airbender", "Avatar",
     ]
 
 
@@ -752,3 +752,18 @@ def test_fallback_queries_split_original_title_parts(db_session):
     assert fallback_queries(db_session, "Tokyo İntikamcıları") == [
         "tokyo revengers", "toukyou revengers",
     ]
+
+
+def test_fallback_queries_drop_punctuation(db_session):
+    """Büyülü Dükkan finds nothing for "Akame, Keser!" (every word must
+    match, "Akame," included) but sells "Akame Keser Cilt 13"."""
+    from app.services.background_import import fallback_queries
+    from tests.test_import_service import seed_catalog_series
+
+    seed_catalog_series(db_session, "Akame, Keser!", "Athica", original="akame ga kill")
+    db_session.commit()
+    assert fallback_queries(db_session, "Akame, Keser!") == ["Akame Keser", "akame ga kill"]
+    # an original title equal to the plain title is not searched twice
+    seed_catalog_series(db_session, "Tokyo Gül", "P", original="tokyo gul")
+    db_session.commit()
+    assert fallback_queries(db_session, "Tokyo Gül") == []

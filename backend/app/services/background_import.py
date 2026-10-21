@@ -69,7 +69,7 @@ def fallback_queries(session: Session, query: str) -> list[str]:
     then each of the catalog's original (foreign) titles. Store searches often
     return nothing for the full subtitled title. Matching still runs
     against the catalog, so a broader query can never create series or
-    volumes.
+    volumes. Every candidate is sent without punctuation.
     """
     candidates: list[str] = []
     # A binding variant "Soichi (Bez Cilt)": stores title both bindings
@@ -80,10 +80,14 @@ def fallback_queries(session: Session, query: str) -> list[str]:
     # "Kamisama Kiss -Tanrılık Görevine Başladım" -> "Kamisama Kiss",
     # "Zom 100: Ölülerin Yapılacaklar Listesi" -> "Zom 100": the same
     # separators the importer's title-without-subtitle match uses.
-    for sep in reversed(list(_SUBTITLE_SEPARATOR_RE.finditer(query))):
+    separators = list(_SUBTITLE_SEPARATOR_RE.finditer(query))
+    for sep in reversed(separators):
         head = query[: sep.start()].strip()
         if len(head) >= 3:
             candidates.append(head)
+    if not separators:
+        # Without a subtitle the whole title is retried (see below).
+        candidates.append(query)
     original = session.scalar(
         select(Series.original_title)
         .where(Series.title == query, Series.original_title.is_not(None))
@@ -92,11 +96,18 @@ def fallback_queries(session: Session, query: str) -> list[str]:
     # Each spelling on its own: "tokyo revengers | toukyou revengers" ->
     # "tokyo revengers", then "toukyou revengers".
     candidates.extend(original_title_parts(original))
-    seen = {normalize_text(query)}
+    # Without punctuation: "Akame, Keser!" finds nothing at the IdeaSoft
+    # stores (Büyülü Dükkan, Gerekli Şeyler: every word must match, "Akame,"
+    # included), which sell "Akame Keser Cilt 13" (2026-10-21).
+    def plain(text: str) -> str:
+        return " ".join(re.sub(r"[^\w\s]", " ", text).split())
+
+    sent = plain(query) == " ".join(query.split())
+    seen = {normalize_text(query)} if sent else set()
     out: list[str] = []
-    for candidate in candidates:
+    for candidate in map(plain, candidates):
         key = normalize_text(candidate)
-        if key and key not in seen:
+        if len(candidate) >= 3 and key and key not in seen:
             seen.add(key)
             out.append(candidate)
     return out
