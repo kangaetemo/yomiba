@@ -57,6 +57,7 @@ from ..normalization import (
     normalize_isbn,
     normalize_publisher,
     normalize_text,
+    original_title_parts,
     parse_volume_range,
     parse_volume_title,
     publisher_family_key,
@@ -1034,9 +1035,7 @@ class ImportService:
         if holder is None:
             return True
         holder_series = self.session.get(Series, holder.series_id)
-        titles = {series.normalized_title}
-        if series.original_title:
-            titles.add(series.original_title)
+        titles = {series.normalized_title, *original_title_parts(series.original_title)}
         if holder_series is None or holder_series.normalized_title not in titles:
             return False
         if holder.volume_number < 0 or volume_number is None:
@@ -1220,7 +1219,8 @@ class ImportService:
         """
         catalog_ids = select(CatalogSeries.series_id).distinct()
         publisher_filter = [] if publisher_id is None else [Series.publisher_id == publisher_id]
-        candidates: set[int] = set()
+        bilingual: set[int] = set()
+        original_only: set[int] = set()
         for s in self.session.scalars(
             select(Series).where(
                 Series.original_title.isnot(None),
@@ -1228,22 +1228,15 @@ class ImportService:
                 *publisher_filter,
             )
         ):
-            if not s.original_title or not s.normalized_title:
-                continue
-            if series_key in (
-                f"{s.original_title} {s.normalized_title}",
-                f"{s.normalized_title} {s.original_title}",
+            originals = original_title_parts(s.original_title)
+            if s.normalized_title and any(
+                series_key in (f"{o} {s.normalized_title}", f"{s.normalized_title} {o}")
+                for o in originals
             ):
-                candidates.add(s.id)
-        if not candidates:
-            for s in self.session.scalars(
-                select(Series).where(
-                    Series.original_title == series_key,
-                    Series.id.in_(catalog_ids),
-                    *publisher_filter,
-                )
-            ):
-                candidates.add(s.id)
+                bilingual.add(s.id)
+            if series_key in originals:
+                original_only.add(s.id)
+        candidates = bilingual or original_only
         if len(candidates) == 1:
             return self.session.get(Series, candidates.pop())
         return None
@@ -1263,10 +1256,10 @@ class ImportService:
         if volume_number is None and not title_verified:
             title_key = normalize_text(parse_volume_title(result.title).base_title)
             allowed_titles = {series.normalized_title}
-            if series.original_title:
-                allowed_titles.update({series.original_title,
-                    f"{series.original_title} {series.normalized_title}",
-                    f"{series.normalized_title} {series.original_title}"})
+            for original in original_title_parts(series.original_title):
+                allowed_titles.update({original,
+                    f"{original} {series.normalized_title}",
+                    f"{series.normalized_title} {original}"})
             if title_key not in allowed_titles:
                 return self._reject("ambiguous_volume")
         if volume_number is None:

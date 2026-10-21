@@ -599,3 +599,24 @@ def test_catalog_missing_volume_is_rejected(import_service, db_session):
     }
     assert vols == {1}
     assert import_service.last_reason == "volume_not_found"
+
+
+def test_any_original_title_part_bridges(import_service, db_session):
+    """A multi-spelling original title ("tokyo revengers | toukyou
+    revengers") bridges on each spelling: "Tokyo Revengers 7. Cilt"
+    without an ISBN still lands on Tokyo İntikamcıları."""
+    series = _catalog_series(db_session, "Tokyo İntikamcıları",
+                             "tokyo revengers | toukyou revengers", "Gerekli Şeyler",
+                             volumes=(6, 7))
+    do_import(
+        import_service,
+        db_session,
+        make_result("bkm", "Tokyo Revengers 7. Cilt", "180", publisher="Gerekli Şeyler"),
+    )
+    assert db_session.scalar(select(func.count()).select_from(Series)) == 1
+    vol7 = db_session.scalar(
+        select(Volume).where(Volume.series_id == series.id, Volume.volume_number == 7)
+    )
+    assert db_session.scalar(
+        select(func.count()).select_from(StoreListing).where(StoreListing.volume_id == vol7.id)
+    ) == 1

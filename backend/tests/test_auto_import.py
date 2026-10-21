@@ -737,3 +737,18 @@ def test_background_job_rechecks_listing_missing_from_search(sessions, runner_fa
         assert listing.price == 20000  # page gave no price: keep the last one
     finally:
         session.close()
+
+
+def test_fallback_queries_split_original_title_parts(db_session):
+    """Tokyo İntikamcıları (2026-10-21): mangakol lists two spellings. The
+    joined "tokyo revengers toukyou revengers" found nothing at Gerekli
+    Şeyler (all-words search), which sells it as "Tokyo Revengers 18. Cilt"."""
+    from app.services.background_import import fallback_queries
+    from tests.test_import_service import seed_catalog_series
+
+    series = seed_catalog_series(db_session, "Tokyo İntikamcıları", "Gerekli Şeyler")
+    series.original_title = "tokyo revengers | toukyou revengers"
+    db_session.commit()
+    assert fallback_queries(db_session, "Tokyo İntikamcıları") == [
+        "tokyo revengers", "toukyou revengers",
+    ]

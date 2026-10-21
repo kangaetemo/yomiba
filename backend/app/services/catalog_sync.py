@@ -24,7 +24,7 @@ from ..models import (
     Series,
     Volume,
 )
-from ..normalization import normalize_publisher, normalize_text
+from ..normalization import ORIGINAL_TITLE_SEPARATOR, normalize_publisher, normalize_text
 from ..normalization.isbn import book_isbn
 from ..normalization.text import slugify
 from ..scrapers.mangakol import (
@@ -495,7 +495,10 @@ class CatalogSyncService:
         lettering (``One-Punch Man | One Punch-Man | ワンパンマン``). Each
         ``|`` part is normalized separately, empties (e.g. CJK-only parts
         after diacritic/CJK folding) are dropped, duplicates collapse, and
-        distinct parts are joined with a single space.
+        distinct parts are joined with ``ORIGINAL_TITLE_SEPARATOR`` so each
+        stays usable on its own: a joined "tokyo revengers toukyou revengers"
+        was one store query that strict all-words searches (Gerekli Şeyler)
+        never answered (Tokyo İntikamcıları, 2026-10-21).
         """
         seen: set[str] = set()
         parts: list[str] = []
@@ -504,7 +507,7 @@ class CatalogSyncService:
             if key and key not in seen:
                 seen.add(key)
                 parts.append(key)
-        return " ".join(parts)
+        return ORIGINAL_TITLE_SEPARATOR.join(parts)
 
     @staticmethod
     def _clean_title(title: str, local_publisher: str | None) -> str:

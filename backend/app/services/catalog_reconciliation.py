@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import CatalogExclusion, CatalogSeries, PublisherAlias, Series, Volume
-from ..normalization import normalize_publisher, normalize_text
+from ..normalization import normalize_publisher, normalize_text, original_title_parts
 from ..normalization.text import slugify
 from ..scrapers.mangakol import CatalogManga
 from .catalog_sync import CatalogSyncReport, CatalogSyncService, _names_related
@@ -48,7 +48,7 @@ def _same_catalog_edition(
     )
     old_title = normalize_text(series.title)
     new_title = normalize_text(manga.title)
-    old_original = series.original_title or ""
+    old_original = next(iter(original_title_parts(series.original_title)), "")
     new_original = normalize_text(manga.original_title.split("|")[0])
     old_numbers = set(session.scalars(
         select(Volume.volume_number).where(Volume.series_id == series.id)
