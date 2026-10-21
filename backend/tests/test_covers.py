@@ -240,3 +240,147 @@ def test_larger_store_rendition_is_tried_first(db_session, store):
     fetcher, download = _fetcher(db_session, store, {small: _image()})  # "-B" missing: falls back
     fetcher.run(budget=10)
     assert download.asked == [large, small] and vol.cover_key is not None
+
+
+# -- provisional (pre-release, usually Japanese) covers ---------------------------------------------
+
+MANGAKOL_TR = "https://mangakol.com/images/mangavolume/thumbnails/x-tr.webp"
+MANGAKOL_TR_FULL = "https://mangakol.com/images/mangavolume/x-tr.webp"
+
+
+def _image_b(w=300, h=450) -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (w, h), (20, 90, 200)).save(out, format="JPEG")
+    return out.getvalue()
+
+
+def _announced(db_session, store, images=None):
+    """A "Yakında" volume whose Mangakol (Japanese) cover got stored."""
+    vol = _volume_with_offers(db_session, images or {}, catalog_cover=MANGAKOL)
+    vol.catalog_released = False
+    db_session.commit()
+    fetcher, download = _fetcher(db_session, store, {MANGAKOL_FULL: _image()})
+    fetcher.run(budget=10)
+    assert vol.cover_source == "mangakol" and vol.cover_provisional is True
+    assert vol.cover_origin_url == MANGAKOL
+    return vol
+
+
+def _release(db_session, vol):
+    vol.catalog_released = True
+    vol.release_date = utcnow().date() - timedelta(days=2)
+    db_session.commit()
+
+
+def test_cover_of_a_released_volume_is_final(db_session, store):
+    vol = _volume_with_offers(db_session, {}, catalog_cover=MANGAKOL)
+    fetcher, _ = _fetcher(db_session, store, {MANGAKOL_FULL: _image()})
+    fetcher.run(budget=10)
+    assert vol.cover_key is not None and vol.cover_provisional is False
+
+
+def test_provisional_cover_waits_while_the_volume_is_not_out(db_session, store):
+    vol = _announced(db_session, store, {"bkm": BKM_IMG})
+    vol.cover_checked_at = utcnow() - timedelta(days=30)
+    db_session.commit()
+    fetcher, download = _fetcher(db_session, store, {BKM_IMG: _image_b()})
+    assert fetcher.run(budget=10).volumes == 0 and download.asked == []
+
+
+def test_store_photo_replaces_the_japanese_cover_after_release(db_session, store):
+    vol = _announced(db_session, store, {"bkm": BKM_IMG})
+    old_key = vol.cover_key
+    _release(db_session, vol)
+    vol.cover_checked_at = utcnow() - timedelta(days=2)
+    db_session.commit()
+    # Mangakol still serves the same Japanese image: it is not asked again.
+    fetcher, download = _fetcher(db_session, store, {MANGAKOL_FULL: _image(), BKM_IMG: _image_b()})
+
+    report = fetcher.run(budget=10)
+
+    assert download.asked == [BKM_IMG]
+    assert report.replaced == 1 and vol.cover_key != old_key
+    assert (vol.cover_source, vol.cover_provisional, vol.cover_origin_url) == ("store:bkm", False, BKM_IMG)
+
+
+def test_provisional_cover_is_retried_daily_until_a_new_image_appears(db_session, store):
+    vol = _announced(db_session, store)
+    old_key = vol.cover_key
+    _release(db_session, vol)
+    vol.cover_checked_at = None
+    db_session.commit()
+    fetcher, download = _fetcher(db_session, store, {})
+    report = fetcher.run(budget=10)
+    assert report.without_source == 1 and vol.cover_key == old_key and vol.cover_provisional
+
+    assert fetcher.run(budget=10).volumes == 0  # checked today already
+    vol.cover_checked_at = utcnow() - timedelta(days=1, minutes=1)
+    vol.cover_url = MANGAKOL_TR  # the catalog sync saw Mangakol's new image
+    db_session.commit()
+    fetcher, download = _fetcher(db_session, store, {MANGAKOL_TR_FULL: _image_b()})
+    assert fetcher.run(budget=10).replaced == 1
+    assert download.asked == [MANGAKOL_TR_FULL]
+    assert (vol.cover_origin_url, vol.cover_provisional) == (MANGAKOL_TR, False)
+
+
+def test_same_picture_at_a_new_address_is_not_a_replacement(db_session, store):
+    vol = _announced(db_session, store, {"bkm": BKM_IMG})
+    old_key = vol.cover_key
+    _release(db_session, vol)
+    vol.cover_checked_at = None
+    db_session.commit()
+    fetcher, _ = _fetcher(db_session, store, {BKM_IMG: _image()})  # BKM re-hosts the JP file
+    report = fetcher.run(budget=10)
+    assert report.replaced == 0 and vol.cover_key == old_key and vol.cover_provisional
+
+
+def test_provisional_retries_stop_long_after_release(db_session, store):
+    vol = _announced(db_session, store, {"bkm": BKM_IMG})
+    vol.catalog_released = True
+    vol.release_date = utcnow().date() - covers.PROVISIONAL_GIVE_UP - timedelta(days=1)
+    vol.cover_checked_at = None
+    db_session.commit()
+    fetcher, download = _fetcher(db_session, store, {BKM_IMG: _image_b()})
+    assert fetcher.run(budget=10).volumes == 0 and download.asked == []
+
+
+def test_mangakol_image_right_after_release_is_provisional(db_session, store):
+    vol = _volume_with_offers(db_session, {}, catalog_cover=MANGAKOL)
+    vol.catalog_released, vol.release_date = True, utcnow().date() - timedelta(days=3)
+    db_session.commit()
+    fetcher, _ = _fetcher(db_session, store, {MANGAKOL_FULL: _image()})
+    fetcher.run(budget=10)
+    assert vol.cover_source == "mangakol" and vol.cover_provisional is True
+
+
+def test_mark_provisional_covers_script(db_session, engine, store, monkeypatch, capsys):
+    import sys
+
+    from sqlalchemy.orm import sessionmaker
+
+    import mark_provisional_covers as script
+
+    series = seed_catalog_series(db_session, "Berserk", "Athica", volumes=(1, 2, 3))
+    vols = {v.volume_number: v for v in db_session.scalars(select(Volume).where(Volume.series_id == series.id))}
+    stored = utcnow() - timedelta(days=60)
+    for n, v in vols.items():
+        v.cover_url, v.cover_key, v.cover_source, v.cover_checked_at = MANGAKOL, f"v/{v.id}-0123456789ab.webp", "mangakol", stored
+        v.catalog_released = True
+    vols[1].release_date = stored.date() - timedelta(days=300)  # old: final
+    vols[2].release_date = stored.date() + timedelta(days=5)    # stored before release: replace now
+    vols[3].catalog_released = False                             # still "Yakında"
+    db_session.commit()
+
+    monkeypatch.setattr(script, "SessionLocal", sessionmaker(bind=engine, expire_on_commit=False))
+    monkeypatch.setattr(sys, "argv", ["x"])
+    script.main()
+    db_session.expire_all()
+    assert all(v.cover_provisional is None for v in vols.values())  # dry run
+
+    monkeypatch.setattr(sys, "argv", ["x", "--apply"])
+    script.main()
+    db_session.expire_all()
+    assert [vols[n].cover_provisional for n in (1, 2, 3)] == [False, True, True]
+    assert vols[2].cover_checked_at is None and vols[3].cover_checked_at is not None
+    assert vols[2].cover_origin_url == MANGAKOL
+    assert "geçici, yenilenecek: 1" in capsys.readouterr().out

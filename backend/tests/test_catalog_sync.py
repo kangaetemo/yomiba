@@ -634,3 +634,56 @@ def test_sync_retries_entry_when_database_is_locked(db_session, monkeypatch):
     assert report.manga_failed == 0
     series = db_session.scalars(select(Series)).one()
     assert series.original_title == "noragami stray god | noragami"
+
+
+def _stored_mangakol_cover(db_session, *, released_days_ago: int | None, provisional: bool):
+    from datetime import timedelta
+
+    from app.utils import utcnow
+
+    _, series = _seed_athica_berserk(db_session, with_volumes=(1,))
+    vol = db_session.scalar(select(Volume).where(Volume.series_id == series.id))
+    vol.cover_url = "https://mangakol.com/images/mangavolume/thumbnails/jp.webp"
+    vol.cover_key, vol.cover_source = "v/1-0123456789ab.webp", "mangakol"
+    vol.cover_origin_url, vol.cover_provisional = vol.cover_url, provisional
+    vol.cover_checked_at = utcnow()
+    if released_days_ago is None:
+        vol.catalog_released = False
+    else:
+        vol.catalog_released = True
+        vol.release_date = utcnow().date() - timedelta(days=released_days_ago)
+    db_session.commit()
+    return vol
+
+
+def _sync_new_mangakol_image(db_session, released=True):
+    manga = CatalogManga(
+        slug="berserk-athica", title="Berserk (Athica)", local_publisher="Athica",
+        volumes=[CatalogVolume(number=1, released=released,
+                               cover_url="https://mangakol.com/images/mangavolume/thumbnails/tr.webp")],
+    )
+    return CatalogSyncService(db_session, scraper=FakeMangakolScraper([manga])).sync()
+
+
+def test_new_mangakol_image_requeues_a_recent_cover(db_session):
+    vol = _stored_mangakol_cover(db_session, released_days_ago=10, provisional=False)
+    report = _sync_new_mangakol_image(db_session)
+    db_session.refresh(vol)
+    assert report.covers_changed == 1
+    assert vol.cover_url.endswith("/tr.webp")
+    assert vol.cover_provisional is True and vol.cover_checked_at is None
+
+
+def test_new_mangakol_image_leaves_old_volumes_alone(db_session):
+    vol = _stored_mangakol_cover(db_session, released_days_ago=400, provisional=False)
+    _sync_new_mangakol_image(db_session)
+    db_session.refresh(vol)
+    assert vol.cover_url.endswith("/tr.webp")  # source updated…
+    assert vol.cover_provisional is False and vol.cover_checked_at is not None  # …cover kept
+
+
+def test_new_image_before_release_is_still_a_placeholder(db_session):
+    vol = _stored_mangakol_cover(db_session, released_days_ago=None, provisional=True)
+    _sync_new_mangakol_image(db_session, released=False)
+    db_session.refresh(vol)
+    assert vol.cover_origin_url.endswith("/tr.webp") and vol.cover_provisional is True
