@@ -14,6 +14,7 @@ from . import series as series_routes
 from . import volume as volume_routes
 from . import isbn as isbn_routes
 from . import analytics as analytics_routes
+from . import reports as reports_routes
 
 api_router = APIRouter()
 api_router.include_router(auth_routes.router)
@@ -28,5 +29,6 @@ api_router.include_router(catalog_routes.router)
 api_router.include_router(covers_routes.router)
 api_router.include_router(isbn_routes.router)
 api_router.include_router(analytics_routes.router)
+api_router.include_router(reports_routes.router)
 
 __all__ = ["api_router"]

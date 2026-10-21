@@ -8,6 +8,7 @@ import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { CollectionStatusPicker } from "@/components/CollectionStatusPicker";
 import { WishlistToggle } from "@/components/WishlistToggle";
 import { PriceAlertForm } from "@/components/PriceAlertForm";
+import { ReportIssue } from "@/components/ReportIssue";
 import { RemoveListingButton } from "@/components/admin/RemoveListingButton";
 import { VolumeIsbnPanel } from "@/components/admin/VolumeIsbnPanel";
 import { Badge, Cover, formatDate, formatTL, volumeTitle } from "@/components/ui";
@@ -380,6 +381,10 @@ export default async function VolumePage({ params }: VolumePageProps) {
               )}
             </div>
           </section>
+          <ReportIssue
+            path={volumePath(detail.series.slug, detail.number)}
+            stores={[...new Set(buyable.map((s) => s.store))]}
+          />
         </div>
       </div>
 

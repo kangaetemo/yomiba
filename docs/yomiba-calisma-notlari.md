@@ -26,6 +26,12 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 21 Ekim: hatalı bilgi bildirme (kod, PR bekliyor)
+
+- **Ziyaretçi tarafı:** Seri ve cilt sayfalarının altında "Hatalı bilgi mi gördün? Bildir" bağlantısı. Form: konu (fiyat, stok, yanlış eşleşme, cilt bilgisi, diğer), cilt sayfasında isteğe bağlı mağaza ve 10–1000 karakterlik açıklama. Sayfa adresi otomatik ekleniyor. Giriş gerekmiyor. Kod `frontend/components/ReportIssue.tsx`, `POST /api/hata-bildir`.
+- **Kötüye kullanım:** Gönderen (üye ise hesap, değilse IP) başına 10 dakikada 3, günde 10 bildirim; site geneli günde 300; açık ("yeni") liste 500'ü geçmez. Gizli "web sitesi" alanı dolu, form 3 saniyeden hızlı gönderilmiş, bot tarayıcısı, metinde 2'den fazla link ya da aynı kişiden aynı sayfaya aynı metin (24 saat) sessizce düşürülür. Metin düz metin olarak saklanıp gösterilir, IP saklanmaz (günlük tuzlu özet).
+- **Admin:** `/admin/bildirimler` (Yeni / Çözüldü / Geçersiz / Tümü), `/admin` kartında yeni bildirim sayısı. Tablo `content_reports` (migration `0025_content_reports`), kod `backend/app/services/content_reports.py`.
+
 ### 21 Ekim: admin analiz sayfası (kod, PR bekliyor)
 
 - **Kayıt:** Tarayıcı `POST /api/olay` ile dört olay gönderiyor: sayfa görüntüleme, mağaza tıklaması (başka siteye giden her bağlantı), arama (yazma bitince, sonuç sayısıyla) ve sayfada kalma süresi. Tablo `analytics_events` (migration `0024_analytics`), kod `backend/app/services/analytics.py`, istemci `frontend/lib/track.ts` + `components/SiteTracker.tsx`.

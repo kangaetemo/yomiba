@@ -6,6 +6,7 @@ import { Cover, formatTL, volumeTitle } from "@/components/ui";
 import { SortBar } from "@/components/SortBar";
 import { Segmented } from "@/components/Segmented";
 import { EditionLinks } from "@/components/EditionLinks";
+import { ReportIssue } from "@/components/ReportIssue";
 import { VolumeCard } from "@/components/VolumeCard";
 import { VolumeTile } from "@/components/VolumeTile";
 import { ApiError } from "@/lib/api";
@@ -316,6 +317,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
       <p className="text-xs text-faint">
         Fiyatlar mağazaların son kontrol edilen verilerini gösterir; stok bilgisi gecikmeli olabilir.
       </p>
+      <ReportIssue path={seriesPath(detail.slug)} />
     </div>
   );
 }
