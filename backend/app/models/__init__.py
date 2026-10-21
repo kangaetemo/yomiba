@@ -12,6 +12,7 @@ from .store import Store
 from .store_listing import StoreListing
 from .listing_exclusion import ListingExclusion
 from .price_history import PriceHistory
+from .listing_change import ListingChange
 from .import_record import ImportRecord
 from .wishlist_item import WishlistItem
 from .price_alert import PriceAlert
@@ -35,6 +36,7 @@ __all__ = [
     "StoreListing",
     "ListingExclusion",
     "PriceHistory",
+    "ListingChange",
     "ImportRecord",
     "WishlistItem",
     "PriceAlert",

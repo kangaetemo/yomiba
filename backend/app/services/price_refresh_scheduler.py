@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from ..config import get_settings
 from ..models import CatalogSeries, ImportRecord, Series, StoreListing, Volume
 from ..utils import utcnow
+from . import listing_changes
 from .background_import import BackgroundImportRunner, aware_datetime, normalized_query_key
 
 logger = logging.getLogger("yomiba.price_refresh")
@@ -48,6 +49,9 @@ class PriceRefreshScheduler:
         self._inflight: dict[str, int] = {}
         self._cycle_started_at: datetime | None = None
         self._last_cycle_completed_at: datetime | None = None
+        #: Start of the last finished full cycle (its changes are the
+        #: admin change log's default window).
+        self._last_cycle_started_at: datetime | None = None
         self._last_successful_refresh: datetime | None = None
         self._next_scheduled_at: datetime | None = None
         self._total = 0
@@ -170,6 +174,11 @@ class PriceRefreshScheduler:
                 r.normalized_query: r
                 for r in session.scalars(select(ImportRecord)).all()
             }
+            try:
+                listing_changes.prune(session, now)
+            except Exception:  # noqa: BLE001 - an old log must not block prices
+                logger.exception("price refresh: could not prune the listing change log")
+                session.rollback()
         grouped: dict[str, tuple[str, int]] = {}
         for _, title in catalog:
             key = normalized_query_key(title)
@@ -258,12 +267,14 @@ class PriceRefreshScheduler:
                     self._mode, self._total, self._submitted_jobs, self._skipped,
                     self._successful_jobs, self._failed_jobs, duration,
                 )
+                started = self._cycle_started_at
                 self._cycle_started_at = None
                 if self._mode == "unpriced":
                     # Keep the regular full-cycle schedule untouched.
                     self._next_scheduled_at = self._saved_next or ended + timedelta(seconds=self._interval)
                 else:
                     self._last_cycle_completed_at = ended
+                    self._last_cycle_started_at = started
                     self._next_scheduled_at = ended + timedelta(seconds=self._interval)
                 self._mode = None
                 self._saved_next = None
@@ -303,6 +314,7 @@ class PriceRefreshScheduler:
                 "current_cycle_total": self._total,
                 "current_cycle_started_at": self._cycle_started_at,
                 "current_cycle_mode": self._mode,
+                "last_cycle_started_at": self._last_cycle_started_at,
                 "last_cycle_completed_at": self._last_cycle_completed_at,
                 "last_successful_refresh": self._last_successful_refresh,
                 "next_scheduled_refresh": self._next_scheduled_at,
