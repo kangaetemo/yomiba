@@ -10,10 +10,10 @@ row in the ``stores`` table — it feeds the catalog sync service
 Data sources (all public, no authentication):
 
 1. Catalog list (paginated): ``GET https://mangakol.com/manga/`` and
-   ``?tab=popular&page=N&partial=true`` (HTML fragment). The default
-   "popular" tab walks the WHOLE catalog ranked (verified 2026-09-11:
-   20 pages x ~23 = 445 manga, the following page repeats the tail ->
-   stop when no new slugs appear). Cards expose ``/manga/<slug>`` links
+   ``?tab=<tab>&page=N&partial=true`` (HTML fragment) for the popular,
+   wishlist, top-rated and trending tabs. Each tab ends by repeating its
+   tail (stop when no new slugs appear), and none holds the whole catalog
+   (2026-10-21: popular 489 of 509), so the list is their union. Cards expose ``/manga/<slug>`` links
    and the display title (e.g. "Berserk (Athica)" — the parenthesized
    suffix is the local publisher, kept raw here; cleaning is the
    service's job).
@@ -55,6 +55,10 @@ logger = logging.getLogger("yomiba.scraper.mangakol")
 
 _LIST_CARD_ANCHOR = "p.mk-vol-card-wide-vol-title a[href]"
 _SLANG_RE = re.compile(r"^/manga/([a-z0-9][a-z0-9-]*)/?$", re.I)
+#: No tab lists the whole catalog: "popular" stops ~20 manga short (live
+#: 2026-10-21: popular 489, wishlist 408, top-rated 160, trending 120,
+#: union 509; dungeon-meshi only on wishlist). The list is their union.
+_LIST_TABS = ("popular", "wishlist", "top-rated", "trending")
 _PUB_SUFFIX_RE = re.compile(r"^\s*(.*)\s*\(([^()]+)\)\s*$")
 _PUB_SUFFIX_MIN_LEN = 2
 _PUB_MIN_MATCH_LEN = 3
@@ -162,31 +166,43 @@ class MangakolCatalogScraper(BaseScraper):
     # -- catalog list -----------------------------------------------------------
     def list_manga(self) -> list[CatalogMangaRef]:
         self.catalog_list_complete = True
-        max_pages = max(1, self.settings.mangakol_max_list_pages)
         refs: list[CatalogMangaRef] = []
         seen_slugs: set[str] = set()
+        self._list_tab(_LIST_TABS[0], refs, seen_slugs)
+        for tab in _LIST_TABS[1:]:
+            # The other tabs only add the few manga popular misses; one
+            # failing must not cost the whole sync.
+            try:
+                self._list_tab(tab, refs, seen_slugs)
+            except ScraperError as exc:
+                logger.warning("mangakol: %s list failed (%s); keeping %s manga", tab, exc, len(refs))
+                self.catalog_list_complete = False
+        return refs
 
+    def _list_tab(self, tab: str, refs: list[CatalogMangaRef], seen_slugs: set[str]) -> None:
+        max_pages = max(1, self.settings.mangakol_max_list_pages)
+        tab_slugs: set[str] = set()
         for page in range(1, max_pages + 1):
             url = f"{self.base_url}/manga/"
-            if page > 1:
-                url += f"?tab=popular&page={page}&partial=true"
+            if tab != _LIST_TABS[0] or page > 1:
+                url += f"?tab={tab}&page={page}&partial=true"
             response = self.get(url)
             if looks_like_blocked_page(response.status_code, response.text):
                 raise ScraperError(
                     f"mangakol: catalog list blocked or robot-checked "
-                    f"(HTTP {response.status_code}) on page {page}"
+                    f"(HTTP {response.status_code}) on {tab} page {page}"
                 )
             if response.status_code >= 400:
-                if page == 1:
+                if page == 1 and tab == _LIST_TABS[0]:
                     raise ScraperError(
                         f"mangakol: catalog list HTTP {response.status_code} for {url}"
                     )
                 logger.warning(
-                    "mangakol: list page %s failed (HTTP %s); keeping %s manga",
-                    page, response.status_code, len(refs),
+                    "mangakol: %s list page %s failed (HTTP %s); keeping %s manga",
+                    tab, page, response.status_code, len(refs),
                 )
                 self.catalog_list_complete = False
-                break
+                return
 
             soup = self.soup(response.text)
             new_on_page = 0
@@ -196,6 +212,10 @@ class MangakolCatalogScraper(BaseScraper):
                 if not match:
                     continue
                 slug = match.group(1).lower()
+                if slug in tab_slugs:
+                    continue
+                tab_slugs.add(slug)
+                new_on_page += 1
                 if slug in seen_slugs:
                     continue
                 title = re.sub(r"\s+", " ", anchor.get_text(" ", strip=True))
@@ -203,15 +223,12 @@ class MangakolCatalogScraper(BaseScraper):
                     continue
                 seen_slugs.add(slug)
                 refs.append(CatalogMangaRef(slug=slug, title=title))
-                new_on_page += 1
 
-            # The tab wraps its tail when the catalog is exhausted (page N+1
-            # repeats the last N cards) -> no new slugs is the stop signal.
+            # The tab wraps its tail when it is exhausted (page N+1 repeats
+            # the last N cards) -> no new slugs is the stop signal.
             if new_on_page == 0:
-                break
-        else:
-            self.catalog_list_complete = False
-        return refs
+                return
+        self.catalog_list_complete = False
 
     # -- manga detail -----------------------------------------------------------
     def fetch_manga(self, slug: str) -> CatalogManga:
