@@ -22,7 +22,13 @@ docker compose build --pull
 docker compose up -d --wait --wait-timeout 300
 docker image prune -f >/dev/null
 domain="$(sed -n 's/^SITE_DOMAIN=//p' .env)"
-curl -fsS -o /dev/null --max-time 20 "https://${domain:-yomiba.net}/" \
-  || { echo "HATA: site cevap vermiyor"; docker compose ps; exit 1; }
+# Frontend'in sağlık kontrolü yok: --wait onu "çalışıyor" görür görmez
+# bırakır, Next ise birkaç saniye sonra dinlemeye başlar (o arada Caddy 502
+# döner). Bir dakika boyunca tekrar dene.
+for i in $(seq 1 12); do
+  curl -fsS -o /dev/null --max-time 20 "https://${domain:-yomiba.net}/" && break
+  [ "$i" = 12 ] && { echo "HATA: site cevap vermiyor"; docker compose ps; exit 1; }
+  sleep 5
+done
 docker compose ps
 echo "deploy tamam"
