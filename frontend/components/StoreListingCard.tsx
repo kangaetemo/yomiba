@@ -4,6 +4,7 @@
  */
 
 import { DealSummary } from "@/components/DealSummary";
+import { storeLink } from "@/lib/storeLink";
 import { formatDateTime } from "@/lib/time";
 import type { ReactNode } from "react";
 import { Badge, formatTL } from "@/components/ui";
@@ -74,9 +75,10 @@ export function StoreListingCard({
           </span>
         )}
         <a
-          href={listing.product_url}
+          href={storeLink(listing.product_url)}
           target="_blank"
-          rel="noopener noreferrer"
+          // No `noreferrer`: the store should see the visit came from Yomiba.
+          rel="noopener"
           className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold transition-colors ${
             buyable
               ? "bg-ink text-paper hover:bg-accent"

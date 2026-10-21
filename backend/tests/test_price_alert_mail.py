@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.models import EmailOutbox, PriceAlert, Store, StoreListing, User, Volume
 from app.services import mailer, price_alerts_service
-from app.services.price_alert_checker import check_alerts
+from app.services.price_alert_checker import check_alerts, store_link
 from tests.test_import_service import seed_catalog_series
 
 
@@ -37,7 +37,7 @@ def test_alert_fires_once_per_crossing(db_session):
     assert len(mails) == 1
     assert mails[0].to_email == "test-admin@example.com"
     assert mails[0].subject == "Fiyat alarmı: Blue Lock · Cilt 29 190 TL"
-    assert "https://bkm.example/blue-lock-29" in mails[0].body_text
+    assert "https://bkm.example/blue-lock-29?utm_source=yomiba&utm_medium=email" in mails[0].body_text
     assert "/series/blue-lock/cilt-29" in mails[0].body_text
     assert (alert.triggered_price, alert.triggered_at is not None) == (19000, True)
 
@@ -125,3 +125,10 @@ def test_price_refresh_checks_the_series_alerts(db_session):
     volume, _, _ = _setup(db_session)
     BackgroundImportRunner._check_price_alerts(db_session, "Blue Lock")
     assert len(_mails(db_session)) == 1
+
+
+def test_store_link_tags_without_touching_the_store_query():
+    assert store_link("https://edessakitabevi.com/frieren-cilt-6?vid=a%20b#x") == \
+        "https://edessakitabevi.com/frieren-cilt-6?vid=a%20b&utm_source=yomiba&utm_medium=email#x"
+    assert store_link("https://x.example/p?utm_source=other") == "https://x.example/p?utm_source=other"
+    assert store_link("not a url") == "not a url"
