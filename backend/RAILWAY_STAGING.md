@@ -60,6 +60,7 @@ Production's pre-existing-file rule remains unchanged.
 | `SCRAPER_MAX_RETRIES` | Transient retries | No | `2` (default) |
 | `SCRAPER_RETRY_BACKOFF_SECONDS` | Retry spacing | No | `1.0` (default) |
 | `SCRAPER_MIN_REQUEST_INTERVAL_SECONDS` | Per-store pacing | No | `0.5` (default) |
+| `SCRAPER_STORE_MIN_INTERVAL_SECONDS` | Per-store pacing across all concurrent imports | No | `0.25` (default) |
 | `SCRAPER_USER_AGENT`, `SCRAPER_ACCEPT_LANGUAGE` | Request headers | No | Code defaults |
 | `MANGAKOL_MAX_LIST_PAGES`, `MANGAKOL_MAX_VOLUME_PAGES` | Catalog scraper bounds | No | `40`, `20` (defaults) |
 | `BKM_SEARCH_PAGE_SIZE`, `BKM_MAX_SEARCH_PAGES`, `BKM_MAX_SEARCH_RESULTS` | BKM bounds | No | `20`, `5`, `100` (defaults) |

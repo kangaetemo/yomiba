@@ -143,6 +143,36 @@ def test_rate_limit_applies_between_retries():
     assert time.monotonic() - started >= 0.09
 
 
+def test_store_interval_is_shared_across_concurrent_imports():
+    """Two imports scraping the same store take turns; other stores do not wait."""
+    import threading
+
+    from app.scrapers.kitapsepeti import KitapsepetiScraper
+
+    scraper_base._store_slots.clear()
+    times: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        times.append(time.monotonic())
+        return httpx.Response(200, text="ok")
+
+    overrides = dict(scraper_min_request_interval_seconds=0.0, scraper_store_min_interval_seconds=0.1)
+    same = [make_scraper(handler, **overrides) for _ in range(2)]
+    threads = [threading.Thread(target=lambda s=s: [s.get(f"https://x.test/{i}") for i in range(2)]) for s in same]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    times.sort()
+    assert all(b - a >= 0.09 for a, b in zip(times, times[1:]))
+
+    other = KitapsepetiScraper(client=mock_client(handler))
+    other.settings = replace(scraper_base.get_settings(), **overrides)
+    started = time.monotonic()
+    other.get("https://y.test/1")
+    assert time.monotonic() - started < 0.09
+
+
 def test_backoff_delay_never_exceeds_30s_cap(monkeypatch):
     """Jitter is applied before the cap, so the final delay <= 30s."""
     from app.scrapers import base as base_mod
