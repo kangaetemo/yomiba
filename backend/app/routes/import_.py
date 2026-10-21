@@ -38,6 +38,7 @@ from ..services.background_import import (
     upsert_failed_record,
     upsert_running_record,
 )
+from ..services import listing_changes
 from ..services.import_service import ImportService
 from ..utils import utcnow
 
@@ -335,6 +336,7 @@ def price_refresh_status(request: Request, session: Session = Depends(get_db)) -
             select(func.count(func.distinct(CatalogSeries.series_id)))
         ) or 0,
         "current_cycle_total": 0, "current_cycle_started_at": None,
+        "last_cycle_started_at": None,
         "last_cycle_completed_at": None, "last_successful_refresh": None,
         "next_scheduled_refresh": None,
     }
@@ -363,3 +365,39 @@ def start_missing_price_refresh(request: Request) -> dict:
     if not scheduler.manual_refresh(only_unpriced=True):
         raise HTTPException(status_code=409, detail="Price refresh cycle already running")
     return scheduler.status()
+
+
+#: Admin change-log windows besides "cycle" (current or last refresh).
+CHANGE_WINDOWS = {"24h": timedelta(hours=24), "7d": timedelta(days=7), "30d": timedelta(days=30)}
+
+
+@router.get("/import/changes")
+def listing_change_log(
+    request: Request,
+    window: str = Query(default="cycle"),
+    kind: str | None = Query(default=None),
+    store: str | None = Query(default=None, max_length=50),
+    session: Session = Depends(get_db),
+) -> dict:
+    """Which volume changed at which store: new listings, price and stock
+    changes, product switches and removals, grouped by series and volume.
+    ``window=cycle`` is the running price refresh, else the last finished
+    one (last 24 hours when the server has not finished one since start)."""
+    now = utcnow()
+    scheduler = getattr(request.app.state, "price_refresh_scheduler", None)
+    status = scheduler.status() if scheduler is not None else {}
+    cycle_start = status.get("current_cycle_started_at") or status.get("last_cycle_started_at")
+    if window in CHANGE_WINDOWS:
+        since = now - CHANGE_WINDOWS[window]
+    elif cycle_start is not None:
+        window, since = "cycle", cycle_start
+    else:
+        window, since = "24h", now - CHANGE_WINDOWS["24h"]
+    report = listing_changes.admin_report(session, since, kind=kind, store=store)
+    report.update(
+        window=window,
+        cycle_active=status.get("current_cycle_started_at") is not None,
+        cycle_started_at=cycle_start,
+        cycle_completed_at=None if status.get("current_cycle_started_at") else status.get("last_cycle_completed_at"),
+    )
+    return report

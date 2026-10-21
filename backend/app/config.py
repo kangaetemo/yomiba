@@ -226,6 +226,8 @@ class Settings:
     price_refresh_startup_delay_minutes: float = float(
         os.getenv("PRICE_REFRESH_STARTUP_DELAY_MINUTES", "10")
     )
+    #: How long the admin "Fiyat değişiklikleri" log keeps its rows.
+    listing_change_retention_days: int = int(os.getenv("LISTING_CHANGE_RETENTION_DAYS", "30"))
 
     # Scraper reliability: retries, backoff and politeness.
     # Transient failures (network errors, 429/5xx) are retried with

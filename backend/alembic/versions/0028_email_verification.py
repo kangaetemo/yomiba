@@ -6,8 +6,8 @@ start unverified (nobody ever proved they read the mailbox)."""
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0027_email_verification"
-down_revision = "0026_provisional_covers"
+revision = "0028_email_verification"
+down_revision = "0027_listing_changes"
 branch_labels = depends_on = None
 
 

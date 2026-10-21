@@ -43,6 +43,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import (
     CatalogSeries,
+    ListingChange,
     ListingExclusion,
     PriceHistory,
     Publisher,
@@ -416,6 +417,22 @@ class ImportService:
         row.reason = reason
         self.session.flush()
 
+    def _log_change(self, listing: StoreListing, kind: str, *, note: str | None = None,
+                    old_price: int | None = None, old_in_stock: bool | None = None,
+                    volume_id: int | None = None) -> None:
+        """Record what this import changed on ``listing`` (admin change log,
+        services/listing_changes.py). Committed with the listing itself."""
+        removed = kind == "removed"
+        self.session.add(ListingChange(
+            created_at=utcnow(), volume_id=volume_id or listing.volume_id, store_id=listing.store_id,
+            kind=kind, note=note,
+            old_price=listing.price if removed else old_price,
+            new_price=None if removed else listing.price,
+            old_in_stock=listing.in_stock if removed else old_in_stock,
+            new_in_stock=None if removed else listing.in_stock,
+            product_url=listing.product_url,
+        ))
+
     def _drop_listing(self, result: SearchResult, reason: str) -> None:
         """Remove this store product's listing: the evidence now says it is
         not (provably) the volume it was on. Its price history goes with it;
@@ -427,6 +444,7 @@ class ImportService:
                 StoreListing.store_id == store.id, StoreListing.product_url == result.product_url)):
             logger.info("import: removing listing %s (%s) from volume %s: %s",
                         listing.id, result.product_url, listing.volume_id, reason)
+            self._log_change(listing, "removed", note=reason)
             self.session.delete(listing)
         self.session.flush()
 
@@ -448,6 +466,7 @@ class ImportService:
                 StoreListing.volume_id == volume.id)):
             logger.info("import: removing listing %s (%s) from volume %s: ISBN %s is not its settled %s",
                         listing.id, result.product_url, volume.id, book_isbn(result.isbn), volume.isbn)
+            self._log_change(listing, "removed", note="isbn_conflict")
             self.session.delete(listing)
         self.session.flush()
 
@@ -492,7 +511,10 @@ class ImportService:
                 self.session.add(PriceHistory(listing_id=listing.id, price=listing.price,
                                              checked_at=utcnow(), in_stock=False,
                                              product_url=listing.product_url))
+            was_in_stock = listing.in_stock
             listing.in_stock = False
+            if was_in_stock:
+                self._log_change(listing, "update", note="gone", old_price=listing.price, old_in_stock=True)
             listing.last_checked = utcnow()
         self.session.commit()
         return len(listings)
@@ -1507,10 +1529,13 @@ class ImportService:
             if mine is None:
                 logger.info("import: moving listing %s (%s) from volume %s to %s",
                             other.id, result.product_url, other.volume_id, volume.id)
+                self._log_change(other, "removed", note="moved")
                 other.volume_id = volume.id
+                self._log_change(other, "new", note="moved", volume_id=volume.id)
             else:
                 logger.info("import: dropping listing %s (%s) left on volume %s",
                             other.id, result.product_url, other.volume_id)
+                self._log_change(other, "removed", note="moved")
                 self.session.delete(other)
             self.session.flush()
         now = utcnow()
@@ -1536,6 +1561,10 @@ class ImportService:
             )
             self.session.add(listing)
             self.session.flush()
+            # "first": no other store had this volume yet (a new release).
+            first = self.session.scalar(select(StoreListing.id).where(
+                StoreListing.volume_id == volume.id, StoreListing.id != listing.id).limit(1)) is None
+            self._log_change(listing, "new", note="first" if first else None)
             if price_cents is not None:
                 self.session.add(
                     PriceHistory(listing_id=listing.id, price=price_cents, checked_at=now,
@@ -1571,6 +1600,7 @@ class ImportService:
         # existing history, but do not fabricate a transition on the switch.
         # Subsequent same-product changes use the new product's price.
         price_changed = not product_changed and price_cents is not None and listing.price != price_cents
+        old_price, old_in_stock = listing.price, listing.in_stock
         if price_cents is not None or product_changed:
             listing.price = price_cents
         listing.in_stock = result.in_stock
@@ -1583,6 +1613,10 @@ class ImportService:
         # is what replaces a provisional cover (services/covers.py).
         if result.image_url and listing.image_url != result.image_url:
             listing.image_url = result.image_url
+        if product_changed or price_changed or stock_changed:
+            self._log_change(listing, "product" if product_changed else "update",
+                             note=None if from_search else "recheck",
+                             old_price=old_price, old_in_stock=old_in_stock)
 
         # At most one unchanged observation per day supplies real coverage
         # for the normal-price reference, without logging every scraper poll.
