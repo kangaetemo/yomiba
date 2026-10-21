@@ -300,3 +300,24 @@ def test_equal_prices_are_ordered_neutrally(db_session):
 
     order = [l.store.name for l in catalog_service.get_volume(db_session, vol.id).listings]
     assert order == ["Cheap", "Alfa Kitap", "Zeta Kitap", "Mega Kitap"]
+
+
+def test_long_series_rechecks_every_unseen_listing(db_session, import_service):
+    """Kitap Sepeti dropped 33 sold-out Naruto volumes from search; only
+    the first 15 by id were ever re-checked, the rest stayed "stok
+    belirsiz" for good (2026-10-21)."""
+    series = seed_catalog_series(db_session, "Naruto", "Gerekli Şeyler", volumes=range(1, 34))
+    store = Store(code="kitapsec", name="Kitapsec")
+    db_session.add(store)
+    db_session.flush()
+    pages = {}
+    for vol in db_session.scalars(select(Volume).where(Volume.series_id == series.id)):
+        url = f"https://www.kitapsec.com/Products/naruto-{vol.volume_number}.html"
+        pages[url] = (200, _jsonld_page("OutOfStock"))
+        db_session.add(StoreListing(volume_id=vol.id, store_id=store.id, product_url=url,
+                                    price=20000, in_stock=True,
+                                    last_checked=utcnow() - timedelta(hours=60)))
+    db_session.commit()
+
+    assert import_service.verify_unseen_listings(_scraper(pages), {series.id}, utcnow()) == 33
+    assert not any(l.in_stock for l in db_session.scalars(select(StoreListing)))
