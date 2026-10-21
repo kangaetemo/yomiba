@@ -32,6 +32,11 @@ export type AnalyticsReport = {
   funnel: { sessions: number; viewed_volume: number; clicked_store: number };
   session_depth: { pages: number; sessions: number }[];
   users_total: number;
+  new_members: {
+    id: number; name: string; email: string; created_at: string;
+    method: "email" | "google" | "google+email"; admin: boolean; active: boolean;
+    last_login: string | null; collection: number; wishlist: number; alerts: number;
+  }[];
   retention_days: number;
 };
 

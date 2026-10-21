@@ -159,3 +159,23 @@ def test_user_agent_parsing():
     assert analytics.parse_user_agent(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36 Edg/130.0") == ("desktop", "Edge", "Windows")
     assert analytics.parse_user_agent("Mozilla/5.0 (Linux; Android 14; SM-T870) Chrome/130.0 Safari/537.36")[0] == "tablet"
+
+
+def test_report_lists_new_members(client, db_session):
+    from app.models import User, WishlistItem
+
+    google = User(email="g@example.com", password_hash=None, google_sub="g-1", display_name="Gül", role="USER", is_active=True)
+    old = User(email="old@example.com", password_hash="x", display_name="Eski", role="USER", is_active=True,
+               created_at=datetime.now(timezone.utc) - timedelta(days=40))
+    db_session.add_all([google, old])
+    db_session.commit()
+    series = seed_catalog_series(db_session, "Monster", "Gerekli Şeyler", volumes=(1,))
+    volume = db_session.scalar(select(Volume).where(Volume.series_id == series.id))
+    db_session.add(WishlistItem(user_id=google.id, volume_id=volume.id))
+    db_session.commit()
+
+    members = client.get("/admin/analytics?days=30").json()["new_members"]
+    by_email = {m["email"]: m for m in members}
+    assert "old@example.com" not in by_email
+    assert by_email["g@example.com"]["method"] == "google" and by_email["g@example.com"]["wishlist"] == 1
+    assert by_email["test-admin@example.com"]["admin"] is True and by_email["test-admin@example.com"]["last_login"]

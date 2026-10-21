@@ -35,6 +35,7 @@ from ..models import (
     Store,
     StoreListing,
     User,
+    UserSession,
     UserVolumeCollection,
     Volume,
     WishlistItem,
@@ -419,6 +420,32 @@ def _account_totals(session: Session, start: date, end: date) -> dict:
     )
 
 
+def _new_members(session: Session, start: date, end: date, limit: int = 100) -> list[dict]:
+    """Accounts opened in the period, newest first, with how they signed up,
+    when they last signed in and what they have saved so far."""
+    lo, hi = _utc_bounds(start, end)
+    users = list(session.scalars(select(User).where(User.created_at >= lo, User.created_at < hi)
+                                 .order_by(User.created_at.desc()).limit(limit)))
+    ids = [u.id for u in users]
+    if not ids:
+        return []
+
+    def per_user(column):
+        return dict(session.execute(select(column, func.count()).where(column.in_(ids)).group_by(column)).all())
+
+    last_login = dict(session.execute(select(UserSession.user_id, func.max(UserSession.created_at))
+                                      .where(UserSession.user_id.in_(ids)).group_by(UserSession.user_id)).all())
+    collection = per_user(UserVolumeCollection.user_id)
+    wishlist = per_user(WishlistItem.user_id)
+    alerts = per_user(PriceAlert.user_id)
+    return [dict(
+        id=u.id, name=u.display_name, email=u.email, created_at=u.created_at,
+        method="google" if u.google_sub and not u.password_hash else "google+email" if u.google_sub else "email",
+        admin=u.role == "ADMIN", active=u.is_active, last_login=last_login.get(u.id),
+        collection=collection.get(u.id, 0), wishlist=wishlist.get(u.id, 0), alerts=alerts.get(u.id, 0),
+    ) for u in users]
+
+
 def _top(rows, keys, limit):
     return [dict(zip(keys, r)) for r in rows][:limit]
 
@@ -633,5 +660,6 @@ def build_report(session: Session, days: int = 30, now: datetime | None = None) 
         funnel=funnel,
         session_depth=[dict(pages=k, sessions=depth.get(k, 0)) for k in range(1, 11)],
         users_total=session.scalar(select(func.count(User.id))) or 0,
+        new_members=_new_members(session, start, today),
         retention_days=RETENTION_DAYS,
     )
