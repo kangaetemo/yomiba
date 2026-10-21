@@ -42,6 +42,8 @@ import logging
 import re
 from urllib.parse import quote_plus, urljoin
 
+from bs4 import BeautifulSoup, SoupStrainer
+
 from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
 from .base import BaseScraper, ScraperError
 from .common import FOREIGN_PUBLISHER_RE, looks_like_blocked_page, parse_tr_price
@@ -54,6 +56,15 @@ NON_MANGA_KEYWORDS: tuple[str, ...] = (
     "figur", "asorti", "puzzle", "kupa", "tisort", "tshirt",
     "poster", "pelus", "mousepad", "kutulu fig",
 )
+
+#: Only the product cards are built into a tree. A search page is a full
+#: storefront page for ~6 cards and a long series pages up to 40 times per
+#: import; parsing whole pages kept the VDS backend near one core
+#: (py-spy, 2026-10-21: ~80% of HTML parsing time was this store).
+_CARDS_ONLY = SoupStrainer("div", class_=re.compile(r"(^|\s)product-item(\s|$)"))
+#: Stop paging after this many pages in a row without a card that passes the
+#: relevance guard: past the series the store only lists unrelated products.
+_IRRELEVANT_PAGE_LIMIT = 2
 
 
 class KitapbulanScraper(BaseScraper):
@@ -83,7 +94,7 @@ class KitapbulanScraper(BaseScraper):
             if len(normalize_text(token)) >= self._RELEVANCE_TOKEN_MIN_LEN
         ]
 
-        items = self._search_pages(query)
+        items = self._search_pages(query, query_tokens)
         results: list[SearchResult] = []
         for item in items:
             result, reason = self._parse_card(item, query_tokens)
@@ -99,12 +110,13 @@ class KitapbulanScraper(BaseScraper):
         return results
 
     # -- paginated search ----------------------------------------------------------
-    def _search_pages(self, query: str) -> list[dict]:
+    def _search_pages(self, query: str, query_tokens: list[str] | None = None) -> list[dict]:
         max_pages = max(1, self.settings.kitapbulan_max_search_pages)
         max_results = max(1, self.settings.kitapbulan_max_search_results)
 
         items: list[dict] = []
         seen_urls: set[str] = set()
+        irrelevant_pages = 0
 
         for page in range(1, max_pages + 1):
             url = f"{self.base_url}{self.search_path.format(query=quote_plus(query))}&pg={page}"
@@ -127,13 +139,14 @@ class KitapbulanScraper(BaseScraper):
                 break
             self.stats["pages_fetched"] += 1
 
-            soup = self.soup(response.text)
+            soup = BeautifulSoup(response.text, "lxml", parse_only=_CARDS_ONLY)
             cards = soup.select("div.product-item")
             if not cards:
                 self.stats["stop_reason"] = "empty_page"
                 break
 
             new_on_page = 0
+            relevant_on_page = 0
             for card in cards:
                 self.stats["raw_products"] += 1
                 item = self._card_to_item(card)
@@ -145,6 +158,8 @@ class KitapbulanScraper(BaseScraper):
                 seen_urls.add(item["url"])
                 items.append(item)
                 new_on_page += 1
+                if self._is_relevant(item["title"], query_tokens):
+                    relevant_on_page += 1
                 if len(items) >= max_results:
                     self.stats["stop_reason"] = "max_results"
                     break
@@ -154,10 +169,22 @@ class KitapbulanScraper(BaseScraper):
             if new_on_page == 0:
                 self.stats["stop_reason"] = "no_new_items"
                 break
+            irrelevant_pages = 0 if relevant_on_page else irrelevant_pages + 1
+            if irrelevant_pages >= _IRRELEVANT_PAGE_LIMIT:
+                self.stats["stop_reason"] = "no_relevant_items"
+                break
         else:
             self.stats["stop_reason"] = "max_pages"
 
         return items
+
+    @staticmethod
+    def _is_relevant(title: str, query_tokens: list[str] | None) -> bool:
+        """The relevance guard of ``_parse_card``: every query token in the title."""
+        if not query_tokens:
+            return True
+        normalized_title = normalize_text(title)
+        return all(token in normalized_title for token in query_tokens)
 
     @staticmethod
     def _card_to_item(card) -> dict | None:
@@ -214,11 +241,9 @@ class KitapbulanScraper(BaseScraper):
 
         # Vitrin fallback guard: the store pads empty results with unrelated
         # products; require every significant query token in the title.
-        if query_tokens:
-            normalized_title = normalize_text(title)
-            if not all(token in normalized_title for token in query_tokens):
-                logger.debug("kitapbulan: skipping irrelevant card: %r", title)
-                return None, "irrelevant"
+        if not self._is_relevant(title, query_tokens):
+            logger.debug("kitapbulan: skipping irrelevant card: %r", title)
+            return None, "irrelevant"
 
         return (
             SearchResult(
