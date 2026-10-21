@@ -1,6 +1,7 @@
 import { HomeHero } from "@/components/home/HomeHero";
 import { HotDeals } from "@/components/home/HotDeals";
 import { HowItWorks } from "@/components/home/HowItWorks";
+import { NewSeries } from "@/components/home/NewSeries";
 import { NewVolumes } from "@/components/home/NewVolumes";
 import { OneShots, PopularSeries } from "@/components/home/PopularSeries";
 import { currentUserOrNull } from "@/services/auth";
@@ -30,6 +31,7 @@ export default async function HomePage() {
       {feed && <PopularSeries series={feed.popular_series.slice(0, SHELF_SIZE)} />}
       <HotDeals drops={drops} windowDays={DEAL_WINDOW_DAYS} />
       {feed && <NewVolumes volumes={feed.new_volumes} />}
+      {feed && <NewSeries series={feed.new_series ?? []} />}
       {feed && <OneShots series={feed.one_shots ?? []} />}
       <HowItWorks signedIn={Boolean(user)} />
     </div>

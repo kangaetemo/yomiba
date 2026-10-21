@@ -160,3 +160,37 @@ def test_home_one_shots(client, db_session):
     assert [s["title"] for s in shots] == ["Look Back", "Tükenmiş Tek"]
     assert shots[0]["lowest_price"] == 199.0 and shots[0]["in_stock_offers"] == 1
     assert shots[1]["lowest_price"] is None
+
+
+def test_home_new_series_by_first_volume_date(client, db_session):
+    """New series by the release date of cilt 1, newest first. Unknown or
+    future first dates, a catalog starting past cilt 1 and binding variants
+    stay out; a later volume's date does not make an old series new."""
+    from app.models import CatalogSeries
+
+    bkm = Store(code="bkm", name="BKM")
+    db_session.add(bkm)
+    today = date.today()
+
+    def seed(title, dates: dict[int, date | None]):
+        series = seed_catalog_series(db_session, title, "Gerekli Şeyler", volumes=tuple(dates))
+        for number, released in dates.items():
+            _vol(db_session, series, number).release_date = released
+        return series
+
+    fresh = seed("Yeni Başlayan", {1: today - timedelta(days=2)})
+    older = seed("Geçen Ay", {1: today - timedelta(days=30), 2: today - timedelta(days=1)})
+    seed("Eski Seri", {1: date(2019, 5, 1), 2: today})
+    seed("Tarihsiz", {1: None, 2: today - timedelta(days=1)})
+    seed("Ortadan Başlayan", {4: today - timedelta(days=1)})
+    seed("Duyurulan", {1: today + timedelta(days=20)})
+    variant = seed("Yeni Başlayan (Bez Cilt)", {1: today - timedelta(days=1)})
+    db_session.scalar(select(CatalogSeries).where(CatalogSeries.series_id == variant.id)).mangakol_slug += "~bez"
+    _offer(db_session, _vol(db_session, older, 2), bkm, 11000)
+    db_session.commit()
+
+    new = client.get("/home").json()["new_series"]
+    assert [s["title"] for s in new] == ["Yeni Başlayan", "Geçen Ay", "Eski Seri"]
+    assert new[0]["release_date"] == (today - timedelta(days=2)).isoformat()
+    assert new[0]["id"] == fresh.id and new[0]["lowest_price"] is None
+    assert new[1]["volume_count"] == 2 and new[1]["lowest_price"] == 110.0

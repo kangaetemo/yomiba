@@ -10,6 +10,11 @@
 * ``new_volumes``: volumes by their LOCAL release date from the catalog
   source (Mangakol "Yayın Tarihi (Yerel)"), newest first, never in the
   future. Volumes without a known date are not listed.
+* ``new_series``: series that started in Turkey lately, by the LOCAL release
+  date of their first volume (cilt 0 or 1), newest first, never in the
+  future. A series whose first volume has no known date is not listed, and
+  neither is one whose catalog starts later than cilt 1 (a gap in the data,
+  not a new series). Binding variants are left out.
 * ``one_shots``: single-volume series that Mangakol marks completed both
   in Japan and in Turkey (Look Back, Soichi) — one book and the story is
   done. Binding variants ("Soichi (Bez Cilt)") are left out; in-stock
@@ -99,6 +104,7 @@ def home(
     popular: int = Query(default=8, ge=1, le=24),
     one_shot: int = Query(default=8, ge=1, le=100),
     new: int = Query(default=10, ge=1, le=30),
+    new_series: int = Query(default=8, ge=1, le=30),
     hero: bool = Query(default=False),
     session: Session = Depends(get_db),
 ) -> dict:
@@ -181,6 +187,7 @@ def home(
     ).all()
     new_volumes = _serialize_releases(session, new_rows)
 
+    new_series_cards = _new_series(session, new_series)
     one_shots = _one_shots(session, interest, one_shot)
 
     stats = {
@@ -191,7 +198,7 @@ def home(
             select(func.count(StoreListing.id)).where(StoreListing.price.isnot(None))) or 0,
     }
     result = {"popular_series": popular_series, "one_shots": one_shots,
-              "new_volumes": new_volumes, "stats": stats}
+              "new_volumes": new_volumes, "new_series": new_series_cards, "stats": stats}
     if hero_series is not None:
         result["hero_series"] = hero_series
     return result
@@ -264,6 +271,62 @@ def releases(
     return {"month": month, "today": today.isoformat(),
             "latest_month": latest.isoformat()[:7] if latest else None,
             "volumes": _serialize_releases(session, rows)}
+
+
+def _new_series(session: Session, limit: int) -> list[dict]:
+    real = (Volume.volume_number >= 0) & public_volume_condition(include_announced=False)
+    main_catalog = select(CatalogSeries.series_id).where(~CatalogSeries.mangakol_slug.contains("~"))
+    first = (
+        select(Volume.series_id, func.min(Volume.volume_number).label("first"))
+        .where(Volume.series_id.in_(main_catalog), real)
+        .group_by(Volume.series_id)
+        .subquery()
+    )
+    started = session.execute(
+        select(Volume.series_id, Volume.release_date)
+        .join(first, (first.c.series_id == Volume.series_id) & (first.c.first == Volume.volume_number))
+        .where(first.c.first <= 1, real, Volume.release_date.isnot(None),
+               Volume.release_date <= date.today())
+        .order_by(Volume.release_date.desc(), Volume.series_id.desc())
+        .limit(limit)
+    ).all()
+    ids = [sid for sid, _ in started]
+    rows = {
+        s.id: (s, p) for s, p in session.execute(
+            select(Series, Publisher.name).join(Publisher, Publisher.id == Series.publisher_id)
+            .where(Series.id.in_(ids))
+        )
+    }
+    offers = {
+        sid: (count, price) for sid, count, price in session.execute(
+            select(Volume.series_id, func.count(StoreListing.id), func.min(StoreListing.price))
+            .join(StoreListing, StoreListing.volume_id == Volume.id)
+            .where(Volume.series_id.in_(ids), real, StoreListing.in_stock.is_(True),
+                   StoreListing.price.isnot(None))
+            .group_by(Volume.series_id)
+        )
+    }
+    volume_counts = dict(session.execute(
+        select(Volume.series_id, func.count()).where(Volume.series_id.in_(ids), real)
+        .group_by(Volume.series_id)
+    ).all())
+    covers = _series_covers(session, ids)
+    slugs = series_slugs.slugs_for(session, ids)
+    return [
+        {
+            "id": sid,
+            "slug": slugs[sid],
+            "title": rows[sid][0].title,
+            "publisher": rows[sid][1],
+            "author": rows[sid][0].author,
+            "cover_url": covers.get(sid),
+            "volume_count": volume_counts.get(sid, 0),
+            "release_date": released.isoformat(),
+            "in_stock_offers": offers.get(sid, (0, None))[0],
+            "lowest_price": from_cents(offers.get(sid, (0, None))[1]),
+        }
+        for sid, released in started
+    ]
 
 
 @router.get("/one-shots")

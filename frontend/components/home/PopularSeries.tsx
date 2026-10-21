@@ -36,7 +36,7 @@ export function OneShots({ series }: { series: Series[] }) {
     <section id="one-shot" aria-labelledby="one-shot-title" className="scroll-mt-28 space-y-6">
       <SectionHeading
         id="one-shot-title"
-        folio="04"
+        folio="05"
         eyebrow="Tek ciltlik hikâyeler"
         title="One shot"
         action={{ href: "/one-shot", label: "Tümünü göster" }}
