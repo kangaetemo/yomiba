@@ -983,6 +983,11 @@ function CoveragePanel() {
             son bitiş: {formatDateTime(priceRefresh.last_cycle_completed_at)} ·{" "}
             sonraki: {formatDateTime(priceRefresh.next_scheduled_refresh)}
           </p>
+          <p>
+            <a href="/admin/degisiklikler" className="font-medium text-accent underline">
+              {cycleActive ? "Bu yenilemedeki değişiklikleri gör" : "Son yenilemedeki değişiklikleri gör"} →
+            </a>
+          </p>
         </div>
       )}
 
