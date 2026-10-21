@@ -397,6 +397,29 @@ export function AnalyticsDashboard({ report: r }: { report: AnalyticsReport }) {
         </Card>
       </div>
 
+      <Card title="Yeni üyeler" note={`Bu dönemde açılan hesaplar, en yenisi üstte · toplam üye ${num(r.users_total)}`}>
+        <Table head={["Üye", "Kayıt", "Yöntem", "Son giriş", "Koleksiyon", "İstek listesi", "Fiyat alarmı"]} empty="Bu dönemde yeni üye yok.">
+          {r.new_members.map((m) => (
+            <tr key={m.id} className={m.active ? "" : "opacity-60"}>
+              <td className="max-w-72 py-1.5 pr-3">
+                <span className="block truncate text-ink">
+                  {m.name}
+                  {m.admin && <span className="ml-1.5 text-xs text-faint">admin</span>}
+                  {!m.active && <span className="ml-1.5 text-xs text-faint">kapalı</span>}
+                </span>
+                <span className="block truncate text-xs text-muted">{m.email}</span>
+              </td>
+              <td className={`${td} text-xs whitespace-nowrap`}>{formatDateTime(m.created_at)}</td>
+              <td className={`${td} text-xs`}>{m.method === "email" ? "E-posta" : m.method === "google" ? "Google" : "Google + e-posta"}</td>
+              <td className={`${td} text-xs whitespace-nowrap`}>{m.last_login ? formatDateTime(m.last_login) : "—"}</td>
+              <td className={td}>{num(m.collection)}</td>
+              <td className={td}>{num(m.wishlist)}</td>
+              <td className={td}>{num(m.alerts)}</td>
+            </tr>
+          ))}
+        </Table>
+      </Card>
+
       <Card title="En çok bakılan ciltler" note="Tıklama oranı: cilde bakan oturumların mağazaya tıklayan kısmı">
         <Table head={["Cilt", "Görüntüleme", "Oturum", "Mağaza tıklaması", "Tıklama oranı"]}>
           {r.top_volumes.map((v) => (
