@@ -131,6 +131,44 @@ def test_list_pagination_dedupe_and_stop(scraper):
     assert "volume" not in slugs
 
 
+def test_list_adds_manga_only_another_tab_shows():
+    # Live 2026-10-21: dungeon-meshi was on the wishlist tab, never on
+    # popular, so catalog sync never saw it.
+    card = (
+        '<div class="mk-vol-item"><div class="mk-vol-card">'
+        '<p class="mk-vol-card-wide-vol-title" title="{t}">'
+        '<a href="/manga/{s}"><strong>{t}</strong></a></p></div></div>'
+    )
+    wishlist = card.format(s="frieren", t="Frieren") + card.format(
+        s="dungeon-meshi", t="Zindan Lezzetleri")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        tab = request.url.params.get("tab", "popular")
+        if tab == "wishlist" and _page_of(request) == 1:
+            return httpx.Response(200, text=wishlist)
+        if tab == "wishlist":
+            return httpx.Response(200, text=card.format(s="frieren", t="Frieren"))
+        return default_handler(request)
+
+    scraper = make_scraper(handler)
+    refs = scraper.list_manga()
+    assert [r.slug for r in refs] == [
+        "berserk-athica", "frieren", "chainsaw-man", "dungeon-meshi"]
+    assert scraper.catalog_list_complete
+
+
+def test_list_other_tab_failure_keeps_list_incomplete():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("tab") == "top-rated":
+            return httpx.Response(500, text="error")
+        return default_handler(request)
+
+    scraper = make_scraper(handler)
+    assert [r.slug for r in scraper.list_manga()] == [
+        "berserk-athica", "frieren", "chainsaw-man"]
+    assert not scraper.catalog_list_complete
+
+
 def test_list_blocked_fails_fast():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, text=BLOCKED_PAGE)
