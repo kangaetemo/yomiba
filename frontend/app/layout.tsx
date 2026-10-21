@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Figtree, Fraunces } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { currentUserOrNull } from "@/services/auth";
 import { AccountMenu } from "@/components/AccountMenu";
 import { SearchDialogButton } from "@/components/SearchDialog";
 import { THEME_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
 import { LoginLink } from "@/components/LoginLink";
+import { SiteTracker } from "@/components/SiteTracker";
 
 // Turkish needs latin-ext (ş, ğ, ı, İ).
 const body = Figtree({
@@ -153,7 +153,7 @@ export default async function RootLayout({
             </p>
           </div>
         </footer>
-        <Analytics />
+        <SiteTracker />
       </body>
     </html>
   );

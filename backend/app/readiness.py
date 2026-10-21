@@ -28,7 +28,7 @@ def check_database_ready(engine: Engine, *, check_foreign_keys: bool = False) ->
         for table in ("series", "catalog_series", "volumes", "store_listings",
                       "price_history", "users", "user_sessions", "import_records",
                       "isbn_changes", "shared_isbns", "store_observations", "isbn_issues",
-                      "email_outbox", "series_popularity"):
+                      "email_outbox", "series_popularity", "analytics_events"):
             connection.execute(text(f"SELECT 1 FROM {table} LIMIT 1"))
         invalid = connection.execute(text(
             "SELECT cs.series_id FROM catalog_series cs "

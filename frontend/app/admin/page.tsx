@@ -23,6 +23,10 @@ export default async function AdminPage() {
           denemeleri izleyin.
         </p>
       </header>
+      <Link href="/admin/analiz" className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
+        <h2 className="font-semibold text-ink">Analiz →</h2>
+        <p className="mt-1 text-sm text-muted">Ziyaretçiler, en çok bakılan seri ve ciltler, mağazalara giden tıklamalar, aramalar ve trafik kaynakları.</p>
+      </Link>
       <Link href="/admin/isbn/saglik" className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
         <h2 className="font-semibold text-ink">ISBN Sağlık Raporu →</h2>
         <p className="mt-1 text-sm text-muted">ISBN çelişkileri, Mangakol hataları, bağlanmayan ürünler, aykırı fiyatlar ve son ISBN değişiklikleri. Cilt bazında karar cilt sayfasındaki admin panelinde.</p>

@@ -23,6 +23,7 @@ from .isbn_review import IsbnAuditRun, IsbnAuditItem, IsbnAuditResult, IsbnRevie
 from .isbn_evidence import IsbnChange, IsbnIssue, SharedIsbn, StoreObservation
 from .email_outbox import EmailOutbox
 from .series_popularity import SeriesPopularity
+from .analytics import AnalyticsEvent, AnalyticsSalt
 
 __all__ = [
     "Publisher",
@@ -47,4 +48,6 @@ __all__ = [
     "StoreObservation",
     "EmailOutbox",
     "SeriesPopularity",
+    "AnalyticsEvent",
+    "AnalyticsSalt",
 ]

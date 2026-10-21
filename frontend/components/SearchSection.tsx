@@ -2,13 +2,14 @@
 
 /** Search prepared catalog data once per query; normal loading stays local. */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { SearchBar } from "@/components/SearchBar";
 import { SeriesCard } from "@/components/SeriesCard";
 import { VolumeHitCard } from "@/components/VolumeHitCard";
 import { ResultsSkeleton } from "@/components/LoadingSkeleton";
 import { useSearch } from "@/hooks/useSearch";
+import { track } from "@/lib/track";
 
 export function SearchSection({
   syncUrl = false,
@@ -25,6 +26,7 @@ export function SearchSection({
   const initial = useSearchParams().get("q") ?? "";
   const [query, setQuery] = useState(syncUrl ? initial : "");
   const { status, results, volumes, error, isEmpty } = useSearch(query);
+  useSearchTracking(query.trim(), status === "success" ? results.length + volumes.length : null);
 
   function change(value: string) {
     setQuery(value);
@@ -83,4 +85,22 @@ export function SearchSection({
       </div>
     </div>
   );
+}
+
+/** Count a search once the user stops typing (or picks a result first),
+ * so "nar", "naru", "naruto" is one search, with its result count. */
+function useSearchTracking(query: string, count: number | null) {
+  const pending = useRef<{ q: string; v: number } | null>(null);
+  useEffect(() => {
+    pending.current = count === null ? null : { q: query, v: count };
+    if (count === null) return;
+    const timer = setTimeout(() => {
+      if (pending.current) track("search", pending.current);
+      pending.current = null;
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [query, count]);
+  useEffect(() => () => {
+    if (pending.current) track("search", pending.current);
+  }, []);
 }
