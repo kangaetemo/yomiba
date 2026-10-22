@@ -1,6 +1,7 @@
 """Current selling-price opportunities, not retail-list-price discounts."""
 from datetime import timedelta
 from app.models import CatalogSeries, PriceHistory, Publisher, Series, Store, StoreListing, Volume
+from app.services import price_deals
 from app.utils import utcnow
 
 
@@ -184,8 +185,12 @@ def test_tiny_drop_is_kept_but_left_out_of_public_lists(db_session, client):
     assert client.get(f"/volume/{listing.volume_id}").json()["price_deal"]["noticeable"] is False
 
 
-def test_noticeable_needs_both_percent_and_amount(db_session, client):
+def test_noticeable_needs_ten_percent_and_home_twenty(db_session, client):
     listing = _seed(db_session)
     _point(db_session, listing, 18000, 14 * 24)
-    _point(db_session, listing, 17000, 1)  # 10 TL, 5.6 %
-    assert client.get("/price-drops?noticeable=true").json()["drops"][0]["noticeable"] is True
+    _point(db_session, listing, 17000, 1)  # 10 TL, 5.6 %: kept, not listed
+    assert client.get("/price-drops").json()["drops"][0]["noticeable"] is False
+    _point(db_session, listing, 15840, 0.5)  # 21.6 TL, 12 %: listed, not on home
+    price_deals.clear_cache()
+    item = client.get("/price-drops?noticeable=true").json()["drops"][0]
+    assert item["noticeable"] is True and item["significant"] is False

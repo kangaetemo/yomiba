@@ -80,7 +80,7 @@ export interface PriceDrop {
   saving?: number;
   reference_kind?: "usual" | "previous";
   reference_days?: number;
-  /** At least 5 % and 5 TL: smaller drops stay out of lists and badges. */
+  /** At least 10 % and 5 TL: smaller drops stay out of lists and badges. */
   noticeable?: boolean;
   significant?: boolean;
   alternative_price?: number | null;

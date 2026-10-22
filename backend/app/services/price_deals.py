@@ -28,10 +28,10 @@ from .covers import cover_url
 
 REFERENCE_DAYS = 30
 MIN_REFERENCE_DAYS = 7
-HOME_MIN_PERCENT = 10
+HOME_MIN_PERCENT = 20
 #: Smaller drops (a 60-kuruş rounding change) are still recorded and kept
 #: in the API, but public lists and badges leave them out.
-MIN_NOTICEABLE_PERCENT = 5
+MIN_NOTICEABLE_PERCENT = 10
 MIN_NOTICEABLE_SAVING_CENTS = 500
 #: The site-wide list (home, /indirimler) is shared by every visitor and
 #: takes seconds to compute; prices change on a 4-hour refresh cycle.

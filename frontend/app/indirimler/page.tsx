@@ -36,7 +36,7 @@ export default async function DealsPage({ searchParams }: {
       <header className="space-y-3">
         <p className="eyebrow">Fiyat takibi</p>
         <h1 className="text-4xl font-semibold text-ink">Tüm indirimler</h1>
-        <p className="max-w-2xl text-muted">Etiket fiyatına göre değil, gözlediğimiz satış fiyatlarına göre ucuzlayan ciltler. En az %5 ve 5 TL düşenler.</p>
+        <p className="max-w-2xl text-muted">Etiket fiyatına göre değil, gözlediğimiz satış fiyatlarına göre ucuzlayan ciltler. En az %10 ve 5 TL düşenler.</p>
       </header>
       <form action="/indirimler" className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-surface p-4">
         <label className="space-y-1 text-sm"><span className="block text-muted">Sırala</span>
