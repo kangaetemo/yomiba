@@ -12,8 +12,6 @@ observation. Unknown/expired intervals do not contribute to the reference.
 """
 from __future__ import annotations
 
-import threading
-import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -25,6 +23,7 @@ from ..models import CatalogSeries, PriceHistory, Series, Store, StoreListing, V
 from ..utils import from_cents, utcnow
 from . import series_slugs
 from .covers import cover_url
+from .swr_cache import SwrCache
 
 REFERENCE_DAYS = 30
 MIN_REFERENCE_DAYS = 7
@@ -34,11 +33,11 @@ HOME_MIN_PERCENT = 20
 MIN_NOTICEABLE_PERCENT = 10
 MIN_NOTICEABLE_SAVING_CENTS = 500
 #: The site-wide list (home, /indirimler) is shared by every visitor and
-#: takes seconds to compute; prices change on a 4-hour refresh cycle.
+#: takes seconds to compute; prices change on a 4-hour refresh cycle. Older
+#: lists are still served while one is recomputed in the background.
 CACHE_SECONDS = 300
 
-_cache: dict[tuple, tuple[float, list[dict]]] = {}
-_cache_lock = threading.Lock()
+_cache = SwrCache("price deals", CACHE_SECONDS)
 
 
 def clear_cache() -> None:
@@ -112,21 +111,11 @@ def _reference(intervals, changed_at):
 
 def current_price_deals(session: Session, *, volume_id: int | None = None, hours=168, now=None):
     """Current deals, newest first. The site-wide list (no volume, no fixed
-    ``now``) is cached for CACHE_SECONDS; callers must not mutate it."""
+    ``now``) is cached (see CACHE_SECONDS); callers must not mutate it."""
     if volume_id is not None or now is not None:
         return _compute(session, volume_id=volume_id, hours=hours, now=now)
-    key = (id(session.get_bind()), hours)
-    hit = _cache.get(key)
-    if hit and time.monotonic() - hit[0] < CACHE_SECONDS:
-        return hit[1]
-    # One computation at a time: concurrent first visitors wait for it.
-    with _cache_lock:
-        hit = _cache.get(key)
-        if hit and time.monotonic() - hit[0] < CACHE_SECONDS:
-            return hit[1]
-        deals = _compute(session, volume_id=None, hours=hours, now=None)
-        _cache[key] = (time.monotonic(), deals)
-        return deals
+    return _cache.get(session, (hours,),
+                      lambda own: _compute(own, volume_id=None, hours=hours, now=None))
 
 
 def _compute(session: Session, *, volume_id: int | None, hours, now):
