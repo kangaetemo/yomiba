@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { openGraph } from "@/lib/site";
 import { HomeHero } from "@/components/home/HomeHero";
 import { HotDeals } from "@/components/home/HotDeals";
 import { HowItWorks } from "@/components/home/HowItWorks";
@@ -11,7 +12,14 @@ import type { HomeFeed, PriceDrop } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { alternates: { canonical: "/" } };
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+  openGraph: openGraph({
+    title: "Yomiba — Manga fiyat karşılaştırma ve koleksiyon takibi",
+    description: "Manga fiyatlarını Türk kitapçıları arasında karşılaştır, koleksiyonunu takip et, fiyat alarmı kur.",
+    url: "/",
+  }),
+};
 
 const DEAL_WINDOW_DAYS = 7;
 /** The feed carries a wider pool for the hero; the shelf shows the top of it. */

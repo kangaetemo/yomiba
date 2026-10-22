@@ -55,7 +55,10 @@ export function SectionHeading({
   lead,
   action,
   id,
+  level = 2,
 }: {
+  /** 1 when the heading is the page's title. */
+  level?: 1 | 2;
   folio?: string;
   eyebrow?: string;
   title: string;
@@ -63,6 +66,7 @@ export function SectionHeading({
   action?: { href: string; label: string };
   id?: string;
 }) {
+  const Heading = level === 1 ? "h1" : "h2";
   return (
     <header className="space-y-3">
       <div className="rule" aria-hidden />
@@ -75,9 +79,9 @@ export function SectionHeading({
               {eyebrow}
             </p>
           )}
-          <h2 id={id} className="text-2xl font-semibold text-ink sm:text-[1.9rem] sm:leading-tight">
+          <Heading id={id} className="text-2xl font-semibold text-ink sm:text-[1.9rem] sm:leading-tight">
             {title}
-          </h2>
+          </Heading>
           {lead && <p className="max-w-2xl text-sm text-muted sm:text-base">{lead}</p>}
         </div>
         {action && (

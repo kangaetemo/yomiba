@@ -8,7 +8,7 @@ import { SearchDialogButton } from "@/components/SearchDialog";
 import { THEME_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
 import { LoginLink } from "@/components/LoginLink";
 import { SiteTracker } from "@/components/SiteTracker";
-import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { DEFAULT_OG_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site";
 
 // Turkish needs latin-ext (ş, ğ, ı, İ).
 const body = Figtree({
@@ -32,8 +32,8 @@ export const metadata: Metadata = {
     template: "%s | Yomiba",
   },
   description:
-    "Manga fiyatlarını Türk mağazaları (BKM Kitap, Gerekli Şeyler, Kitap Sepeti ve diğerleri) arasında karşılaştırın, koleksiyonunuzu takip edin, fiyat alarmı kurun.",
-  openGraph: { type: "website", siteName: SITE_NAME, locale: "tr_TR" },
+    "Manga fiyatlarını Türk kitapçıları (BKM Kitap, Gerekli Şeyler, Kitap Sepeti ve diğerleri) arasında karşılaştır, koleksiyonunu takip et, fiyat alarmı kur.",
+  openGraph: { type: "website", siteName: SITE_NAME, locale: "tr_TR", images: [DEFAULT_OG_IMAGE] },
   twitter: { card: "summary" },
 };
 

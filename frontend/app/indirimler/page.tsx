@@ -1,13 +1,20 @@
 import type { Metadata } from "next";
+import { openGraph } from "@/lib/site";
 import Link from "next/link";
 import { DealGrid } from "@/components/home/HotDeals";
 import { getPriceDrops } from "@/services/catalog";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Tüm indirimler",
-  description: "Mangalarda gözlediğimiz güncel fiyat düşüşleri.",
+  title: "Manga indirimleri: fiyatı düşen ciltler",
+  description:
+    "Mangalarda güncel indirimler: Türk kitapçılarında son günlerde fiyatı düşen ciltler, eski ve yeni fiyatlarıyla. Oranına ya da fiyatına göre sırala.",
   alternates: { canonical: "/indirimler" },
+  openGraph: openGraph({
+    title: "Manga indirimleri: fiyatı düşen ciltler",
+    description: "Türk kitapçılarında son günlerde fiyatı düşen manga ciltleri.",
+    url: "/indirimler",
+  }),
 };
 const PAGE_SIZE = 24;
 const SORTS = { recent: "En son düşen", percent: "En yüksek oran", saving: "En çok TL ucuzlayan", price: "En düşük fiyat" } as const;

@@ -3,15 +3,22 @@ import Link from "next/link";
 import { SeriesGrid } from "@/components/home/PopularSeries";
 import { SortBar } from "@/components/SortBar";
 import { SectionHeading } from "@/components/ui";
+import { openGraph } from "@/lib/site";
 import { getAllOneShots } from "@/services/catalog";
 import type { PopularSeries } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "One shot serileri",
-  description: "Tek ciltte biten mangaların Türk kitapçılarındaki fiyatlarını karşılaştır.",
+  title: "One shot mangalar: tek ciltte biten seriler",
+  description:
+    "Tek ciltte başlayıp biten mangalar: Japonya'da ve Türkiye'de tamamlanmış one shot serilerin kitapçılardaki fiyatlarını ve stok durumunu karşılaştır.",
   alternates: { canonical: "/one-shot" },
+  openGraph: openGraph({
+    title: "One shot mangalar: tek ciltte biten seriler",
+    description: "Tek ciltte biten mangalar ve kitapçılardaki fiyatları.",
+    url: "/one-shot",
+  }),
 };
 
 const TR = new Intl.Collator("tr");
@@ -68,6 +75,7 @@ export default async function OneShotPage({
         </Link>
       </nav>
       <SectionHeading
+        level={1}
         eyebrow="Tek ciltlik hikâyeler"
         title="One shot"
         lead="Tek ciltte başlayıp biten hikâyeler: Japonya'da da Türkiye'de de tamamlanmış, tek cildi olan seriler."
@@ -82,7 +90,7 @@ export default async function OneShotPage({
           {stockOnly ? "Şu an stokta one shot yok." : "Henüz listelenecek one shot yok."}
         </p>
       ) : (
-        <SeriesGrid series={shots} />
+        <SeriesGrid series={shots} eagerFirst={4} itemHeading="h2" />
       )}
     </div>
   );

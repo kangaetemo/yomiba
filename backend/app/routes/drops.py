@@ -19,7 +19,8 @@ def price_drops(
     volume_id: int | None = Query(default=None, ge=1),
     session: Session = Depends(get_db),
 ) -> dict:
-    drops = current_price_deals(session, volume_id=volume_id, hours=hours)
+    # A copy: the site-wide list is cached and shared.
+    drops = list(current_price_deals(session, volume_id=volume_id, hours=hours))
     if significant:
         drops = [d for d in drops if d["significant"]]
     if sort == "percent":

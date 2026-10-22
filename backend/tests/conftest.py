@@ -47,6 +47,16 @@ def no_popularity_network(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def fresh_price_deals_cache():
+    """Each test sees its own data, not a deals list cached by another."""
+    from app.services import price_deals
+
+    price_deals.clear_cache()
+    yield
+    price_deals.clear_cache()
+
+
 @pytest.fixture()
 def engine(tmp_path):
     # File-based SQLite: background import jobs open their own sessions, so

@@ -48,23 +48,34 @@ export function OneShots({ series }: { series: Series[] }) {
   );
 }
 
-export function SeriesGrid({ series }: { series: Series[] }) {
+/** `eagerFirst`: covers in the first row load at once (top of a page).
+ * `itemHeading`: h2 when the grid sits right under the page's h1. */
+export function SeriesGrid({
+  series,
+  eagerFirst = 0,
+  itemHeading: ItemHeading = "h3",
+}: {
+  series: Series[];
+  eagerFirst?: number;
+  itemHeading?: "h2" | "h3";
+}) {
   return (
     <ul className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
-      {series.map((s) => (
+      {series.map((s, i) => (
         <li key={s.id}>
           <Link href={seriesPath(s.slug)} className="group block space-y-3">
             <div className="overflow-hidden rounded-[5px]">
               <Cover
                 url={s.cover_url}
                 alt={`${s.title} kapağı`}
+                eager={i < eagerFirst}
                 className="w-full transition-transform duration-500 group-hover:scale-[1.03]"
               />
             </div>
             <div className="space-y-1">
-              <h3 className="line-clamp-2 text-[1.05rem] leading-snug font-semibold text-ink group-hover:text-accent">
+              <ItemHeading className="line-clamp-2 text-[1.05rem] leading-snug font-semibold text-ink group-hover:text-accent">
                 {s.title}
-              </h3>
+              </ItemHeading>
               <p className="truncate text-sm text-muted">
                 {s.publisher}
                 {s.author && <span className="text-faint"> · {s.author}</span>}

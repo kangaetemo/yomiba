@@ -177,6 +177,8 @@ export interface SeriesDetail {
   id: number;
   title: string;
   publisher: string;
+  /** Publisher page slug (/yayinevi/<slug>). */
+  publisher_slug?: string;
   slug: string;
   author?: string | null;
   cover_url: string | null;
@@ -221,6 +223,7 @@ export interface SeriesRef {
   slug: string;
   title: string;
   publisher: string;
+  publisher_slug?: string;
   author?: string | null;
   illustrator?: string | null;
 }

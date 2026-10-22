@@ -158,3 +158,17 @@ def test_all_time_low_flag_looks_beyond_reference_window(db_session, client):
     _point(db_session, listing, 18000, 35 * 24)
     _point(db_session, listing, 14400, 1)
     assert client.get("/price-drops").json()["drops"][0]["lowest_ever"] is False
+
+
+def test_site_wide_deals_are_cached_but_volume_lookups_are_not(db_session, monkeypatch):
+    from app.services import price_deals
+
+    calls = []
+    monkeypatch.setattr(price_deals, "_compute", lambda session, **kw: calls.append(kw) or [])
+    price_deals.current_price_deals(db_session)
+    price_deals.current_price_deals(db_session)
+    assert len(calls) == 1
+    price_deals.current_price_deals(db_session, hours=24)  # another window: own entry
+    price_deals.current_price_deals(db_session, volume_id=1)
+    price_deals.current_price_deals(db_session, volume_id=1)
+    assert len(calls) == 4

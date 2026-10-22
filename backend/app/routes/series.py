@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..auth import optional_user
 from ..models import User, Volume, WishlistItem
+from ..normalization.text import slugify
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.series import SeriesEditionOut, SeriesOut, SeriesVolumeOut
 from ..services import catalog_service, collections_service, series_slugs
@@ -85,6 +86,7 @@ def get_series_detail(
         id=detail.series.id,
         title=detail.series.title,
         publisher=detail.series.publisher.name,
+        publisher_slug=slugify(detail.series.publisher.name),
         slug=series_slugs.slug_for(session, detail.series.id),
         author=detail.series.author,
         cover_url=detail.cover_url,

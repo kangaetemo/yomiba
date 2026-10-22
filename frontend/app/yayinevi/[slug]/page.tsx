@@ -5,7 +5,7 @@ import { JsonLd, breadcrumbs } from "@/components/JsonLd";
 import { SeriesRows } from "@/components/SeriesRows";
 import { SectionHeading } from "@/components/ui";
 import { TR, publisherPath } from "@/lib/seriesIndex";
-import { SITE_URL, openGraph } from "@/lib/site";
+import { SITE_URL, metaDescription, openGraph } from "@/lib/site";
 import { getSeriesIndex } from "@/services/catalog";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +24,13 @@ export async function generateMetadata({ params }: PublisherPageProps): Promise<
   const { slug } = await params;
   const found = await publisherSeries(slug).catch(() => null);
   if (!found) return { title: "Yayınevi bulunamadı" };
-  const title = `${found.name} mangaları`;
-  const description = `${found.name} tarafından Türkçe yayımlanan ${found.series.length} manga serisi: cilt sayıları ve kitapçılardaki en düşük fiyatlar.`;
+  const title = `${found.name} mangaları: seriler ve fiyatlar`;
+  const inStock = found.series.filter((s) => s.in_stock_offers > 0).length;
+  const description = metaDescription([
+    `${found.name} tarafından Türkçe yayımlanan ${found.series.length} manga serisi, ${inStock} tanesi şu an stokta.`,
+    "Cilt sayılarını ve kitapçılardaki en düşük fiyatları karşılaştır.",
+    "Eksik ciltler için fiyat alarmı kur.",
+  ]);
   const url = publisherPath(slug);
   return { title, description, alternates: { canonical: url }, openGraph: openGraph({ title, description, url }) };
 }
@@ -53,6 +58,7 @@ export default async function PublisherPage({ params }: PublisherPageProps) {
         <span className="text-ink-2" aria-current="page">{found.name}</span>
       </nav>
       <SectionHeading
+        level={1}
         eyebrow="Yayınevi"
         title={`${found.name} mangaları`}
         lead={`${found.name} tarafından yayımlanan ${found.series.length} seri${inStock > 0 ? `; ${inStock} tanesinin en az bir cildi şu an stokta` : ""}.`}

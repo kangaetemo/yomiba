@@ -49,6 +49,8 @@ class SeriesOut(BaseModel):
     id: int
     title: str
     publisher: str
+    #: Publisher page slug (/yayinevi/<slug>).
+    publisher_slug: str = ""
     slug: str
     author: str | None = None
     cover_url: str | None = None

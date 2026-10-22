@@ -12,6 +12,8 @@ observation. Unknown/expired intervals do not contribute to the reference.
 """
 from __future__ import annotations
 
+import threading
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -27,6 +29,16 @@ from .covers import cover_url
 REFERENCE_DAYS = 30
 MIN_REFERENCE_DAYS = 7
 HOME_MIN_PERCENT = 10
+#: The site-wide list (home, /indirimler) is shared by every visitor and
+#: takes seconds to compute; prices change on a 4-hour refresh cycle.
+CACHE_SECONDS = 300
+
+_cache: dict[tuple, tuple[float, list[dict]]] = {}
+_cache_lock = threading.Lock()
+
+
+def clear_cache() -> None:
+    _cache.clear()
 
 
 def aware(value: datetime) -> datetime:
@@ -95,6 +107,25 @@ def _reference(intervals, changed_at):
 
 
 def current_price_deals(session: Session, *, volume_id: int | None = None, hours=168, now=None):
+    """Current deals, newest first. The site-wide list (no volume, no fixed
+    ``now``) is cached for CACHE_SECONDS; callers must not mutate it."""
+    if volume_id is not None or now is not None:
+        return _compute(session, volume_id=volume_id, hours=hours, now=now)
+    key = (id(session.get_bind()), hours)
+    hit = _cache.get(key)
+    if hit and time.monotonic() - hit[0] < CACHE_SECONDS:
+        return hit[1]
+    # One computation at a time: concurrent first visitors wait for it.
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and time.monotonic() - hit[0] < CACHE_SECONDS:
+            return hit[1]
+        deals = _compute(session, volume_id=None, hours=hours, now=None)
+        _cache[key] = (time.monotonic(), deals)
+        return deals
+
+
+def _compute(session: Session, *, volume_id: int | None, hours, now):
     now = aware(now or utcnow())
     start = now - timedelta(days=REFERENCE_DAYS)
     freshness = now - timedelta(hours=max(1, get_settings().listing_stale_hours))
@@ -113,6 +144,9 @@ def current_price_deals(session: Session, *, volume_id: int | None = None, hours
             PriceHistory.checked_at <= now, PriceHistory.price > 0,
             or_(previous_price.is_(None), PriceHistory.price < previous_price,
                 PriceHistory.in_stock.is_(True) & previous_stock.is_(False)))
+    if volume_id is not None:
+        # A volume page needs only its own listings' history scanned.
+        candidates = candidates.where(StoreListing.volume_id == volume_id)
     query = (
         select(StoreListing, Volume, Series, Store)
         .join(Volume, Volume.id == StoreListing.volume_id)

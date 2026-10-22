@@ -4,7 +4,7 @@ import { JsonLd, breadcrumbs } from "@/components/JsonLd";
 import { SeriesRows } from "@/components/SeriesRows";
 import { SectionHeading } from "@/components/ui";
 import { groupByLetter, publisherPath, publishers } from "@/lib/seriesIndex";
-import { SITE_URL } from "@/lib/site";
+import { SITE_URL, openGraph } from "@/lib/site";
 import { getSeriesIndex } from "@/services/catalog";
 import type { SeriesIndexItem } from "@/types";
 
@@ -15,6 +15,11 @@ export const metadata: Metadata = {
   description:
     "Türkiye'de yayımlanan bütün manga serileri alfabetik sırayla: yayınevi, cilt sayısı ve kitapçılardaki en düşük fiyat.",
   alternates: { canonical: "/seriler" },
+  openGraph: openGraph({
+    title: "Tüm manga serileri (A–Z)",
+    description: "Türkiye'de yayımlanan bütün manga serileri, yayınevleri ve en düşük fiyatlarıyla.",
+    url: "/seriler",
+  }),
 };
 
 export default async function SeriesIndexPage() {
@@ -33,6 +38,7 @@ export default async function SeriesIndexPage() {
         </Link>
       </nav>
       <SectionHeading
+        level={1}
         eyebrow="Katalog"
         title="Tüm seriler"
         lead={
