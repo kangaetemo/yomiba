@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..auth import optional_user, require_admin, require_user
 from ..models import ImportRecord, ListingExclusion, Store, StoreListing, User, Volume
+from ..normalization.text import slugify
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.price_alert import PriceAlertDetail, PriceAlertIn, PriceAlertOut
 from ..schemas.price_history import HistoryListingOut, HistoryPointOut, LowestPointOut, PriceHistoryOut
@@ -114,6 +115,7 @@ def _build_volume_out(
             slug=series_slugs.slug_for(session, volume.series.id),
             title=volume.series.title,
             publisher=volume.series.publisher.name,
+            publisher_slug=slugify(volume.series.publisher.name),
             author=volume.series.author,
             illustrator=volume.series.illustrator,
         ),

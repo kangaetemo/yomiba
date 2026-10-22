@@ -1,6 +1,7 @@
 """Current selling-price opportunities, not retail-list-price discounts."""
 from datetime import timedelta
 from app.models import CatalogSeries, PriceHistory, Publisher, Series, Store, StoreListing, Volume
+from app.services import price_deals
 from app.utils import utcnow
 
 
@@ -158,3 +159,38 @@ def test_all_time_low_flag_looks_beyond_reference_window(db_session, client):
     _point(db_session, listing, 18000, 35 * 24)
     _point(db_session, listing, 14400, 1)
     assert client.get("/price-drops").json()["drops"][0]["lowest_ever"] is False
+
+
+def test_site_wide_deals_are_cached_but_volume_lookups_are_not(db_session, monkeypatch):
+    from app.services import price_deals
+
+    calls = []
+    monkeypatch.setattr(price_deals, "_compute", lambda session, **kw: calls.append(kw) or [])
+    price_deals.current_price_deals(db_session)
+    price_deals.current_price_deals(db_session)
+    assert len(calls) == 1
+    price_deals.current_price_deals(db_session, hours=24)  # another window: own entry
+    price_deals.current_price_deals(db_session, volume_id=1)
+    price_deals.current_price_deals(db_session, volume_id=1)
+    assert len(calls) == 4
+
+
+def test_tiny_drop_is_kept_but_left_out_of_public_lists(db_session, client):
+    listing = _seed(db_session)
+    _point(db_session, listing, 18000, 14 * 24)
+    _point(db_session, listing, 17940, 1)  # 60 kuruş
+    item = client.get("/price-drops").json()["drops"][0]
+    assert item["saving"] == 0.6 and item["noticeable"] is False and item["significant"] is False
+    assert client.get("/price-drops?noticeable=true").json()["drops"] == []
+    assert client.get(f"/volume/{listing.volume_id}").json()["price_deal"]["noticeable"] is False
+
+
+def test_noticeable_needs_ten_percent_and_home_twenty(db_session, client):
+    listing = _seed(db_session)
+    _point(db_session, listing, 18000, 14 * 24)
+    _point(db_session, listing, 17000, 1)  # 10 TL, 5.6 %: kept, not listed
+    assert client.get("/price-drops").json()["drops"][0]["noticeable"] is False
+    _point(db_session, listing, 15840, 0.5)  # 21.6 TL, 12 %: listed, not on home
+    price_deals.clear_cache()
+    item = client.get("/price-drops?noticeable=true").json()["drops"][0]
+    assert item["noticeable"] is True and item["significant"] is False

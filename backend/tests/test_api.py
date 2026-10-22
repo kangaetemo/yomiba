@@ -510,3 +510,11 @@ def test_series_index_lists_catalog_series(seeded):
     # Every listed slug opens its series page.
     for s in data:
         assert seeded.get(f"/series/{s['slug']}").status_code == 200
+
+
+def test_series_and_volume_carry_the_publisher_page_slug(seeded):
+    series = next(s for s in seeded.get("/series").json()["series"] if s["title"] == "Berserk")
+    detail = seeded.get(f"/series/{series['slug']}").json()
+    assert detail["publisher_slug"] == "athica-yayinlari"
+    volume = seeded.get(f"/volume/{detail['volumes'][0]['id']}").json()
+    assert volume["series"]["publisher_slug"] == "athica-yayinlari"
