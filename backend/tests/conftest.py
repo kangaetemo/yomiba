@@ -49,12 +49,15 @@ def no_popularity_network(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def fresh_price_deals_cache():
-    """Each test sees its own data, not a deals list cached by another."""
+    """Each test sees its own data, not a feed cached by another."""
+    from app.routes import home
     from app.services import price_deals
 
     price_deals.clear_cache()
+    home.clear_cache()
     yield
     price_deals.clear_cache()
+    home.clear_cache()
 
 
 @pytest.fixture()

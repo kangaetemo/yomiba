@@ -21,7 +21,9 @@
   titles first, then by reader interest and offers.
 * ``stats``: catalog / store / offer counts for the hero.
 
-Read-only; nothing here triggers a scrape.
+Read-only; nothing here triggers a scrape. The feed is the same for every
+visitor and takes seconds on the production database, so it is cached
+(HOME_CACHE_SECONDS) and an expired copy is served while a new one is built.
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ from ..models import (
 from ..services import series_slugs
 from ..services.catalog_service import fresh_listing_condition, public_volume_condition
 from ..services.covers import cover_url
+from ..services.swr_cache import SwrCache
 from ..utils import from_cents, utcnow
 
 router = APIRouter(tags=["home"])
@@ -99,6 +102,17 @@ def reader_interest(session: Session) -> dict[int, float]:
     return interest
 
 
+HOME_CACHE_SECONDS = 300
+_home_cache = SwrCache("home feed", HOME_CACHE_SECONDS)
+#: The parameters the SSR home page asks for (frontend getHomeFeed), warmed
+#: in the background so no visitor waits for a cold feed.
+SSR_HOME_PARAMS = {"popular": 24, "one_shot": 48, "new": 10, "new_series": 8, "hero": True}
+
+
+def clear_cache() -> None:
+    _home_cache.clear()
+
+
 @router.get("/home")
 def home(
     popular: int = Query(default=8, ge=1, le=24),
@@ -108,6 +122,21 @@ def home(
     hero: bool = Query(default=False),
     session: Session = Depends(get_db),
 ) -> dict:
+    return home_feed(session, popular=popular, one_shot=one_shot, new=new,
+                     new_series=new_series, hero=hero)
+
+
+def home_feed(session: Session, *, popular: int, one_shot: int, new: int,
+              new_series: int, hero: bool) -> dict:
+    """The cached feed; callers must not mutate it."""
+    return _home_cache.get(
+        session, (popular, one_shot, new, new_series, hero),
+        lambda own: _compute_home(own, popular=popular, one_shot=one_shot, new=new,
+                                  new_series=new_series, hero=hero))
+
+
+def _compute_home(session: Session, *, popular: int, one_shot: int, new: int,
+                  new_series: int, hero: bool) -> dict:
     catalog = _catalog_ids()
     real = (Volume.volume_number >= 0) & public_volume_condition(include_announced=False)
 
