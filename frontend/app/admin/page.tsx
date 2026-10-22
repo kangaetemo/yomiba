@@ -33,7 +33,11 @@ export default async function AdminPage() {
         <h2 className="font-semibold text-ink">Fiyat değişiklikleri →</h2>
         <p className="mt-1 text-sm text-muted">Fiyat yenilemede hangi cildin hangi mağazada değiştiği: ilk kez satışa çıkan ciltler, yeni kayıtlar, fiyat ve stok değişiklikleri.</p>
       </Link>
-      <Link href="/admin/bildirimler" className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
+      <Link href="/admin/instagram" className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
+        <h2 className="font-semibold text-ink">Instagram taslakları →</h2>
+        <p className="mt-1 text-sm text-muted">Haftanın çıkan ciltlerinden gerçek kapak ve mağaza fiyatlarıyla kaydırmalı post: PNG olarak indir, açıklama metnini kopyala.</p>
+      </Link>
+      <Link href="/admin/bildirimler"className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
         <h2 className="font-semibold text-ink">
           Hata bildirimleri →{" "}
           {openReports ? <span className="ml-1 rounded-full bg-accent px-2 py-0.5 text-xs text-on-accent">{openReports} yeni</span> : null}
