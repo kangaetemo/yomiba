@@ -172,3 +172,20 @@ def test_site_wide_deals_are_cached_but_volume_lookups_are_not(db_session, monke
     price_deals.current_price_deals(db_session, volume_id=1)
     price_deals.current_price_deals(db_session, volume_id=1)
     assert len(calls) == 4
+
+
+def test_tiny_drop_is_kept_but_left_out_of_public_lists(db_session, client):
+    listing = _seed(db_session)
+    _point(db_session, listing, 18000, 14 * 24)
+    _point(db_session, listing, 17940, 1)  # 60 kuruş
+    item = client.get("/price-drops").json()["drops"][0]
+    assert item["saving"] == 0.6 and item["noticeable"] is False and item["significant"] is False
+    assert client.get("/price-drops?noticeable=true").json()["drops"] == []
+    assert client.get(f"/volume/{listing.volume_id}").json()["price_deal"]["noticeable"] is False
+
+
+def test_noticeable_needs_both_percent_and_amount(db_session, client):
+    listing = _seed(db_session)
+    _point(db_session, listing, 18000, 14 * 24)
+    _point(db_session, listing, 17000, 1)  # 10 TL, 5.6 %
+    assert client.get("/price-drops?noticeable=true").json()["drops"][0]["noticeable"] is True

@@ -28,7 +28,7 @@ export default async function DealsPage({ searchParams }: {
   const days = [7, 14, 30].includes(Number(query.days)) ? Number(query.days) : 14;
   const rawPage = Number(query.page);
   const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 100000) : 1;
-  const feed = await getPriceDrops(days * 24, PAGE_SIZE, { sort, offset: (page - 1) * PAGE_SIZE }).catch(() => null);
+  const feed = await getPriceDrops(days * 24, PAGE_SIZE, { sort, noticeable: true, offset: (page - 1) * PAGE_SIZE }).catch(() => null);
   const pageLink = (value: number) => `/indirimler?${new URLSearchParams({ sort, days: String(days), page: String(value) })}`;
   return (
     <div className="space-y-8">
@@ -36,7 +36,7 @@ export default async function DealsPage({ searchParams }: {
       <header className="space-y-3">
         <p className="eyebrow">Fiyat takibi</p>
         <h1 className="text-4xl font-semibold text-ink">Tüm indirimler</h1>
-        <p className="max-w-2xl text-muted">Etiket fiyatına göre değil, gözlediğimiz satış fiyatlarına göre ucuzlayan ciltler. Küçük düşüşler de burada.</p>
+        <p className="max-w-2xl text-muted">Etiket fiyatına göre değil, gözlediğimiz satış fiyatlarına göre ucuzlayan ciltler. En az %5 ve 5 TL düşenler.</p>
       </header>
       <form action="/indirimler" className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-surface p-4">
         <label className="space-y-1 text-sm"><span className="block text-muted">Sırala</span>

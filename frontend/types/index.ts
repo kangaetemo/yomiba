@@ -80,13 +80,15 @@ export interface PriceDrop {
   saving?: number;
   reference_kind?: "usual" | "previous";
   reference_days?: number;
+  /** At least 5 % and 5 TL: smaller drops stay out of lists and badges. */
+  noticeable?: boolean;
   significant?: boolean;
   alternative_price?: number | null;
 }
 
 export type PriceDeal = Pick<PriceDrop,
   "listing_id" | "old_price" | "new_price" | "saving" | "drop_pct" |
-  "reference_kind" | "reference_days" | "significant" | "changed_at">;
+  "reference_kind" | "reference_days" | "noticeable" | "significant" | "changed_at">;
 
 export interface PriceDropsFeed {
   drops: PriceDrop[];

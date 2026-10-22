@@ -4,7 +4,8 @@ import type { PriceDeal } from "@/types";
 /** One wording for the home shelf, price table and volume summary. */
 export function DealSummary({ deal }: { deal: PriceDeal }) {
   const saving = deal.saving ?? Math.max(0, Number(deal.old_price) - Number(deal.new_price));
-  if (saving <= 0) return null;
+  // Tiny drops (a few kuruş) are tracked but not advertised.
+  if (saving <= 0 || deal.noticeable === false) return null;
   const usual = deal.reference_kind === "usual";
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

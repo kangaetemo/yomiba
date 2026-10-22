@@ -29,6 +29,10 @@ from .covers import cover_url
 REFERENCE_DAYS = 30
 MIN_REFERENCE_DAYS = 7
 HOME_MIN_PERCENT = 10
+#: Smaller drops (a 60-kuruş rounding change) are still recorded and kept
+#: in the API, but public lists and badges leave them out.
+MIN_NOTICEABLE_PERCENT = 5
+MIN_NOTICEABLE_SAVING_CENTS = 500
 #: The site-wide list (home, /indirimler) is shared by every visitor and
 #: takes seconds to compute; prices change on a 4-hour refresh cycle.
 CACHE_SECONDS = 300
@@ -198,6 +202,7 @@ def _compute(session: Session, *, volume_id: int | None, hours, now):
             continue  # returning to an ordinary price after a short-lived rise
         saving = reference - listing.price
         percent = saving * 100 / reference
+        noticeable = percent >= MIN_NOTICEABLE_PERCENT and saving >= MIN_NOTICEABLE_SAVING_CENTS
         alternatives = [r[0].price for r in buyable if r[0].id != listing.id and r[0].price > listing.price]
         alternative = min(alternatives) if alternatives else None
         deals.append({
@@ -207,7 +212,8 @@ def _compute(session: Session, *, volume_id: int | None, hours, now):
             "old_price": from_cents(reference), "new_price": from_cents(listing.price),
             "saving": from_cents(saving), "drop_pct": round(percent, 1),
             "reference_kind": kind, "reference_days": round(coverage / 86400, 1),
-            "significant": kind == "usual" and percent >= HOME_MIN_PERCENT,
+            "noticeable": noticeable,
+            "significant": noticeable and kind == "usual" and percent >= HOME_MIN_PERCENT,
             "lowest_ever": False,
             "changed_at": changed_at.isoformat(), "in_stock": True,
             "product_url": listing.product_url, "image_url": cover_url(volume.cover_key),

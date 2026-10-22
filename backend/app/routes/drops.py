@@ -15,6 +15,7 @@ def price_drops(
     limit: int = Query(default=12, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     significant: bool = False,
+    noticeable: bool = False,
     sort: Literal["recent", "percent", "saving", "price"] = "recent",
     volume_id: int | None = Query(default=None, ge=1),
     session: Session = Depends(get_db),
@@ -23,6 +24,8 @@ def price_drops(
     drops = list(current_price_deals(session, volume_id=volume_id, hours=hours))
     if significant:
         drops = [d for d in drops if d["significant"]]
+    elif noticeable:
+        drops = [d for d in drops if d["noticeable"]]
     if sort == "percent":
         drops.sort(key=lambda d: (-d["drop_pct"], -d["saving"], d["volume_id"]))
     elif sort == "saving":

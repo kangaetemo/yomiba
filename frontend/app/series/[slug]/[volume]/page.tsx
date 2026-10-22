@@ -179,7 +179,9 @@ export default async function VolumePage({ params }: VolumePageProps) {
   const renderedAt = new Date().getTime();
   const best = detail.unverified ? null : cheapest(detail.stores);
   const buyable = detail.stores.filter((s) => s.stock && !s.stale);
-  const deal = detail.price_deal && best && detail.price_deal.new_price === best.price ? detail.price_deal : null;
+  // A tiny drop (a few kuruş) is not shown as a deal; the store comparison takes its place.
+  const deal = detail.price_deal && detail.price_deal.noticeable !== false && best
+    && detail.price_deal.new_price === best.price ? detail.price_deal : null;
   const alternativePrices = best && best.stores.length === 1
     ? buyable.filter((s) => s.price !== null && Number(s.price) > best.price).map((s) => Number(s.price)) : [];
   const alternative = alternativePrices.length ? Math.min(...alternativePrices) : null;
