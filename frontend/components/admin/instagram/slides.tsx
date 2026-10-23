@@ -1,0 +1,290 @@
+/**
+ * Instagram carousel slides, drawn at the post's real size (1080×1350, 4:5)
+ * with inline styles only, so the PNG export (html-to-image) is exactly what
+ * the preview shows. Colors are the site's light theme, fixed: a post does
+ * not follow the viewer's theme.
+ */
+
+import type { CSSProperties, ReactNode } from "react";
+import type { InstagramVolume } from "@/services/instagram";
+
+export const SLIDE_W = 1080;
+export const SLIDE_H = 1350;
+
+const C = {
+  paper: "#f7f2e7",
+  surface: "#fffdf8",
+  surface3: "#e7dcc6",
+  line: "#e4d9c3",
+  ink: "#1f1b16",
+  ink2: "#3d372e",
+  muted: "#6a6153",
+  faint: "#8a806d",
+  accent: "#b8321b",
+  accentSoft: "#f2b8a6",
+  indigo: "#2f4f7a",
+};
+const DISPLAY = "var(--font-display-face), Georgia, serif";
+const BODY = "var(--font-body), system-ui, sans-serif";
+
+const DAY = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", timeZone: "UTC" });
+const WEEKDAY = new Intl.DateTimeFormat("tr-TR", { weekday: "long", timeZone: "UTC" });
+const isoDate = (iso: string) => new Date(`${iso}T00:00:00Z`);
+
+export const formatPrice = (value: number) =>
+  `${value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`;
+export const dayLabel = (iso: string) => DAY.format(isoDate(iso));
+const weekdayLabel = (iso: string) => {
+  const day = WEEKDAY.format(isoDate(iso));
+  return `${day.charAt(0).toLocaleUpperCase("tr-TR")}${day.slice(1)} · ${dayLabel(iso)}`;
+};
+
+/** "One Piece 105", "Dragon Ball 5 (9–10)". */
+export function bookTitle(v: InstagramVolume): string {
+  const span = v.covers_from && v.covers_to ? ` (${v.covers_from}–${v.covers_to})` : "";
+  return `${v.series_title} ${v.number}${span}`;
+}
+
+function Frame({ background, color, children }: { background: string; color: string; children: ReactNode }) {
+  return (
+    <div style={{ position: "relative", width: SLIDE_W, height: SLIDE_H, overflow: "hidden", background, color, fontFamily: BODY }}>
+      {children}
+    </div>
+  );
+}
+
+function Brand({ page, dark = false, sealOnAccent = false }: { page: string; dark?: boolean; sealOnAccent?: boolean }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{
+          width: 60, height: 60, borderRadius: 10, display: "grid", placeItems: "center", transform: "rotate(-3deg)",
+          background: sealOnAccent ? C.surface : C.accent, color: sealOnAccent ? C.accent : C.surface,
+          fontFamily: DISPLAY, fontSize: 32, fontWeight: 700,
+        }}>読</div>
+        <div style={{ fontFamily: DISPLAY, fontSize: 40, fontWeight: 500 }}>yomiba</div>
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 700, color: dark ? "rgba(255,253,248,0.7)" : C.faint }}>{page}</div>
+    </div>
+  );
+}
+
+/** A real cover, or the site's 読 placeholder when the volume has none yet. */
+function CoverArt({ v, style, border = false, compact = false }: {
+  v: InstagramVolume; style: CSSProperties; border?: boolean; compact?: boolean;
+}) {
+  const frame: CSSProperties = {
+    borderRadius: 10, overflow: "hidden", boxSizing: "border-box", background: C.surface3,
+    border: border ? `4px solid ${C.paper}` : undefined, ...style,
+  };
+  if (!v.cover_url) {
+    return (
+      <div style={{ ...frame, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, color: C.faint, textAlign: "center", padding: compact ? 0 : 12 }}>
+        <div style={{ fontFamily: DISPLAY, fontSize: compact ? 28 : 64 }}>読</div>
+        {compact ? null : <div style={{ fontSize: 20, fontWeight: 700, color: C.ink2 }}>{bookTitle(v)}</div>}
+      </div>
+    );
+  }
+  return (
+    <div style={frame}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={v.cover_url} alt={bookTitle(v)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+    </div>
+  );
+}
+
+const SWIPE = (
+  <svg aria-hidden width="34" height="34" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
+);
+
+/** Fan positions (left, top, rotation) by how many covers are shown. */
+const FANS: Record<number, [number, number, number][]> = {
+  1: [[390, 740, -3]],
+  2: [[250, 760, -7], [530, 760, 7]],
+  3: [[150, 790, -10], [390, 730, 0], [630, 790, 10]],
+  4: [[60, 820, -12], [280, 760, -4], [500, 760, 4], [720, 820, 12]],
+  5: [[30, 820, -14], [230, 760, -7], [400, 720, 0], [570, 760, 7], [760, 840, 14]],
+};
+const FAN_Z: Record<number, number[]> = { 1: [1], 2: [1, 2], 3: [1, 3, 2], 4: [1, 2, 3, 2], 5: [1, 2, 5, 3, 2] };
+
+export function CoverSlide({ fan, total, weekLabel, page }: {
+  fan: InstagramVolume[]; total: number; weekLabel: string; page: string;
+}) {
+  const spots = FANS[fan.length] ?? [];
+  return (
+    <Frame background={C.ink} color={C.paper}>
+      <div aria-hidden style={{ position: "absolute", right: -120, top: -120, width: 620, height: 620, borderRadius: "50%", backgroundImage: "radial-gradient(circle, rgba(184,50,27,0.55) 3px, transparent 3.5px)", backgroundSize: "22px 22px" }} />
+      <div aria-hidden style={{ position: "absolute", left: 72, top: 330, fontFamily: DISPLAY, fontSize: 360, fontWeight: 900, lineHeight: 1, color: "rgba(247,242,231,0.05)" }}>新刊</div>
+      <div style={{ position: "absolute", left: 72, right: 72, top: 64 }}><Brand page={page} dark /></div>
+      <div style={{ position: "absolute", left: 72, right: 72, top: 196, display: "flex", flexDirection: "column", gap: 22 }}>
+        <div style={{ alignSelf: "flex-start", background: C.accent, color: C.surface, fontSize: 24, fontWeight: 800, letterSpacing: 3, padding: "10px 18px", transform: "rotate(-1.5deg)" }}>
+          {weekLabel.toLocaleUpperCase("tr-TR")} · YAYIN TAKVİMİ
+        </div>
+        <h1 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 128, lineHeight: 0.92, fontWeight: 900, letterSpacing: -3 }}>
+          Bu hafta<br />{total} yeni cilt<br /><span style={{ color: C.accentSoft }}>raflarda.</span>
+        </h1>
+      </div>
+      {fan.map((v, i) => {
+        const [left, top, rot] = spots[i];
+        return (
+          <CoverArt key={v.id} v={v} border style={{
+            position: "absolute", left, top, width: 300, height: 450, transform: `rotate(${rot}deg)`,
+            zIndex: FAN_Z[fan.length][i], boxShadow: "0 24px 50px rgba(0,0,0,0.55)",
+          }} />
+        );
+      })}
+      <div style={{ position: "absolute", right: 72, bottom: 64, zIndex: 10, display: "flex", alignItems: "center", gap: 14, background: C.paper, color: C.ink, borderRadius: 999, padding: "16px 28px", fontSize: 26, fontWeight: 800 }}>
+        Kaydır, fiyatları gör {SWIPE}
+      </div>
+    </Frame>
+  );
+}
+
+const MAX_STORE_ROWS = 6;
+
+export function CompareSlide({ v, others, page }: { v: InstagramVolume; others: InstagramVolume[]; page: string }) {
+  const offers = v.offers.length > MAX_STORE_ROWS ? v.offers.slice(0, MAX_STORE_ROWS - 1) : v.offers;
+  const hidden = v.offers.length - offers.length;
+  const max = Math.max(...offers.map((o) => o.price), 1);
+  const spread = v.offers.length >= 2 ? v.offers[v.offers.length - 1].price - v.offers[0].price : null;
+  return (
+    <Frame background={C.paper} color={C.ink}>
+      <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 40 }}>
+        <Brand page={page} />
+        <div style={{ display: "flex", gap: 48, alignItems: "center" }}>
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <div aria-hidden style={{ position: "absolute", left: -36, top: -30, width: 260, height: 260, backgroundImage: "radial-gradient(circle, rgba(31,27,22,0.22) 3px, transparent 3.5px)", backgroundSize: "18px 18px" }} />
+            <CoverArt v={v} style={{ position: "relative", width: 340, height: 510, transform: "rotate(-3deg)", boxShadow: "0 20px 40px rgba(31,27,22,0.3)" }} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>BU HAFTA RAFLARDA</div>
+            <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: bookTitle(v).length > 18 ? 68 : 80, lineHeight: 0.95, fontWeight: 900, letterSpacing: -2 }}>{bookTitle(v)}</h2>
+            <div style={{ fontSize: 26, color: C.muted }}>{v.publisher} · {dayLabel(v.release_date)}</div>
+            <div style={{ marginTop: 12, background: C.ink, color: C.paper, borderRadius: 16, padding: "22px 26px", display: "flex", flexDirection: "column", gap: 4, transform: "rotate(1deg)" }}>
+              <div style={{ fontSize: 22, fontWeight: 600, color: "rgba(247,242,231,0.7)" }}>
+                {spread !== null ? "Mağazalar arasındaki fark" : v.offers.length ? "Şu an tek mağazada" : "Fiyat"}
+              </div>
+              <div style={{ fontFamily: DISPLAY, fontSize: 64, fontWeight: 900, lineHeight: 1, color: C.accentSoft }}>
+                {spread !== null ? formatPrice(spread) : v.offers.length ? formatPrice(v.offers[0].price) : "Yakında"}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontFamily: DISPLAY, fontSize: 36, fontWeight: 700 }}>Hangi mağazada kaç para?</div>
+          {offers.length === 0 ? (
+            <div style={{ fontSize: 26, color: C.muted }}>Henüz hiçbir mağazada stokta değil. Satışa çıkınca sitede görünecek.</div>
+          ) : offers.map((o, i) => (
+            <div key={o.store_code} style={{ display: "flex", alignItems: "center", gap: 20, fontSize: 26 }}>
+              <div style={{ width: 210, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.store}</div>
+              <div style={{ flex: 1, height: 40, borderRadius: 8, background: C.surface3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${Math.round((o.price / max) * 100)}%`, background: i === 0 ? C.accent : C.faint, borderRadius: 8, display: "flex", alignItems: "center", paddingLeft: 14, boxSizing: "border-box", color: C.surface, fontSize: 18, fontWeight: 800, letterSpacing: 2 }}>
+                  {i === 0 ? "EN UCUZ" : ""}
+                </div>
+              </div>
+              <div style={{ width: 170, textAlign: "right", fontWeight: 800 }}>{formatPrice(o.price)}</div>
+            </div>
+          ))}
+          {hidden > 0 ? <div style={{ fontSize: 22, color: C.muted }}>+{hidden} mağaza daha</div> : null}
+        </div>
+        <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, borderTop: `2px solid ${C.line}`, paddingTop: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {others.slice(0, 7).map((o) => (
+              <CoverArt key={o.id} v={o} compact style={{ width: 52, height: 78, borderRadius: 4, boxShadow: "0 3px 8px rgba(31,27,22,0.2)" }} />
+            ))}
+            {others.length ? <div style={{ fontSize: 24, fontWeight: 700, color: C.ink2, marginLeft: 8 }}>+{others.length} cilt daha</div> : null}
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>yomiba.net/takvim</div>
+        </div>
+      </div>
+    </Frame>
+  );
+}
+
+export const LIST_MAX = 8;
+
+export function ListSlide({ volumes, total, weekLabel, page }: {
+  volumes: InstagramVolume[]; total: number; weekLabel: string; page: string;
+}) {
+  return (
+    <Frame background={C.paper} color={C.ink}>
+      <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 36 }}>
+        <Brand page={page} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>
+            {weekLabel.toLocaleUpperCase("tr-TR")} · {total} CİLT
+          </div>
+          <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 80, lineHeight: 0.95, fontWeight: 900, letterSpacing: -2 }}>
+            {total > volumes.length ? "Haftanın listesi" : "Haftanın tam listesi"}
+          </h2>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "18px 24px" }}>
+          {volumes.map((v) => (
+            <div key={v.id} style={{ width: 456, boxSizing: "border-box", display: "flex", gap: 18, alignItems: "center", background: C.surface, border: `2px solid ${C.line}`, borderRadius: 14, padding: 14 }}>
+              <CoverArt v={v} compact style={{ width: 100, height: 150, flexShrink: 0, borderRadius: 6, boxShadow: "0 4px 10px rgba(31,27,22,0.2)" }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: C.faint }}>{weekdayLabel(v.release_date)}</div>
+                <div style={{ fontFamily: DISPLAY, fontSize: 28, fontWeight: 700, lineHeight: 1.05 }}>{bookTitle(v)}</div>
+                {v.offers.length ? (
+                  <>
+                    <div style={{ fontSize: 20, color: C.muted }}>en ucuz <span style={{ fontSize: 26, fontWeight: 800, color: C.ink }}>{formatPrice(v.offers[0].price)}</span></div>
+                    <div style={{ fontSize: 18, color: C.muted }}>{v.offers[0].store}</div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 20, color: C.muted }}>Henüz stokta değil</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: `2px solid ${C.line}`, paddingTop: 22 }}>
+          <div style={{ fontSize: 22, color: C.muted }}>
+            {total > volumes.length ? `+${total - volumes.length} cilt daha sitede` : "Fiyatlar paylaşım anındaki fiyatlardır"}
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>yomiba.net/takvim</div>
+        </div>
+      </div>
+    </Frame>
+  );
+}
+
+const STEPS = [
+  { n: "1", title: "Seriyi bul", text: "Türkiye’deki mangalar ve mağaza fiyatları tek yerde" },
+  { n: "2", title: "Fiyat alarmı kur", text: "İstediğin cilt için hedef fiyatını yaz" },
+  { n: "3", title: "E-postayla haber al", text: "Fiyat hedefinin altına inince" },
+];
+
+export function CtaSlide({ page }: { page: string }) {
+  return (
+    <Frame background={C.accent} color={C.surface}>
+      <div aria-hidden style={{ position: "absolute", left: "50%", top: "40%", width: 2400, height: 2400, marginLeft: -1200, marginTop: -1200, background: "repeating-conic-gradient(from 0deg, rgba(255,253,248,0.09) 0deg 2deg, transparent 2deg 9deg)" }} />
+      <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 44 }}>
+        <Brand page={page} dark sealOnAccent />
+        <h2 style={{ margin: "40px 0 0", fontFamily: DISPLAY, fontSize: 116, lineHeight: 0.95, fontWeight: 900, letterSpacing: -3 }}>
+          Fiyatı düşünce<br />biz haber<br />verelim.
+        </h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {STEPS.map((s) => (
+            <div key={s.n} style={{ display: "flex", alignItems: "center", gap: 26, background: C.surface, color: C.ink, borderRadius: 18, padding: "24px 30px", boxShadow: `8px 8px 0 ${C.ink}` }}>
+              <div style={{ width: 64, height: 64, flexShrink: 0, borderRadius: "50%", background: C.ink, color: C.surface, display: "grid", placeItems: "center", fontFamily: DISPLAY, fontSize: 34, fontWeight: 900 }}>{s.n}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ fontSize: 32, fontWeight: 800 }}>{s.title}</div>
+                <div style={{ fontSize: 24, color: C.muted }}>{s.text}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: "auto", display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 24, fontWeight: 600, color: "rgba(255,253,248,0.8)" }}>Link profilde</div>
+            <div style={{ fontFamily: DISPLAY, fontSize: 60, fontWeight: 900, lineHeight: 1 }}>yomiba.net</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, border: `3px solid ${C.surface}`, borderRadius: 999, padding: "14px 24px", fontSize: 24, fontWeight: 800 }}>
+            <svg aria-hidden width="30" height="30" viewBox="0 0 24 24" fill="none" stroke={C.surface} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12v18l-6-4-6 4z" /></svg>
+            Kaydet, lazım olur
+          </div>
+        </div>
+      </div>
+    </Frame>
+  );
+}
