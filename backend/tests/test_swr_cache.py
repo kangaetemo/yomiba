@@ -65,3 +65,41 @@ def test_warmer_runs_at_once_and_stops(engine):
     warmer.start()
     assert ran.wait(5)
     warmer.stop(timeout=5)
+
+
+def _stale_after(db_session, statement, *, commit=True):
+    from sqlalchemy import text
+
+    cache = SwrCache("test", 3600)
+    cache.get(db_session, ("k",), lambda s: "v")
+    db_session.execute(text(statement))
+    db_session.commit() if commit else db_session.rollback()
+    return cache._is_stale(cache._values[next(iter(cache._values))][0])
+
+
+def test_committed_price_write_makes_cached_feeds_stale(db_session, monkeypatch):
+    from app.services import swr_cache
+
+    monkeypatch.setattr(swr_cache, "MIN_REBUILD_SECONDS", 0)
+    assert _stale_after(db_session, "UPDATE store_listings SET price = price WHERE id = -1")
+    assert _stale_after(db_session, "DELETE FROM series_popularity WHERE series_id = -1")
+
+
+def test_unrelated_or_rolled_back_writes_keep_the_cache(db_session, monkeypatch):
+    from app.services import swr_cache
+
+    monkeypatch.setattr(swr_cache, "MIN_REBUILD_SECONDS", 0)
+    assert not _stale_after(db_session, "UPDATE user_sessions SET revoked_at = NULL WHERE id = -1")
+    assert not _stale_after(db_session, "UPDATE store_listings SET price = price WHERE id = -1", commit=False)
+    assert not _stale_after(db_session, "SELECT 1 FROM store_listings")
+
+
+def test_rebuilds_after_a_change_are_spaced_out(db_session):
+    from sqlalchemy import text
+
+    cache = SwrCache("test", 3600)
+    cache.get(db_session, ("k",), lambda s: "v")
+    db_session.execute(text("UPDATE volumes SET id = id WHERE id = -1"))
+    db_session.commit()
+    built_at = cache._values[next(iter(cache._values))][0]
+    assert not cache._is_stale(built_at)  # just built: waits MIN_REBUILD_SECONDS
