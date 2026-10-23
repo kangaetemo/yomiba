@@ -37,7 +37,7 @@ export async function generateMetadata({
     const { series, volumeId } = await resolveVolume(await params);
     const detail = await getVolume(volumeId);
     const name = volumeName(detail, oneShotVolumeNumber(series) !== null);
-    const title = `${name} fiyatları — ${detail.series.publisher}`;
+    const title = `${name} fiyatları - ${detail.series.publisher}`;
     const description = volumeDescription(detail, name);
     const url = volumePath(detail.series.slug, detail.number);
     return {

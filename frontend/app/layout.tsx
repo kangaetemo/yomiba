@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   applicationName: SITE_NAME,
   title: {
-    default: "Yomiba — Manga fiyat karşılaştırma ve koleksiyon takibi",
+    default: "Yomiba - Manga fiyat karşılaştırma ve koleksiyon takibi",
     template: "%s | Yomiba",
   },
   description:

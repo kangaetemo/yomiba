@@ -84,7 +84,7 @@ export async function generateMetadata({ params }: SeriesPageProps): Promise<Met
   const { slug } = await params;
   try {
     const detail = await getSeries(slug);
-    const title = `${detail.title} — ${detail.publisher}`;
+    const title = `${detail.title} - ${detail.publisher}`;
     const description = seriesDescription(detail);
     const url = seriesPath(detail.slug);
     return {
