@@ -284,7 +284,9 @@ export default async function VolumePage({ params }: VolumePageProps) {
               · {detail.series.publisher}
             </p>
             <h1 className="text-[2.2rem] leading-[1.05] font-semibold text-ink sm:text-5xl">
-              {detail.series.title}
+              {/* The space keeps "Berserk Cilt 3" apart in the page text
+                  (search snippets, readers); the block span hides it. */}
+              {detail.series.title}{" "}
               <span className="mt-1 block text-[0.6em] font-normal text-ink-2">{title}</span>
             </h1>
             <div className="flex flex-wrap gap-2">
