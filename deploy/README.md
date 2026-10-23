@@ -144,11 +144,17 @@ chown -R 10001:10001 /srv/yomiba/data && docker compose up -d
 ## 8. Push'ta otomatik deploy (GitHub Actions)
 
 `.github/workflows/deploy.yml`: main'e push'ta "Application checks" geçince,
-her pazartesi 04:30'da (güncel taban imajlar ve paketler) ve elle (*Actions →
-Deploy → Run workflow*) sunucuda `guncelle.sh` çalışır. GitHub'daki anahtar
-sunucuda yalnızca bu betiğe kilitlidir; kabuk açamaz, port yönlendiremez.
-`guncelle.sh` kilit alır (iki deploy aynı anda çalışmaz), siteyi açılınca
-kontrol eder ve hata olursa iş akışı kırmızı biter.
+her pazartesi 04:30'da (güncel taban imajlar) ve elle (*Actions → Deploy →
+Run workflow*) sunucuda `guncelle.sh` çalışır. İş akışı sunucuya testi geçen
+commit'in tam kimliğini (`deploy <sha>`) gönderir; haftalık ve elle
+çalıştırmada testi geçmiş en yeni main commit'i seçilir. Sunucu tam o commit'e
+geçer, arada main'e gelen daha yeni bir commit'i almaz; daha yeni bir sürümde
+ise geri gitmez, atlar. Build sonrası çalışan backend ve frontend
+konteynerlerinin o commit'ten yapıldığını imaj etiketinden kontrol eder ve
+`DEPLOY_SHA=<sha>` yazar; iş akışı bu satırı görmezse kırmızı biter.
+GitHub'daki anahtar sunucuda yalnızca bu betiğe kilitlidir; kabuk açamaz,
+port yönlendiremez. `guncelle.sh` kilit alır (iki deploy aynı anda çalışmaz),
+siteyi açılınca kontrol eder ve hata olursa iş akışı kırmızı biter.
 
 Kurulum (bir kez, sunucuda):
 
@@ -169,6 +175,7 @@ atlar.
 ## Günlük işler
 
 - Güncelleme: main'e push yeterli (8. adım); elle: `/srv/yomiba/app/deploy/guncelle.sh`
+  (GitHub'daki son main'i alır, testleri beklemez) ya da `guncelle.sh <40 haneli sha>`
 - Elle yedek: `/srv/yomiba/app/deploy/yedekle.sh` (log: `/var/log/yomiba-yedek.log`)
 - Geri yükleme provası: `gunzip -k` ile açılan yedekte
   `python restore_check.py --db <dosya> --rehearse`
@@ -187,5 +194,3 @@ atlar.
 
 - Erişilebilirlik takibi (ör. UptimeRobot) ve Umami.
 - Filminibul aynı sunucuda, host Caddy'yi paylaşıyor (`/etc/caddy/site.caddy`, `api.caddy`); kendi kurulumu ayrı yürütülüyor.
-- `requirements.txt` sürümleri sabit değil; imaj için kilitli liste
-  (`PRODUCTION.md`, "Dependencies").

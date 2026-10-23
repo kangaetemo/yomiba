@@ -16,7 +16,8 @@ import { Badge, Cover, formatDate, formatTL, volumeTitle } from "@/components/ui
 import { ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/time";
 import { oneShotVolumeNumber, parseVolumeSegment, seriesPath, volumePath } from "@/lib/paths";
-import { SITE_URL, openGraph } from "@/lib/site";
+import { SITE_URL, metaDescription, openGraph } from "@/lib/site";
+import { publisherPath } from "@/lib/seriesIndex";
 import { volumeLabel as labelFor } from "@/lib/volumeLabel";
 import { currentUserOrNull } from "@/services/auth";
 import { getPriceAlert, getPriceHistory, getSeries, getVolume, getWishlist } from "@/services/catalog";
@@ -36,7 +37,7 @@ export async function generateMetadata({
     const { series, volumeId } = await resolveVolume(await params);
     const detail = await getVolume(volumeId);
     const name = volumeName(detail, oneShotVolumeNumber(series) !== null);
-    const title = `${name} fiyatları`;
+    const title = `${name} fiyatları — ${detail.series.publisher}`;
     const description = volumeDescription(detail, name);
     const url = volumePath(detail.series.slug, detail.number);
     return {
@@ -59,13 +60,13 @@ function volumeName(detail: VolumeDetail, oneShot: boolean): string {
 function volumeDescription(detail: VolumeDetail, name: string): string {
   const best = detail.unverified ? null : cheapest(detail.stores);
   const inStock = detail.stores.filter((s) => s.stock && !s.stale && s.price !== null).length;
-  const parts = [
+  return metaDescription([
     best
       ? `${name} (${detail.series.publisher}) ${inStock} mağazada satışta, en ucuz fiyat ${formatTL(best.price)}.`
-      : `${name} (${detail.series.publisher}) için Türk kitapçılarındaki fiyatlar.`,
-    "Mağaza fiyatlarını ve stok durumunu karşılaştır, fiyat geçmişine bak, fiyat düşünce haber al.",
-  ];
-  return parts.join(" ");
+      : `${name} (${detail.series.publisher}) için Türk kitapçılarındaki fiyatlar ve stok durumu.`,
+    "Mağazaları karşılaştır, fiyat geçmişine bak.",
+    "Fiyat düşünce haber al.",
+  ]);
 }
 
 /** schema.org Book for the volume; with buyable offers it is also a Product
@@ -178,7 +179,9 @@ export default async function VolumePage({ params }: VolumePageProps) {
   const renderedAt = new Date().getTime();
   const best = detail.unverified ? null : cheapest(detail.stores);
   const buyable = detail.stores.filter((s) => s.stock && !s.stale);
-  const deal = detail.price_deal && best && detail.price_deal.new_price === best.price ? detail.price_deal : null;
+  // A tiny drop (a few kuruş) is not shown as a deal; the store comparison takes its place.
+  const deal = detail.price_deal && detail.price_deal.noticeable !== false && best
+    && detail.price_deal.new_price === best.price ? detail.price_deal : null;
   const alternativePrices = best && best.stores.length === 1
     ? buyable.filter((s) => s.price !== null && Number(s.price) > best.price).map((s) => Number(s.price)) : [];
   const alternative = alternativePrices.length ? Math.min(...alternativePrices) : null;
@@ -281,7 +284,9 @@ export default async function VolumePage({ params }: VolumePageProps) {
               · {detail.series.publisher}
             </p>
             <h1 className="text-[2.2rem] leading-[1.05] font-semibold text-ink sm:text-5xl">
-              {detail.series.title}
+              {/* The space keeps "Berserk Cilt 3" apart in the page text
+                  (search snippets, readers); the block span hides it. */}
+              {detail.series.title}{" "}
               <span className="mt-1 block text-[0.6em] font-normal text-ink-2">{title}</span>
             </h1>
             <div className="flex flex-wrap gap-2">
@@ -329,7 +334,15 @@ export default async function VolumePage({ params }: VolumePageProps) {
                   {detail.series.illustrator && <Fact label="Çizer">{detail.series.illustrator}</Fact>}
                 </>
               )}
-              <Fact label="Yayınevi">{detail.series.publisher}</Fact>
+              <Fact label="Yayınevi">
+                {detail.series.publisher_slug ? (
+                  <Link href={publisherPath(detail.series.publisher_slug)} className="underline decoration-line-strong underline-offset-2 hover:text-accent">
+                    {detail.series.publisher}
+                  </Link>
+                ) : (
+                  detail.series.publisher
+                )}
+              </Fact>
               {detail.release_date && (
                 <Fact label="Çıkış tarihi">
                   <time dateTime={detail.release_date}>{formatDate(detail.release_date)}</time>

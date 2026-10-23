@@ -20,7 +20,11 @@ x-logging: &logging
 
 services:
   backend:
-    build: ../backend
+    build:
+      context: ../backend
+      # guncelle.sh sets the commit so it can check what is running.
+      labels:
+        org.opencontainers.image.revision: ${YOMIBA_REVISION:-}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -35,6 +39,8 @@ services:
   frontend:
     build:
       context: ../frontend
+      labels:
+        org.opencontainers.image.revision: ${YOMIBA_REVISION:-}
       args:
         BACKEND_URL: http://backend:8000
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}

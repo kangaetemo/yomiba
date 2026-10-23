@@ -36,3 +36,18 @@ export function LineSkeleton({ lines = 3 }: { lines?: number }) {
     </div>
   );
 }
+
+/** A shelf of cover placeholders, shaped like SeriesGrid. */
+export function ShelfSkeleton({ count = 8 }: { count?: number }) {
+  return (
+    <div className="grid animate-pulse grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="space-y-2">
+          <div className="aspect-[2/3] w-full rounded-lg bg-surface-2" />
+          <div className="h-4 w-3/4 rounded bg-surface-2" />
+          <div className="h-3 w-1/2 rounded bg-surface-2" />
+        </div>
+      ))}
+    </div>
+  );
+}

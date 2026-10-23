@@ -80,13 +80,15 @@ export interface PriceDrop {
   saving?: number;
   reference_kind?: "usual" | "previous";
   reference_days?: number;
+  /** At least 10 % and 5 TL: smaller drops stay out of lists and badges. */
+  noticeable?: boolean;
   significant?: boolean;
   alternative_price?: number | null;
 }
 
 export type PriceDeal = Pick<PriceDrop,
   "listing_id" | "old_price" | "new_price" | "saving" | "drop_pct" |
-  "reference_kind" | "reference_days" | "significant" | "changed_at">;
+  "reference_kind" | "reference_days" | "noticeable" | "significant" | "changed_at">;
 
 export interface PriceDropsFeed {
   drops: PriceDrop[];
@@ -177,6 +179,8 @@ export interface SeriesDetail {
   id: number;
   title: string;
   publisher: string;
+  /** Publisher page slug (/yayinevi/<slug>). */
+  publisher_slug?: string;
   slug: string;
   author?: string | null;
   cover_url: string | null;
@@ -221,6 +225,7 @@ export interface SeriesRef {
   slug: string;
   title: string;
   publisher: string;
+  publisher_slug?: string;
   author?: string | null;
   illustrator?: string | null;
 }
