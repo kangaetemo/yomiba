@@ -43,6 +43,7 @@ def list_series(session: Session = Depends(get_db)) -> dict:
             not_(catalog_service.legacy_phantom_condition()),
         )
     ))
+    only = catalog_service.only_volume_numbers(session, ids)
     upcoming = set(session.scalars(
         select(Volume.series_id).where(
             Volume.series_id.in_(ids), Volume.catalog_present.is_(True),
@@ -65,7 +66,6 @@ def list_series(session: Session = Depends(get_db)) -> dict:
         nums = numbers.get(series.id, [])
         if not nums and series.id not in has_unnumbered and series.id not in upcoming:
             continue
-        single = len(nums) == 1 and series.id not in upcoming
         items.append({
             "id": series.id,
             "slug": slugs[series.id],
@@ -76,7 +76,7 @@ def list_series(session: Session = Depends(get_db)) -> dict:
             "cover_url": cover_url(covers.get(series.id)),
             "volume_count": len(nums),
             "upcoming": series.id in upcoming,
-            "only_volume": nums[0] if single else None,
+            "only_volume": only.get(series.id),
             "in_stock_offers": offers.get(series.id, (0, None))[0],
             "lowest_price": from_cents(offers.get(series.id, (0, None))[1]),
         })

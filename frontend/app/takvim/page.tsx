@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cache } from "react";
 import { Badge, Cover, formatDate, formatTL, volumeTitle } from "@/components/ui";
 import { volumePath } from "@/lib/paths";
 import { openGraph } from "@/lib/site";
@@ -22,8 +23,18 @@ export async function generateMetadata({
   const url = month ? `/takvim?ay=${month}` : "/takvim";
   const label = month ? MONTH_LABEL.format(new Date(`${month}-01T00:00:00Z`)) : null;
   const title = label ? `Manga yayın takvimi - ${label}` : "Manga yayın takvimi: bu ay çıkan ciltler";
-  return { title, description: DESCRIPTION, alternates: { canonical: url }, openGraph: openGraph({ title, description: DESCRIPTION, url }) };
+  // A past or future month without releases is an empty page: keep it out of the index.
+  const feed = month ? await releaseCalendar(month).catch(() => null) : null;
+  const empty = feed !== null && feed.volumes.length === 0;
+  return {
+    title, description: DESCRIPTION, alternates: { canonical: url },
+    ...(empty ? { robots: { index: false, follow: true } } : {}),
+    openGraph: openGraph({ title, description: DESCRIPTION, url }),
+  };
 }
+
+// Shared by generateMetadata and the page within one request.
+const releaseCalendar = cache(getReleaseCalendar);
 
 const MONTH_PATTERN = /^[1-9]\d{3}-(0[1-9]|1[0-2])$/;
 const WEEKDAYS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
@@ -33,13 +44,6 @@ const BUTTON = "inline-flex min-h-11 items-center justify-center rounded-lg bord
 function currentMonth(): string {
   const parts = new Intl.DateTimeFormat("en", { year: "numeric", month: "2-digit", timeZone: TIME_ZONE }).formatToParts(new Date());
   return `${parts.find((p) => p.type === "year")!.value}-${parts.find((p) => p.type === "month")!.value}`;
-}
-
-function adjacentMonth(year: number, month: number, step: number): string | null {
-  const date = new Date(Date.UTC(year, month - 1 + step, 1));
-  const nextYear = date.getUTCFullYear();
-  if (nextYear < 1000 || nextYear > 9999) return null;
-  return `${nextYear}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 export default async function CalendarPage({
@@ -52,9 +56,10 @@ export default async function CalendarPage({
   const month = typeof ay === "string" && MONTH_PATTERN.test(ay) ? ay : thisMonth;
   const [year, monthNumber] = month.split("-").map(Number);
   const monthLabel = MONTH_LABEL.format(new Date(Date.UTC(year, monthNumber - 1, 1)));
-  const previous = adjacentMonth(year, monthNumber, -1);
-  const next = adjacentMonth(year, monthNumber, 1);
-  const feed = await getReleaseCalendar(month).catch(() => null);
+  const feed = await releaseCalendar(month).catch(() => null);
+  // Arrows step to the nearest month with releases, never into empty months.
+  const previous = feed?.previous_month ?? null;
+  const next = feed?.next_month ?? null;
   const groups = new Map<string, NewVolume[]>();
   for (const volume of feed?.volumes ?? []) {
     const day = groups.get(volume.release_date) ?? [];
@@ -94,7 +99,7 @@ export default async function CalendarPage({
             <label htmlFor="takvim-month" className="sr-only">Aya git</label>
             <input id="takvim-month" name="ay" type="month" min="1000-01" max="9999-12" defaultValue={month} key={month} required className="min-h-11 min-w-0 flex-1 rounded-lg border border-line bg-paper px-2 text-sm text-ink" />
             <button type="submit" className={BUTTON}>Git</button>
-            {month !== thisMonth && <Link href={`/takvim?ay=${thisMonth}`} className={BUTTON}>Bu ay</Link>}
+            {month !== thisMonth && <Link href="/takvim" className={BUTTON}>Bu ay</Link>}
           </form>
         </div>
 

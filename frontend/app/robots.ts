@@ -6,8 +6,12 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      // Personal and admin pages; /api is the backend proxy.
-      disallow: ["/admin", "/api/", "/collection", "/hesap", "/login", "/register"],
+      // Personal and admin pages; /api is the backend proxy. Filtered and
+      // list views of a series repeat its page (canonical is the bare URL).
+      disallow: [
+        "/admin", "/api/", "/collection", "/hesap", "/login", "/register", "/eposta-onay",
+        "/series/*?", "/one-shot?",
+      ],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
     host: SITE_URL,

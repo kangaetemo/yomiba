@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { pickRandom } from "@/lib/random";
-import { seriesPath } from "@/lib/paths";
+import { seriesHref } from "@/lib/seriesIndex";
 import { Cover, SectionHeading, formatTL } from "@/components/ui";
 import type { PopularSeries as Series } from "@/types";
 
@@ -63,7 +63,7 @@ export function SeriesGrid({
     <ul className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
       {series.map((s, i) => (
         <li key={s.id}>
-          <Link href={seriesPath(s.slug)} className="group block space-y-3">
+          <Link href={seriesHref(s)} className="group block space-y-3">
             <div className="overflow-hidden rounded-[5px]">
               <Cover
                 url={s.cover_url}

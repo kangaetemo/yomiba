@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { seriesPath } from "@/lib/paths";
+import { seriesHref } from "@/lib/seriesIndex";
 import { Badge, Cover, SectionHeading, formatDate, formatTL } from "@/components/ui";
 import type { PopularSeries as Series } from "@/types";
 
@@ -28,7 +28,7 @@ export function NewSeries({ series }: { series: Series[] }) {
       <ul className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
         {dated.map((s) => (
           <li key={s.id}>
-            <Link href={seriesPath(s.slug)} className="group block space-y-3">
+            <Link href={seriesHref(s)} className="group block space-y-3">
               <div className="relative overflow-hidden rounded-[5px]">
                 <Cover
                   url={s.cover_url}

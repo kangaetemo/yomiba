@@ -16,7 +16,7 @@ import { Badge, Cover, formatDate, formatTL, volumeTitle } from "@/components/ui
 import { ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/time";
 import { oneShotVolumeNumber, parseVolumeSegment, seriesPath, volumePath } from "@/lib/paths";
-import { SITE_URL, metaDescription, openGraph } from "@/lib/site";
+import { SITE_URL, metaDescription, openGraph, pageTitle } from "@/lib/site";
 import { publisherPath } from "@/lib/seriesIndex";
 import { searchVolumeLabel } from "@/lib/volumeLabel";
 import { currentUserOrNull } from "@/services/auth";
@@ -37,7 +37,7 @@ export async function generateMetadata({
     const { series, volumeId } = await resolveVolume(await params);
     const detail = await getVolume(volumeId);
     const name = volumeName(detail, oneShotVolumeNumber(series) !== null);
-    const title = `${name} fiyatları - ${detail.series.publisher}`;
+    const title = pageTitle([`${name} fiyatları - ${detail.series.publisher}`, `${name} fiyatları`]);
     const description = volumeDescription(detail, name);
     const url = volumePath(detail.series.slug, detail.number);
     return {

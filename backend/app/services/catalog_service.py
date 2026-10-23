@@ -149,6 +149,29 @@ def series_offer_summary(
     return {sid: (count, price) for sid, count, price in rows}
 
 
+def only_volume_numbers(session: Session, series_ids: list[int]) -> dict[int, int]:
+    """series id -> its single released numbered volume, for series whose page
+    just redirects to that volume (no announced volume either). Same rule as
+    the frontend's oneShotVolumeNumber, so lists can link the volume directly."""
+    if not series_ids:
+        return {}
+    numbers: dict[int, list[int]] = {}
+    for sid, number in session.execute(
+        select(Volume.series_id, Volume.volume_number).where(
+            Volume.series_id.in_(series_ids), Volume.volume_number >= 0,
+            public_volume_condition(include_announced=False),
+        )
+    ):
+        numbers.setdefault(sid, []).append(number)
+    upcoming = set(session.scalars(
+        select(Volume.series_id).where(
+            Volume.series_id.in_(series_ids), Volume.catalog_present.is_(True),
+            Volume.catalog_released.is_(False),
+        )
+    ))
+    return {sid: nums[0] for sid, nums in numbers.items() if len(nums) == 1 and sid not in upcoming}
+
+
 def other_editions(session: Session, series_id: int) -> list[Series]:
     """Catalog series that are other editions of the same Mangakol work: the
     plain entry ``<slug>`` and its variants ``<slug>~<format>``. Main

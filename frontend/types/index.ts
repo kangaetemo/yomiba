@@ -13,6 +13,8 @@ export interface PopularSeries {
   author: string | null;
   cover_url: string | null;
   volume_count: number;
+  /** Set when the series page only redirects to this volume (one shot). */
+  only_volume?: number | null;
   /** In-stock priced store offers across the series' volumes. */
   in_stock_offers: number;
   /** Lowest current in-stock price of any volume. */
@@ -42,6 +44,9 @@ export interface ReleaseCalendar {
   month: string;
   today: string;
   latest_month: string | null;
+  /** Nearest earlier / later month that has releases. */
+  previous_month: string | null;
+  next_month: string | null;
   volumes: NewVolume[];
 }
 
@@ -171,6 +176,8 @@ export interface SeriesEdition {
   title: string;
   publisher: string;
   volume_count: number;
+  /** Set when the edition's page only redirects to this volume (one shot). */
+  only_volume?: number | null;
   in_stock_offers: number;
   lowest_price: number | null;
 }

@@ -63,6 +63,7 @@ def get_series_detail(
     sibling_ids = [s.id for s in siblings]
     offers = catalog_service.series_offer_summary(session, sibling_ids)
     sibling_slugs = series_slugs.slugs_for(session, sibling_ids)
+    sibling_only = catalog_service.only_volume_numbers(session, sibling_ids)
     volume_counts = dict(session.execute(
         select(Volume.series_id, func.count()).where(
             Volume.series_id.in_(sibling_ids), Volume.volume_number >= 0,
@@ -76,6 +77,7 @@ def get_series_detail(
             title=s.title,
             publisher=s.publisher.name,
             volume_count=volume_counts.get(s.id, 0),
+            only_volume=sibling_only.get(s.id),
             in_stock_offers=offers.get(s.id, (0, None))[0],
             lowest_price=from_cents(offers.get(s.id, (0, None))[1]),
         )

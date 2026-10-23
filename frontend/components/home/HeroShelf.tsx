@@ -13,7 +13,7 @@
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Cover, formatTL } from "@/components/ui";
-import { seriesPath } from "@/lib/paths";
+import { seriesHref } from "@/lib/seriesIndex";
 import { HERO_HISTORY_COOKIE, nextHeroHistory, parseHeroHistory } from "@/lib/heroSelection";
 import type { PopularSeries } from "@/types";
 
@@ -87,7 +87,7 @@ export function HeroShelf({ series }: { series: PopularSeries[] }) {
           >
             <Cover url={s.cover_url} alt="" eager={slot === 0} className="w-full" />
             {slot === 0 ? (
-              <Link href={seriesPath(s.slug)} aria-label={`${s.title} serisine git`} className="absolute inset-0 block" />
+              <Link href={seriesHref(s)} aria-label={`${s.title} serisine git`} className="absolute inset-0 block" />
             ) : (
               <button
                 type="button"
@@ -102,7 +102,7 @@ export function HeroShelf({ series }: { series: PopularSeries[] }) {
       {front.lowest_price !== null && (
         <Link
           ref={card}
-          href={seriesPath(front.slug)}
+          href={seriesHref(front)}
           className="absolute bottom-0 left-1/2 z-30 w-[72%] max-w-72 -translate-x-1/2 rounded-xl border border-line bg-surface p-3.5 shadow-lift transition-colors hover:border-line-strong md:bg-surface/95 md:backdrop-blur"
         >
           <p className="truncate font-display text-base text-ink">{front.title}</p>

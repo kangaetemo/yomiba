@@ -3,9 +3,10 @@ import type { SeriesIndexItem } from "@/types";
 
 export const TR = new Intl.Collator("tr");
 
-/** Where a list entry links: the volume itself for a one shot. */
-export function seriesHref(s: SeriesIndexItem): string {
-  return s.only_volume !== null ? volumePath(s.slug, s.only_volume) : seriesPath(s.slug);
+/** Where a list entry links: the volume itself for a one shot (its series
+ * page would only redirect there). */
+export function seriesHref(s: { slug: string; only_volume?: number | null }): string {
+  return s.only_volume != null ? volumePath(s.slug, s.only_volume) : seriesPath(s.slug);
 }
 
 export function publisherPath(slug: string): string {
