@@ -226,3 +226,66 @@ def test_empty_search_ignores_sponsored_cards():
     scraper = make_scraper(handler)
     assert scraper.search("Akame, Keser!") == []
     assert scraper.stats["stop_reason"] == "empty_page"
+
+
+def _redesigned_page() -> str:
+    """The 2026-10-23 redesign: no sold-out label any more, an out-of-stock
+    card shows a "Stokta Yok" button where "Sepete Ekle" used to be."""
+    return SEARCH_P1.replace(
+        '<div class="sold-out-label"><span>Tükendi</span></div>', ""
+    ).replace(
+        '<div class="showcase-buttons"></div>',
+        '<div class="showcase-buttons"><a href="javascript:void(0);" '
+        'class="btn btn-outline-secondary">Stokta Yok</a></div>',
+    )
+
+
+def _single_page_handler(page: str):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/arama/berserk":
+            return httpx.Response(200, text=page if _page_of(request) == 1 else EMPTY_PAGE)
+        if request.url.path == "/urun/berserk-cilt-17":
+            return httpx.Response(200, text=DETAIL_17)
+        return httpx.Response(404, text="not found")
+
+    return handler
+
+
+def test_redesigned_stokta_yok_button_flags_out_of_stock():
+    page = _redesigned_page()
+    assert "<div class=\"sold-out-label\">" not in page and "Stokta Yok" in page
+    results = make_scraper(_single_page_handler(page)).search("berserk")
+    assert _by_url(results, "/urun/berserk-cilt-16").in_stock is False
+    assert _by_url(results, "/urun/berserk-cilt-17").in_stock is True
+
+
+def test_gelince_haber_ver_button_flags_out_of_stock():
+    page = _redesigned_page().replace("Stokta Yok", "Gelince Haber Ver")
+    results = make_scraper(_single_page_handler(page)).search("berserk")
+    assert _by_url(results, "/urun/berserk-cilt-16").in_stock is False
+
+
+def test_stock_words_in_title_do_not_flag_out_of_stock():
+    page = SEARCH_P1.replace("Berserk Cilt 17", "Berserk Cilt 17 Tükendi Mi")
+    results = make_scraper(_single_page_handler(page)).search("berserk")
+    assert _by_url(results, "/urun/berserk-cilt-17").in_stock is True
+
+
+def test_isbn_from_barkod_or_isbn_row_when_stok_kodu_is_internal():
+    """Imported books carry an internal "Stok Kodu" (0002242313001); the
+    redesigned page also lists "Barkod Kodu" and "ISBN" rows."""
+    detail = (
+        "<html><body><div class='product-info'>"
+        "<div><span>Stok Kodu</span><span>0002242313001</span></div>"
+        "<div><span>Barkod Kodu</span><span>9786258858273</span></div>"
+        "<div><span>ISBN</span><span>9786258858273</span></div>"
+        "</div></body></html>"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/arama/berserk":
+            return httpx.Response(200, text=SEARCH_P1 if _page_of(request) == 1 else EMPTY_PAGE)
+        return httpx.Response(200, text=detail)
+
+    results = make_scraper(handler).search("berserk")
+    assert _by_url(results, "/urun/berserk-cilt-17").isbn == "9786258858273"

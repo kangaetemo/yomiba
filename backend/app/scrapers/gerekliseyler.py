@@ -12,13 +12,18 @@ Data sources (all public, no authentication):
      * ``div.showcase-title a[title]`` -> title
      * ``div.showcase-price-new`` -> current price ("238,00 TL");
        ``div.showcase-price-old`` is the list price (ignored)
-     * ``div.sold-out-label`` ("Tükendi") -> out of stock; cards without it
-       show an "Sepete Ekle" button (in stock)
+     * stock: the redesigned site (seen 2026-10-23) shows a "Stokta Yok"
+       button in place of "Sepete Ekle" on out-of-stock cards and no longer
+       renders the old ``div.sold-out-label`` ("Tükendi"). Both forms are
+       read from the card text, so a class rename alone cannot flip every
+       product back to "in stock".
    The pagination parameter is ``tp`` (verified: ?tp=2 returns new items).
 
 2. Detail page (enrichment, best effort): no JSON-LD; the ISBN is rendered
    in the "Stok Kodu" info row (``div.product-list-content`` next to the
-   "Stok Kodu" title) and is usually a plain 13-digit barcode.
+   "Stok Kodu" title) and is usually a plain 13-digit barcode. The
+   redesigned page also has "Barkod Kodu" and "ISBN" rows; any of them is
+   accepted when the old markup is missing.
 
 Behaviour mirrors the other store scrapers: bounded pagination, URL
 deduplication, non-manga / collection filtering, bot-wall fail-fast
@@ -60,6 +65,23 @@ NON_MANGA_KEYWORDS: tuple[str, ...] = (
 _NO_RESULTS_RE = re.compile(
     r"Toplam\s*0\s*ürün|kriterlere\s+uygun\s+ürün\s+bulunamam", re.I
 )
+
+
+#: Out-of-stock markers on a search card: the old sold-out label
+#: ("Tükendi") and the redesigned site's "Stokta Yok" button; "Gelince Haber
+#: Ver" is the notify-me button of an out-of-stock product.
+_OUT_OF_STOCK_RE = re.compile(r"stokta\s+yok|tükendi|gelince\s+haber\s+ver", re.I)
+
+
+def _card_is_sold_out(card) -> bool:
+    if card.select_one("div.sold-out-label") is not None:
+        return True
+    # the title may contain anything, so only look outside it
+    title = card.select_one("div.showcase-title")
+    text = card.get_text(" ", strip=True)
+    if title is not None:
+        text = text.replace(title.get_text(" ", strip=True), " ")
+    return _OUT_OF_STOCK_RE.search(text) is not None
 
 
 class GerekliseylerScraper(BaseScraper):
@@ -185,7 +207,7 @@ class GerekliseylerScraper(BaseScraper):
             if image and image.startswith("//"):
                 image = "https:" + image
 
-        sold_out = card.select_one("div.sold-out-label") is not None
+        sold_out = _card_is_sold_out(card)
 
         return {
             "title": title,
@@ -240,6 +262,11 @@ class GerekliseylerScraper(BaseScraper):
         r"Stok\s*Kodu</div>\s*<div[^>]*product-list-content[^>]*>\s*([^<]+?)\s*</div>",
         re.I,
     )
+    #: Fallback on the tag-stripped page text: "Stok Kodu", "Barkod Kodu"
+    #: or "ISBN" followed by a 13-digit Turkish/intl book barcode.
+    _ISBN_TEXT_RE = re.compile(
+        r"(?:Stok\s*Kodu|Barkod\s*Kodu|ISBN)\s*:?\s*(97[89][\d-]{10,14})", re.I
+    )
 
     def _enrich_with_details(self, results: list[SearchResult]) -> list[SearchResult]:
         """Search cards carry no ISBN ("Stok Kodu" is on the product page).
@@ -281,9 +308,13 @@ class GerekliseylerScraper(BaseScraper):
             )
 
         match = self._STOK_KODU_ROW_RE.search(response.text)
-        if not match:
-            return result
-        isbn = normalize_isbn(match.group(1))
+        isbn = normalize_isbn(match.group(1)) if match else None
+        # an internal stock code ("0002242313001") is not a book barcode:
+        # look for a real ISBN in the "Barkod Kodu" / "ISBN" rows first
+        if not isbn or not isbn.startswith(("978", "979")):
+            text = re.sub(r"<[^>]+>", " ", response.text)
+            text_match = self._ISBN_TEXT_RE.search(text)
+            isbn = (normalize_isbn(text_match.group(1)) if text_match else None) or isbn
         if not isbn:
             return result
         return result.model_copy(update={"isbn": isbn})
