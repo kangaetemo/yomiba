@@ -18,7 +18,7 @@ import { formatDateTime } from "@/lib/time";
 import { oneShotVolumeNumber, parseVolumeSegment, seriesPath, volumePath } from "@/lib/paths";
 import { SITE_URL, metaDescription, openGraph } from "@/lib/site";
 import { publisherPath } from "@/lib/seriesIndex";
-import { volumeLabel as labelFor } from "@/lib/volumeLabel";
+import { searchVolumeLabel } from "@/lib/volumeLabel";
 import { currentUserOrNull } from "@/services/auth";
 import { getPriceAlert, getPriceHistory, getSeries, getVolume, getWishlist } from "@/services/catalog";
 import type { PriceAlert, PriceHistory, SeriesDetail, VolumeDetail, VolumeStore, WishlistState } from "@/types";
@@ -37,7 +37,7 @@ export async function generateMetadata({
     const { series, volumeId } = await resolveVolume(await params);
     const detail = await getVolume(volumeId);
     const name = volumeName(detail, oneShotVolumeNumber(series) !== null);
-    const title = `${name} fiyatları — ${detail.series.publisher}`;
+    const title = `${name} fiyatları - ${detail.series.publisher}`;
     const description = volumeDescription(detail, name);
     const url = volumePath(detail.series.slug, detail.number);
     return {
@@ -51,9 +51,10 @@ export async function generateMetadata({
   }
 }
 
-/** "Berserk Cilt 3"; a one shot is just its series title. */
+/** "Berserk 3. Cilt", as people search for it; a one shot is just its
+ * series title. */
 function volumeName(detail: VolumeDetail, oneShot: boolean): string {
-  return oneShot ? detail.series.title : `${detail.series.title} ${labelFor(detail.number)}`;
+  return oneShot ? detail.series.title : `${detail.series.title} ${searchVolumeLabel(detail.number)}`;
 }
 
 /** Search snippet: the lowest price today and how many stores sell it. */

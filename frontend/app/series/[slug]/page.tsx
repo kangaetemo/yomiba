@@ -13,6 +13,7 @@ import { VolumeTile } from "@/components/VolumeTile";
 import { ApiError } from "@/lib/api";
 import { oneShotVolumeNumber, seriesPath, volumePath } from "@/lib/paths";
 import { publisherPath } from "@/lib/seriesIndex";
+import { searchVolumeLabel } from "@/lib/volumeLabel";
 import { SITE_URL, metaDescription, openGraph } from "@/lib/site";
 import { currentUserOrNull } from "@/services/auth";
 import { getSeries } from "@/services/catalog";
@@ -83,7 +84,7 @@ export async function generateMetadata({ params }: SeriesPageProps): Promise<Met
   const { slug } = await params;
   try {
     const detail = await getSeries(slug);
-    const title = `${detail.title} — ${detail.publisher}`;
+    const title = `${detail.title} - ${detail.publisher}`;
     const description = seriesDescription(detail);
     const url = seriesPath(detail.slug);
     return {
@@ -183,7 +184,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
       ...(detail.cover_url ? { image: new URL(detail.cover_url, SITE_URL).href } : {}),
       hasPart: detail.volumes.map((v) => ({
         "@type": "Book",
-        name: `${detail.title} ${volumeTitle(v.number)}`,
+        name: `${detail.title} ${searchVolumeLabel(v.number)}`,
         url: `${SITE_URL}${volumePath(detail.slug, v.number)}`,
       })),
     },

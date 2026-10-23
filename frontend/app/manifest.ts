@@ -4,7 +4,7 @@ import { SITE_NAME } from "@/lib/site";
 /** Web app manifest: name and icons for "add to home screen" and search. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Yomiba — Manga fiyat karşılaştırma",
+    name: "Yomiba - Manga fiyat karşılaştırma",
     short_name: SITE_NAME,
     start_url: "/",
     display: "standalone",

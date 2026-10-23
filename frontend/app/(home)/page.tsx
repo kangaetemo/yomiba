@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: openGraph({
-    title: "Yomiba — Manga fiyat karşılaştırma ve koleksiyon takibi",
+    title: "Yomiba - Manga fiyat karşılaştırma ve koleksiyon takibi",
     description: "Manga fiyatlarını Türk kitapçıları arasında karşılaştır, koleksiyonunu takip et, fiyat alarmı kur.",
     url: "/",
   }),

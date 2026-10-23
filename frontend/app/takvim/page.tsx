@@ -21,7 +21,7 @@ export async function generateMetadata({
   const month = typeof ay === "string" && MONTH_PATTERN.test(ay) && ay !== currentMonth() ? ay : null;
   const url = month ? `/takvim?ay=${month}` : "/takvim";
   const label = month ? MONTH_LABEL.format(new Date(`${month}-01T00:00:00Z`)) : null;
-  const title = label ? `Manga yayın takvimi — ${label}` : "Manga yayın takvimi: bu ay çıkan ciltler";
+  const title = label ? `Manga yayın takvimi - ${label}` : "Manga yayın takvimi: bu ay çıkan ciltler";
   return { title, description: DESCRIPTION, alternates: { canonical: url }, openGraph: openGraph({ title, description: DESCRIPTION, url }) };
 }
 
