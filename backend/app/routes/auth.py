@@ -96,6 +96,8 @@ class UserOut(BaseModel):
     has_password: bool
     google: bool
     email_verified: bool
+    #: Account mails can be sent (SMTP configured); else no verification link.
+    mail_enabled: bool
     #: Something the reader should be told once (e.g. the old password was removed).
     notice: str | None = None
 
@@ -107,13 +109,17 @@ TAKEOVER_NOTICE = ("Google hesabın bağlandı. Bu hesabın e-postası daha önc
                    "yeni bir parola belirleyebilirsin.")
 LINK_REQUIRED = ("Bu e-postayla açılmış bir Yomiba hesabı var. Google hesabını bağlamak için ya o hesabın parolasını gir "
                  "ya da e-posta adresine bağlantı gönderelim.")
+LINK_REQUIRED_NO_MAIL = ("Bu e-postayla açılmış bir Yomiba hesabı var. Google hesabını bağlamak için o hesabın "
+                         "parolasını gir.")
 BAD_TOKEN = "Bağlantı geçersiz ya da süresi dolmuş."
+MAIL_OFF = "E-posta gönderimi henüz açık değil."
 
 
 def _public(user: User, notice: str | None = None) -> UserOut:
     return UserOut(id=user.id, email=user.email, display_name=user.display_name, role=user.role,
                    has_password=user.password_hash is not None, google=user.google_sub is not None,
-                   email_verified=user.email_verified_at is not None, notice=notice)
+                   email_verified=user.email_verified_at is not None, mail_enabled=account_mail.enabled(),
+                   notice=notice)
 
 
 def _bad(detail: str, status: int = 422) -> HTTPException:
@@ -237,9 +243,10 @@ def register(payload: RegisterIn, request: Request, response: Response, backgrou
     except IntegrityError as exc:
         session.rollback()
         raise HTTPException(status_code=409, detail="Bu e-posta kullanılamıyor.") from exc
-    mail = account_mail.queue_verify(session, user)
-    session.commit()
-    _send_mail(background, session, mail)
+    if account_mail.enabled():
+        mail = account_mail.queue_verify(session, user)
+        session.commit()
+        _send_mail(background, session, mail)
     _start_session(session, response, user)
     return _public(user)
 
@@ -323,8 +330,9 @@ def google_login(payload: GoogleIn, response: Response, session: Session = Depen
                 raise HTTPException(status_code=403, detail="Bu hesap kapalı.")
             if not google_owns_mailbox(claims):
                 raise HTTPException(status_code=409, detail={
-                    "code": "google_link_required", "message": LINK_REQUIRED,
-                    "has_password": user.password_hash is not None})
+                    "code": "google_link_required",
+                    "message": LINK_REQUIRED if account_mail.enabled() else LINK_REQUIRED_NO_MAIL,
+                    "has_password": user.password_hash is not None, "can_email": account_mail.enabled()})
             user.google_sub = sub
             user.updated_at = utcnow()
             notice = _take_over(session, user)
@@ -380,6 +388,8 @@ def google_link_by_email(payload: GoogleIn, request: Request, background: Backgr
     """Mail the account's address a link that links this Google account."""
     _, sub, email = _google_claims(payload.credential)
     user = _link_target(session, sub, email)
+    if not account_mail.enabled():
+        raise HTTPException(status_code=503, detail=MAIL_OFF)
     if not request.app.state.mail_limiter.allow(f"user:{user.id}"):
         raise HTTPException(status_code=429, detail="Çok fazla e-posta istendi. Biraz sonra tekrar deneyin.")
     mail = account_mail.queue_google_link(session, user, sub)
@@ -394,6 +404,8 @@ def send_verification(request: Request, background: BackgroundTasks, user: User 
     """Mail a fresh verification link to the signed-in account."""
     if user.email_verified_at is not None:
         return {"sent": False}
+    if not account_mail.enabled():
+        raise HTTPException(status_code=503, detail=MAIL_OFF)
     if not request.app.state.mail_limiter.allow(f"user:{user.id}"):
         raise HTTPException(status_code=429, detail="Çok fazla e-posta istendi. Biraz sonra tekrar deneyin.")
     mail = account_mail.queue_verify(session, user)

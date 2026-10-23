@@ -110,7 +110,13 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
             <dd className={`font-semibold ${user.google ? "text-ok" : "text-ink"}`}>{user.google ? "Bağlı" : "Bağlı değil"}</dd>
           </div>
         </dl>
-        {!user.email_verified && (
+        {!user.email_verified && !user.mail_enabled && (
+          <p className="text-sm text-muted">
+            E-posta adresin henüz doğrulanmadı; e-postayla doğrulama yakında açılacak. Doğrulanmamış bir hesaba aynı
+            adresin Google hesabıyla girilirse, güvenlik için parola kaldırılır ve diğer oturumlar kapanır.
+          </p>
+        )}
+        {!user.email_verified && user.mail_enabled && (
           <div className="space-y-2">
             <p className="text-sm text-muted">
               E-posta adresini doğrula: kayıt olurken gönderdiğimiz bağlantıya tıkla. Doğrulanmamış bir hesaba aynı adresin

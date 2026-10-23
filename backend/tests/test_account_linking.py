@@ -13,10 +13,20 @@ from app.auth import COOKIE_NAME
 from app.login_rate_limit import LoginRateLimiter
 from app.models import EmailOutbox, EmailToken, User, UserVolumeCollection
 from app.routes import auth as auth_routes
+from app.services import account_mail
 from app.utils import utcnow
 from tests.test_account import PASSWORD, _claims, _register, _volume, google  # noqa: F401 - fixture
 
 VICTIM = "kurban@gmail.com"
+
+
+@pytest.fixture(autouse=True)
+def mail_on(monkeypatch):
+    """SMTP configured; mails are queued but never leave the test."""
+    state = {"on": True}
+    monkeypatch.setattr(account_mail, "enabled", lambda: state["on"])
+    monkeypatch.setattr(account_mail, "send_now", lambda bind, ids: None)
+    return state
 
 
 def _token_from_mail(db_session, email, kind):
@@ -277,3 +287,25 @@ def test_password_hashing_answers_busy_when_every_slot_is_taken(client, monkeypa
     finally:
         auth_core._password_work.release()
     assert _register(client).status_code == 201
+
+
+# -- no mail server yet ------------------------------------------------------------
+
+def test_without_smtp_nothing_is_queued_and_mail_options_are_closed(client, db_session, google, mail_on):
+    mail_on["on"] = False
+    response = _register(client)
+    assert response.status_code == 201 and response.json()["mail_enabled"] is False
+    db_session.expire_all()
+    assert db_session.scalar(select(EmailOutbox.id)) is None
+    assert client.post("/auth/verify-email/send").status_code == 503
+    google["t"] = _claims(sub="g-1", email="okur@example.com")
+    client.cookies.clear()
+    detail = client.post("/auth/google", json={"credential": "t"}).json()["detail"]
+    assert detail["code"] == "google_link_required" and detail["can_email"] is False
+    assert client.post("/auth/google/link-email", json={"credential": "t"}).status_code == 503
+    # The password still links; Gmail still takes over an unverified account.
+    assert client.post("/auth/google/link", json={"credential": "t", "password": PASSWORD}).status_code == 200
+    _register(client, email=VICTIM, password="saldirgan1")
+    google["v"] = _claims(sub="g-2", email=VICTIM)
+    client.cookies.clear()
+    assert client.post("/auth/google", json={"credential": "v"}).json()["has_password"] is False

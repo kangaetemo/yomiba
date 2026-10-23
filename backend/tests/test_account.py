@@ -99,7 +99,7 @@ def test_google_creates_an_account_without_password(client, google):
     assert response.status_code == 200, response.text
     assert response.json() | {"id": 0} == {"id": 0, "email": "okur@example.com", "display_name": "Google Okur",
                                            "role": "USER", "has_password": False, "google": True,
-                                           "email_verified": False, "notice": None}
+                                           "email_verified": False, "mail_enabled": False, "notice": None}
     assert client.get("/auth/me").status_code == 200
     # The password form never opens a Google-only account.
     client.cookies.clear()

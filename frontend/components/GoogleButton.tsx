@@ -74,7 +74,12 @@ export function GoogleButton({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
-  const [proof, setProof] = useState<{ credential: string; message: string; hasPassword: boolean } | null>(null);
+  const [proof, setProof] = useState<{
+    credential: string;
+    message: string;
+    hasPassword: boolean;
+    canEmail: boolean;
+  } | null>(null);
   const [notice, setNotice] = useState<{ user: CurrentUser; text: string } | null>(null);
   // The latest callback, without re-initializing Google on every render.
   const done = useRef(onSignedIn);
@@ -108,7 +113,12 @@ export function GoogleButton({
               signedIn.current(await googleLogin(credential));
             } catch (e) {
               if (e instanceof ApiError && e.code === "google_link_required") {
-                setProof({ credential, message: e.message, hasPassword: e.data?.has_password === true });
+                setProof({
+                  credential,
+                  message: e.message,
+                  hasPassword: e.data?.has_password === true,
+                  canEmail: e.data?.can_email !== false,
+                });
                 return;
               }
               setError(e instanceof Error ? e.message : "Google ile giriş yapılamadı.");
@@ -160,11 +170,13 @@ function LinkProof({
   credential,
   message,
   hasPassword,
+  canEmail,
   onLinked,
 }: {
   credential: string;
   message: string;
   hasPassword: boolean;
+  canEmail: boolean;
   onLinked: (user: CurrentUser) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -203,22 +215,24 @@ function LinkProof({
           </button>
         </form>
       )}
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() =>
-          void run(async () => {
-            await googleLinkByEmail(credential);
-            setStatus({
-              kind: "ok",
-              text: "Hesabın e-posta adresine bir bağlantı gönderdik. Bağlantıya tıkladıktan sonra yeniden “Google ile devam et” de.",
-            });
-          })
-        }
-        className={`${button} border border-line-strong text-ink hover:border-accent`}
-      >
-        E-postama bağlantı gönder
-      </button>
+      {canEmail && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              await googleLinkByEmail(credential);
+              setStatus({
+                kind: "ok",
+                text: "Hesabın e-posta adresine bir bağlantı gönderdik. Bağlantıya tıkladıktan sonra yeniden “Google ile devam et” de.",
+              });
+            })
+          }
+          className={`${button} border border-line-strong text-ink hover:border-accent`}
+        >
+          E-postama bağlantı gönder
+        </button>
+      )}
       {status && (
         <p role={status.kind === "error" ? "alert" : "status"} className={status.kind === "error" ? "text-bad" : "text-ok"}>
           {status.text}

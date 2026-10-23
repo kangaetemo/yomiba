@@ -9,6 +9,8 @@
 
 Mails go through ``email_outbox`` and are sent right away (``send_now``)
 instead of waiting for the price refresh, which also drains the outbox.
+Without SMTP (``enabled`` is False) nothing is queued: the links would
+expire long before a mail server exists, and the pages say so instead.
 """
 
 from __future__ import annotations
@@ -31,6 +33,11 @@ logger = logging.getLogger("yomiba.auth")
 
 VERIFY_HOURS = 48
 GOOGLE_LINK_HOURS = 1
+
+
+def enabled() -> bool:
+    """Account mails can actually be sent (SMTP is configured)."""
+    return bool(get_settings().smtp_host)
 
 
 def issue(session: Session, user: User, purpose: str, *, google_sub: str | None = None) -> str:

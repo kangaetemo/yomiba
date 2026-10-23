@@ -13,6 +13,8 @@ export type CurrentUser = {
   google: boolean;
   /** The owner proved the address (a mailed link, or Gmail / Workspace Google). */
   email_verified: boolean;
+  /** Account mails can be sent; without a mail server no verification link exists. */
+  mail_enabled: boolean;
   /** Something to tell the reader once (e.g. the old password was removed). */
   notice?: string | null;
 };
