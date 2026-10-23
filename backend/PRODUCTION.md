@@ -89,7 +89,12 @@ folder is uploaded directly without Git.
 
 ## Dependencies
 
-`requirements.txt` specifies minimum versions, not a lockfile. This task
-does not upgrade or blindly freeze the current environment. For a production
-image, resolve and review a pinned artifact from a tested environment before
-installation; dependency reproducibility remains an explicit release step.
+`requirements.txt` lists the direct dependencies with minimum versions;
+`constraints.txt` pins every installed package to the exact version the test
+suite passed with. The Docker image and CI install
+`pip install -r requirements.txt -c constraints.txt`, so a rebuild never picks
+up an untested release. To upgrade, install `requirements.txt` alone into a
+fresh Python 3.12 venv, run the tests, and replace the pinned lines with
+`pip freeze`. The "Dependency audit" workflow checks `constraints.txt` and the
+frontend's production packages for known vulnerabilities on every PR and
+weekly.
