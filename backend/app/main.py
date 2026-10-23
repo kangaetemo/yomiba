@@ -63,6 +63,7 @@ def create_app(auto_init: bool = True) -> FastAPI:
         price_refresh = None
         scheduler = None
         covers = None
+        descriptions = None
         try:
             logger.info("startup: begin")
             validate_runtime_settings(settings)
@@ -125,6 +126,16 @@ def create_app(auto_init: bool = True) -> FastAPI:
                 covers.start()
                 logger.info("startup: cover worker started")
             app.state.cover_worker = covers
+            if auto_init and settings.description_fetch_enabled:
+                from .services.volume_descriptions import DescriptionFetcher
+
+                descriptions = CoverWorker(
+                    database.SessionLocal, name="description-worker", start_delay=120.0,
+                    budget=settings.description_fetch_budget,
+                    fetcher_factory=lambda s: DescriptionFetcher(s, settings=settings),
+                )
+                descriptions.start()
+                logger.info("startup: description worker started")
             if auto_init:
                 warmer = CacheWarmer(database.SessionLocal, _warm_public_feeds)
                 warmer.start()
@@ -141,6 +152,8 @@ def create_app(auto_init: bool = True) -> FastAPI:
                 logger.info("shutdown: price scheduler stopped=%s", not price_refresh.is_running)
             if covers is not None:
                 covers.stop(timeout=5)
+            if descriptions is not None:
+                descriptions.stop(timeout=5)
             if scheduler is not None:
                 scheduler.stop(timeout=10)
                 logger.info("shutdown: catalog scheduler stopped=%s", not scheduler.is_running)

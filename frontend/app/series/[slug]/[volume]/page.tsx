@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { BestPriceCard } from "@/components/BestPriceCard";
+import { Blurb } from "@/components/Blurb";
 import { EditionLinks } from "@/components/EditionLinks";
 import { StoreListingCard } from "@/components/StoreListingCard";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
@@ -99,6 +100,7 @@ function volumeStructuredData(detail: VolumeDetail, name: string, url: string, b
   }
   if (detail.page_count) book.numberOfPages = detail.page_count;
   if (detail.release_date) book.datePublished = detail.release_date;
+  if (detail.description) book.description = detail.description;
   if (offers.length > 0 && best !== null) {
     book.brand = { "@type": "Brand", name: detail.series.publisher };
     book.offers = {
@@ -358,6 +360,8 @@ export default async function VolumePage({ params }: VolumePageProps) {
               <Fact label="Dil">Türkçe</Fact>
             </dl>
           </section>
+
+          <Blurb id="tanitim-title" title="Tanıtım" text={detail.description} source={detail.description_source} />
 
           <section id="magazalar" aria-labelledby="magazalar-title" className="scroll-mt-28 space-y-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">

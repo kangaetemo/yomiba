@@ -82,6 +82,9 @@ class VolumeOut(BaseModel):
     #: Original volumes an omnibus book collects (2-in-1: 9-10), else None.
     covers_from: int | None = None
     covers_to: int | None = None
+    #: Back-cover text from a store page and that store's name.
+    description: str | None = None
+    description_source: str | None = None
     #: Admin only: enabled stores without a listing here, and when the
     #: series' prices were last refreshed. Empty / None for everyone else.
     missing_stores: list[MissingStoreOut] = []

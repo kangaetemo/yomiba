@@ -5,6 +5,7 @@ import { FollowMissingButton } from "@/components/FollowMissingButton";
 import { Cover, formatTL, volumeTitle } from "@/components/ui";
 import { SortBar } from "@/components/SortBar";
 import { Segmented } from "@/components/Segmented";
+import { Blurb } from "@/components/Blurb";
 import { EditionLinks } from "@/components/EditionLinks";
 import { JsonLd, breadcrumbs } from "@/components/JsonLd";
 import { ReportIssue } from "@/components/ReportIssue";
@@ -186,6 +187,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
       publisher: { "@type": "Organization", name: detail.publisher },
       ...(detail.author ? { author: { "@type": "Person", name: detail.author } } : {}),
       ...(detail.cover_url ? { image: new URL(detail.cover_url, SITE_URL).href } : {}),
+      ...(detail.description ? { description: detail.description } : {}),
       hasPart: detail.volumes.map((v) => ({
         "@type": "Book",
         name: `${detail.title} ${searchVolumeLabel(v.number)}`,
@@ -255,6 +257,8 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
           </dl>
         </div>
       </section>
+
+      <Blurb id="konu" title="Konu" text={detail.description} source={detail.description_source} />
 
       {upcoming.length > 0 ? (
         <section aria-labelledby="yakinda" className="space-y-3 rounded-xl border border-line bg-surface p-4">

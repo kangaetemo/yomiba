@@ -12,7 +12,7 @@ from ..models import User, Volume, WishlistItem
 from ..normalization.text import slugify
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.series import SeriesEditionOut, SeriesOut, SeriesVolumeOut
-from ..services import catalog_service, collections_service, series_slugs
+from ..services import catalog_service, collections_service, series_slugs, volume_descriptions
 from ..utils import from_cents
 from ..services.covers import cover_url
 
@@ -61,6 +61,7 @@ def get_series_detail(
         Volume.catalog_released.is_(False),
     ).order_by(Volume.volume_number))]
     sibling_ids = [s.id for s in siblings]
+    intro = volume_descriptions.series_description(session, detail.series.id)
     offers = catalog_service.series_offer_summary(session, sibling_ids)
     sibling_slugs = series_slugs.slugs_for(session, sibling_ids)
     sibling_only = catalog_service.only_volume_numbers(session, sibling_ids)
@@ -95,6 +96,8 @@ def get_series_detail(
         volumes=volumes,
         upcoming_volumes=upcoming,
         editions=editions,
+        description=intro[0] if intro else None,
+        description_source=volume_descriptions.store_name(session, intro[1]) if intro else None,
         one_shot=(
             detail.series.jp_status == "completed"
             and detail.series.tr_status == "completed"
