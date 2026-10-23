@@ -11,3 +11,12 @@ export function volumeLabel(number: number | null | undefined): string {
   }
   return `Cilt ${number}`;
 }
+
+/** The volume as people type it into search ("Berserk 20. Cilt"), for page
+ * titles, snippets and structured data. */
+export function searchVolumeLabel(number: number | null | undefined): string {
+  if (number === null || number === undefined || number < 0) {
+    return "Numarasız Cilt";
+  }
+  return `${number}. Cilt`;
+}
