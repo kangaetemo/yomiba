@@ -32,15 +32,37 @@ DEVICE_COOKIE_DAYS = 180
 
 
 class LoginRateLimiter:
-    def __init__(self, limit: int = 10, window_seconds: int = 300) -> None:
+    """Memory: keys whose attempts have all expired are dropped when the
+    table reaches ``soft_cap`` (amortized: the next sweep waits until it has
+    doubled). A key with recent failures is never dropped to make room, or a
+    flood of new e-mails would unlock an account under attack. The table can
+    only outgrow ``soft_cap`` as fast as failed logins arrive (each costs an
+    Argon2 check), so it stays small; ``hard_cap`` is a last resort."""
+
+    def __init__(self, limit: int = 10, window_seconds: int = 300,
+                 soft_cap: int = 5000, hard_cap: int = 200_000) -> None:
         self.limit = limit
         self.window_seconds = window_seconds
+        self.soft_cap = soft_cap
+        self.hard_cap = hard_cap
+        self._next_sweep = soft_cap
         self._attempts: dict[str, deque[float]] = {}
         self._lock = Lock()
 
+    def _make_room(self, now: float) -> None:
+        if len(self._attempts) < self._next_sweep:
+            return
+        cutoff = now - self.window_seconds
+        for key in [k for k, v in self._attempts.items() if not v or v[-1] <= cutoff]:
+            del self._attempts[key]
+        if len(self._attempts) >= self.hard_cap:
+            logger.warning("login limiter: %d active keys; dropping the stalest", len(self._attempts))
+            del self._attempts[min(self._attempts, key=lambda k: self._attempts[k][-1])]
+        self._next_sweep = max(self.soft_cap, 2 * len(self._attempts))
+
     def _prune(self, key: str, now: float) -> deque[float]:
-        if key not in self._attempts and len(self._attempts) >= 5000:
-            self._attempts.pop(next(iter(self._attempts)))
+        if key not in self._attempts:
+            self._make_room(now)
         attempts = self._attempts.setdefault(key, deque())
         while attempts and attempts[0] <= now - self.window_seconds:
             attempts.popleft()
@@ -71,6 +93,42 @@ class LoginRateLimiter:
     def clear(self, key: str) -> None:
         with self._lock:
             self._attempts.pop(key, None)
+
+
+class SlidingLimiter:
+    """At most ``limit`` hits per ``window`` seconds for each key."""
+
+    def __init__(self, limit: int, window: float):
+        self.limit, self.window = limit, window
+        self._hits: dict[str, deque[float]] = {}
+        self._lock = Lock()
+
+    def allow(self, key: str) -> bool:
+        now = monotonic()
+        with self._lock:
+            if key not in self._hits and len(self._hits) >= 10_000:
+                self._hits = {k: v for k, v in self._hits.items() if v and now - v[-1] < self.window}
+            hits = self._hits.setdefault(key, deque())
+            while hits and hits[0] <= now - self.window:
+                hits.popleft()
+            if len(hits) >= self.limit:
+                return False
+            hits.append(now)
+            return True
+
+
+class RegistrationLimiter:
+    """Checked before a registration hashes anything or touches the
+    database: a few per client per hour, and a site-wide ceiling that holds
+    even if the client address is forged (it comes from Cloudflare's
+    header; see ``analytics.client_ip``)."""
+
+    def __init__(self, per_client: int = 5, site: int = 120, window: float = 3600) -> None:
+        self._client = SlidingLimiter(per_client, window)
+        self._site = SlidingLimiter(site, window)
+
+    def allow(self, client: str) -> bool:
+        return self._client.allow(client) and self._site.allow("site")
 
 
 def _device_secret() -> bytes:

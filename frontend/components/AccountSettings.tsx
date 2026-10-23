@@ -9,7 +9,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { changePassword, deleteAccount, logoutOthers, updateProfile, type CurrentUser } from "@/services/auth";
+import {
+  changePassword,
+  deleteAccount,
+  logoutOthers,
+  sendVerification,
+  updateProfile,
+  type CurrentUser,
+} from "@/services/auth";
 
 const input =
   "mt-1 min-h-11 w-full rounded-lg border border-line-strong bg-paper px-3 text-ink placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent/30 focus:outline-none";
@@ -52,6 +59,7 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
   const password = useAction();
   const devices = useAction();
   const removal = useAction();
+  const verification = useAction();
   const [showPassword, setShowPassword] = useState(false);
 
   return (
@@ -86,7 +94,12 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
         <dl className="divide-y divide-line text-sm">
           <div className="flex flex-wrap justify-between gap-2 py-2.5">
             <dt className="text-muted">E-posta</dt>
-            <dd className="font-semibold break-all text-ink">{user.email}</dd>
+            <dd className="font-semibold break-all text-ink">
+              {user.email}{" "}
+              <span className={user.email_verified ? "text-ok" : "text-muted"}>
+                {user.email_verified ? "· doğrulandı" : "· doğrulanmadı"}
+              </span>
+            </dd>
           </div>
           <div className="flex flex-wrap justify-between gap-2 py-2.5">
             <dt className="text-muted">Parola</dt>
@@ -97,9 +110,37 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
             <dd className={`font-semibold ${user.google ? "text-ok" : "text-ink"}`}>{user.google ? "Bağlı" : "Bağlı değil"}</dd>
           </div>
         </dl>
+        {!user.email_verified && !user.mail_enabled && (
+          <p className="text-sm text-muted">
+            E-posta adresin henüz doğrulanmadı; e-postayla doğrulama yakında açılacak. Doğrulanmamış bir hesaba aynı
+            adresin Google hesabıyla girilirse, güvenlik için parola kaldırılır ve diğer oturumlar kapanır.
+          </p>
+        )}
+        {!user.email_verified && user.mail_enabled && (
+          <div className="space-y-2">
+            <p className="text-sm text-muted">
+              E-posta adresini doğrula: kayıt olurken gönderdiğimiz bağlantıya tıkla. Doğrulanmamış bir hesaba aynı adresin
+              Google hesabıyla girilirse, güvenlik için parola kaldırılır ve diğer oturumlar kapanır.
+            </p>
+            <button
+              type="button"
+              disabled={verification.busy}
+              onClick={() =>
+                void verification.run(async () => {
+                  await sendVerification();
+                  return "Doğrulama bağlantısını gönderdik. Gelen kutunu (ve gereksiz klasörünü) kontrol et.";
+                })
+              }
+              className={primary}
+            >
+              Doğrulama e-postasını gönder
+            </button>
+            <Note status={verification.status} />
+          </div>
+        )}
         {!user.google && (
           <p className="text-xs text-muted">
-            Giriş sayfasında aynı e-postayla “Google ile devam et” dersen Google hesabın bu hesaba kendiliğinden bağlanır.
+            Giriş sayfasında aynı e-postayla “Google ile devam et” diyerek Google hesabını bu hesaba bağlayabilirsin.
           </p>
         )}
       </section>
@@ -110,7 +151,7 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
           <p className="text-sm text-muted">
             {user.has_password
               ? "Parolan değişince diğer cihazlardaki oturumların kapanır."
-              : "Hesabını Google ile açtın. İstersen e-postayla da girebilmek için bir parola belirleyebilirsin."}
+              : "Hesabının parolası yok; Google ile giriyorsun. İstersen e-postayla da girebilmek için bir parola belirleyebilirsin."}
           </p>
         </div>
         <form

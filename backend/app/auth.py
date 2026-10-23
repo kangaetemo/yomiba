@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import threading
 from datetime import timedelta, timezone
 
 from argon2 import PasswordHasher, Type
@@ -24,6 +25,12 @@ COOKIE_MAX_AGE_DAYS = 400
 PASSWORD_HASHER = PasswordHasher(type=Type.ID)
 # Keep a real Argon2 verification on missing accounts to avoid a trivial timing oracle.
 DUMMY_HASH = PASSWORD_HASHER.hash("not-a-real-account-password")
+#: Argon2 is deliberately slow and memory-hungry. At most this many hashes
+#: run at once; a burst of logins or registrations waits briefly and then
+#: gets "busy" instead of exhausting CPU and memory.
+PASSWORD_WORK_SLOTS = 4
+PASSWORD_WORK_WAIT_SECONDS = 5
+_password_work = threading.BoundedSemaphore(PASSWORD_WORK_SLOTS)
 
 
 def token_digest(token: str) -> str:
@@ -89,11 +96,27 @@ def require_admin(user: User = Depends(require_user)) -> User:
     return user
 
 
+class _PasswordWork:
+    def __enter__(self) -> None:
+        if not _password_work.acquire(timeout=PASSWORD_WORK_WAIT_SECONDS):
+            raise HTTPException(status_code=503, detail="Sunucu şu an çok yoğun. Biraz sonra tekrar deneyin.",
+                                headers={"Retry-After": "10"})
+
+    def __exit__(self, *exc) -> None:
+        _password_work.release()
+
+
+def hash_password(password: str) -> str:
+    with _PasswordWork():
+        return PASSWORD_HASHER.hash(password)
+
+
 def verify_password(password: str, stored: str | None) -> bool:
-    try:
-        if stored is None:
-            PASSWORD_HASHER.verify(DUMMY_HASH, password)
+    with _PasswordWork():
+        try:
+            if stored is None:
+                PASSWORD_HASHER.verify(DUMMY_HASH, password)
+                return False
+            return PASSWORD_HASHER.verify(stored, password)
+        except (VerifyMismatchError, VerificationError):
             return False
-        return PASSWORD_HASHER.verify(stored, password)
-    except (VerifyMismatchError, VerificationError):
-        return False

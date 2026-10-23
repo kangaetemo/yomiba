@@ -12,6 +12,9 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** A structured error's ``code`` (e.g. "google_link_required") and body. */
+    public readonly code?: string,
+    public readonly data?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -31,6 +34,9 @@ function apiBase(): string {
  * errors carry a list of `{loc, msg}` objects, not a string. */
 function errorDetail(detail: unknown, fallback: string): string {
   if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && "message" in detail) {
+    return String((detail as { message: unknown }).message);
+  }
   if (Array.isArray(detail)) {
     const messages = detail
       .map((item) =>
@@ -63,15 +69,18 @@ async function request<T>(
   });
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
+    let data: Record<string, unknown> | undefined;
     try {
       const body: unknown = await res.json();
       if (body && typeof body === "object" && "detail" in body) {
-        detail = errorDetail((body as { detail: unknown }).detail, detail);
+        const raw = (body as { detail: unknown }).detail;
+        detail = errorDetail(raw, detail);
+        if (raw && typeof raw === "object" && !Array.isArray(raw)) data = raw as Record<string, unknown>;
       }
     } catch {
       // Non-JSON error body; keep the default detail.
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, typeof data?.code === "string" ? data.code : undefined, data);
   }
   // 204 No Content (logout, account deletion): no body to parse.
   if (res.status === 204) return undefined as T;

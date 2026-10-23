@@ -20,15 +20,13 @@ from __future__ import annotations
 
 import hashlib
 import re
-import threading
-import time
-from collections import deque
 from datetime import timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..login_rate_limit import SlidingLimiter
 from ..models import ContentReport, Store, User
 from ..utils import utcnow
 from . import analytics
@@ -49,28 +47,6 @@ MAX_OPEN = 500
 _URL = re.compile(r"https?://|www\.", re.IGNORECASE)
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _PAGE = re.compile(r"/series/[^/?#\s]{1,200}(/cilt-(\d{1,4}|numarasiz))?")
-
-
-class SlidingLimiter:
-    """At most ``limit`` hits per ``window`` seconds for each key."""
-
-    def __init__(self, limit: int, window: float):
-        self.limit, self.window = limit, window
-        self._hits: dict[str, deque[float]] = {}
-        self._lock = threading.Lock()
-
-    def allow(self, key: str) -> bool:
-        now = time.monotonic()
-        with self._lock:
-            if key not in self._hits and len(self._hits) >= 10_000:
-                self._hits = {k: v for k, v in self._hits.items() if v and now - v[-1] < self.window}
-            hits = self._hits.setdefault(key, deque())
-            while hits and hits[0] <= now - self.window:
-                hits.popleft()
-            if len(hits) >= self.limit:
-                return False
-            hits.append(now)
-            return True
 
 
 _burst = SlidingLimiter(3, 600)

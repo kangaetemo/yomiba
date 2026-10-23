@@ -11,6 +11,19 @@ export type CurrentUser = {
   has_password: boolean;
   /** A Google account is linked. */
   google: boolean;
+  /** The owner proved the address (a mailed link, or Gmail / Workspace Google). */
+  email_verified: boolean;
+  /** Account mails can be sent; without a mail server no verification link exists. */
+  mail_enabled: boolean;
+  /** Something to tell the reader once (e.g. the old password was removed). */
+  notice?: string | null;
+};
+
+export type EmailTokenInfo = {
+  purpose: "verify" | "google_link";
+  email: string;
+  /** "Ben açmadım" may delete this (unverified) account. */
+  can_reject: boolean;
 };
 
 export const getMe = () => getJson<CurrentUser>("/auth/me");
@@ -21,6 +34,20 @@ export const register = (email: string, password: string, display_name: string) 
 /** "Sign in with Google": the ID token Google gave the browser. */
 export const googleLogin = (credential: string) =>
   postJson<CurrentUser>("/auth/google", { credential });
+/** Link Google to the existing account with that e-mail, proved by its password. */
+export const googleLinkWithPassword = (credential: string, password: string) =>
+  postJson<CurrentUser>("/auth/google/link", { credential, password });
+/** …or by a link mailed to the address. */
+export const googleLinkByEmail = (credential: string) =>
+  postJson<{ sent: boolean }>("/auth/google/link-email", { credential });
+export const sendVerification = () => postJson<{ sent: boolean }>("/auth/verify-email/send");
+export const emailTokenInfo = (token: string) => postJson<EmailTokenInfo>("/auth/email-token", { token });
+export const confirmEmailToken = (token: string) =>
+  postJson<{ purpose: EmailTokenInfo["purpose"]; email: string; notice: string | null }>(
+    "/auth/email-token/confirm",
+    { token },
+  );
+export const rejectEmailToken = (token: string) => postJson<void>("/auth/email-token/reject", { token });
 export const updateProfile = (display_name: string) =>
   patchJson<CurrentUser>("/auth/me", { display_name });
 /** Change (or, on a Google-only account, set) the password; other devices are signed out. */

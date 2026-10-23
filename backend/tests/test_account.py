@@ -98,7 +98,8 @@ def test_google_creates_an_account_without_password(client, google):
     response = client.post("/auth/google", json={"credential": "t1"})
     assert response.status_code == 200, response.text
     assert response.json() | {"id": 0} == {"id": 0, "email": "okur@example.com", "display_name": "Google Okur",
-                                           "role": "USER", "has_password": False, "google": True}
+                                           "role": "USER", "has_password": False, "google": True,
+                                           "email_verified": False, "mail_enabled": False, "notice": None}
     assert client.get("/auth/me").status_code == 200
     # The password form never opens a Google-only account.
     client.cookies.clear()
@@ -106,16 +107,19 @@ def test_google_creates_an_account_without_password(client, google):
 
 
 def test_google_links_the_existing_account_and_keeps_its_collection(client, db_session, google):
-    _register(client)
+    _register(client, email="okur@gmail.com")
     vol = _volume(db_session)
     assert client.patch(f"/volume/{vol.id}/collection-status", json={"status": "owned"}).status_code == 200
-    google["t1"] = _claims(email="OKUR@example.com")
+    google["t1"] = _claims(email="OKUR@gmail.com")
     client.cookies.clear()
     response = client.post("/auth/google", json={"credential": "t1"})
-    assert response.json()["has_password"] is True and response.json()["google"] is True
+    # Gmail: Google owns the mailbox. The address was never verified, so the
+    # registration's password is dropped (tests/test_account_linking.py).
+    assert response.json()["google"] is True and response.json()["email_verified"] is True
+    assert response.json()["has_password"] is False and response.json()["notice"]
     assert client.get("/me/collection").json()[0]["volume_id"] == vol.id
     # Another Google account claiming the same address is refused.
-    google["t2"] = _claims(sub="g-2")
+    google["t2"] = _claims(sub="g-2", email="okur@gmail.com")
     client.cookies.clear()
     assert client.post("/auth/google", json={"credential": "t2"}).status_code == 409
 

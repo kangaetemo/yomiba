@@ -23,6 +23,7 @@ from .user_volume_collection import UserVolumeCollection
 from .isbn_review import IsbnAuditRun, IsbnAuditItem, IsbnAuditResult, IsbnReview, IsbnDecision
 from .isbn_evidence import IsbnChange, IsbnIssue, SharedIsbn, StoreObservation
 from .email_outbox import EmailOutbox
+from .email_token import EmailToken
 from .series_popularity import SeriesPopularity
 from .analytics import AnalyticsEvent, AnalyticsSalt
 from .content_report import ContentReport
@@ -50,6 +51,7 @@ __all__ = [
     "SharedIsbn",
     "StoreObservation",
     "EmailOutbox",
+    "EmailToken",
     "SeriesPopularity",
     "AnalyticsEvent",
     "AnalyticsSalt",
