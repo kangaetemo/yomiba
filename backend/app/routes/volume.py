@@ -26,6 +26,7 @@ from ..services import (
     collections_service,
     series_slugs,
     price_alerts_service,
+    volume_descriptions,
     wishlist_service,
 )
 from ..services.covers import cover_url
@@ -127,6 +128,8 @@ def _build_volume_out(
         release_date=volume.release_date,
         covers_from=volume.covers_from,
         covers_to=volume.covers_to,
+        description=volume.description,
+        description_source=volume_descriptions.store_name(session, volume.description_source),
     )
 
 

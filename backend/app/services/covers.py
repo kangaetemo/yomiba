@@ -425,12 +425,17 @@ class CoverWorker:
 
     def __init__(self, session_factory: sessionmaker[Session], *, settings: Settings | None = None,
                  start_delay: float = 30.0, backlog_pause: float = 60.0,
-                 fetcher_factory: Callable[[Session], CoverFetcher] | None = None) -> None:
+                 fetcher_factory: Callable[[Session], CoverFetcher] | None = None,
+                 name: str = "cover-worker", budget: int | None = None) -> None:
         self.settings = settings or get_settings()
         self._sessions = session_factory
         self._start_delay = start_delay
         self._backlog_pause = backlog_pause
         self._fetcher_factory = fetcher_factory or (lambda s: CoverFetcher(s, settings=self.settings))
+        #: The same loop also runs other page-fetching passes
+        #: (volume_descriptions.DescriptionFetcher) under their own name/budget.
+        self._name = name
+        self._budget = budget
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -442,7 +447,7 @@ class CoverWorker:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._loop, name="cover-worker", daemon=True)
+        self._thread = threading.Thread(target=self._loop, name=self._name, daemon=True)
         self._thread.start()
 
     def stop(self, timeout: float = 10.0) -> None:
@@ -463,7 +468,8 @@ class CoverWorker:
             self.running = True
             try:
                 with self._sessions() as session:
-                    report = self._fetcher_factory(session).run(self.settings.cover_fetch_budget)
+                    report = self._fetcher_factory(session).run(
+                        self.settings.cover_fetch_budget if self._budget is None else self._budget)
                 self.last = {**report.__dict__, "finished_at": utcnow().isoformat()}
                 return report
             finally:
@@ -480,6 +486,6 @@ class CoverWorker:
                 report = self.run_once()
                 shrinking = report.stored > 0 and report.remaining > 0
             except Exception:  # noqa: BLE001 - the worker must not die
-                logger.exception("covers: pass failed")
+                logger.exception("%s: pass failed", self._name)
                 shrinking = False
             delay = self._backlog_pause if shrinking else self.settings.cover_fetch_interval_minutes * 60

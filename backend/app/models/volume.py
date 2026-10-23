@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -82,6 +82,12 @@ class Volume(Base):
     #: from, so that same image is not taken again as the "replacement".
     cover_provisional: Mapped[bool | None] = mapped_column(Boolean)
     cover_origin_url: Mapped[str | None] = mapped_column(String(1000))
+    #: Back-cover text read from a store product page
+    #: (services/volume_descriptions.py), the store code it came from, and
+    #: when the stores were last tried.
+    description: Mapped[str | None] = mapped_column(Text)
+    description_source: Mapped[str | None] = mapped_column(String(50))
+    description_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     series: Mapped[Series] = relationship(back_populates="volumes")
     listings: Mapped[list[StoreListing]] = relationship(

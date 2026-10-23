@@ -151,6 +151,10 @@ class Settings:
     cover_prefer_mangakol: bool = os.getenv("COVER_PREFER_MANGAKOL", "1").strip().lower() in {"1", "true", "yes", "on"}
     cover_fetch_budget: int = int(os.getenv("COVER_FETCH_BUDGET", "400"))
     cover_fetch_interval_minutes: float = float(os.getenv("COVER_FETCH_INTERVAL_MINUTES", "60"))
+    #: Back-cover texts from store product pages (services/volume_descriptions.py).
+    #: Off until a dry run (fetch_descriptions.py) shows the texts are clean.
+    description_fetch_enabled: bool = os.getenv("DESCRIPTION_FETCH_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
+    description_fetch_budget: int = int(os.getenv("DESCRIPTION_FETCH_BUDGET", "120"))
 
     # Background price import policy. Search never schedules an import.
     import_freshness_ttl_minutes: int = int(
