@@ -14,6 +14,7 @@ import type {
   PriceHistory,
   SearchResponse,
   SeriesDetail,
+  SeriesIndexItem,
   SitemapFeed,
   VolumeDetail,
   WishlistState,
@@ -29,6 +30,11 @@ export function getAllOneShots(): Promise<{ one_shots: PopularSeries[] }> {
   return getJson<{ one_shots: PopularSeries[] }>("/one-shots");
 }
 
+/** Every catalog series with a released or announced volume (A–Z page). */
+export function getSeriesIndex(): Promise<{ series: SeriesIndexItem[] }> {
+  return getJson<{ series: SeriesIndexItem[] }>("/series");
+}
+
 /** Every public series page and its volume numbers (sitemap.xml). */
 export function getSitemapEntries(): Promise<SitemapFeed> {
   return getJson<SitemapFeed>("/sitemap");
@@ -41,10 +47,14 @@ export function getReleaseCalendar(month: string): Promise<ReleaseCalendar> {
 
 export function getPriceDrops(
   hours = 168, limit = 6,
-  options: { offset?: number; significant?: boolean; sort?: "recent" | "percent" | "saving" | "price" } = {},
+  options: {
+    offset?: number; significant?: boolean; noticeable?: boolean;
+    sort?: "recent" | "percent" | "saving" | "price";
+  } = {},
 ): Promise<PriceDropsFeed> {
   const query = new URLSearchParams({ hours: String(hours), limit: String(limit),
     offset: String(options.offset ?? 0), significant: String(options.significant ?? false),
+    noticeable: String(options.noticeable ?? false),
     sort: options.sort ?? "recent" });
   return getJson<PriceDropsFeed>(`/price-drops?${query}`).then((feed) => {
     // During a rolling deploy, an old backend must not be presented as

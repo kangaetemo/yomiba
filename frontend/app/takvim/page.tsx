@@ -2,15 +2,28 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Badge, Cover, formatDate, formatTL, volumeTitle } from "@/components/ui";
 import { volumePath } from "@/lib/paths";
+import { openGraph } from "@/lib/site";
 import { TIME_ZONE } from "@/lib/time";
 import { getReleaseCalendar } from "@/services/catalog";
 import type { NewVolume } from "@/types";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = {
-  title: "Manga yayın takvimi",
-  description: "Türkiye'de yayımlanan manga ciltlerini çıkış tarihlerine göre takip et, önceki aylara göz at ve fiyatları karşılaştır.",
-};
+const DESCRIPTION =
+  "Türkiye'de yayımlanan manga ciltlerini çıkış tarihlerine göre takip et, önceki aylara göz at ve fiyatları karşılaştır.";
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ ay?: string | string[] }>;
+}): Promise<Metadata> {
+  const { ay } = await searchParams;
+  // Each month is its own page; the current month lives at /takvim.
+  const month = typeof ay === "string" && MONTH_PATTERN.test(ay) && ay !== currentMonth() ? ay : null;
+  const url = month ? `/takvim?ay=${month}` : "/takvim";
+  const label = month ? MONTH_LABEL.format(new Date(`${month}-01T00:00:00Z`)) : null;
+  const title = label ? `Manga yayın takvimi — ${label}` : "Manga yayın takvimi: bu ay çıkan ciltler";
+  return { title, description: DESCRIPTION, alternates: { canonical: url }, openGraph: openGraph({ title, description: DESCRIPTION, url }) };
+}
 
 const MONTH_PATTERN = /^[1-9]\d{3}-(0[1-9]|1[0-2])$/;
 const WEEKDAYS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];

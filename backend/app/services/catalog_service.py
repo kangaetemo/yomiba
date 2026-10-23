@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, case, exists, func, not_, or_, select
+from sqlalchemy import and_, case, exists, func, not_, or_, select, true
 from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
@@ -129,7 +129,7 @@ def series_offer_summary(
     session: Session, series_ids: list[int]
 ) -> dict[int, tuple[int, int | None]]:
     """series id -> (in-stock priced offers, lowest in-stock price in cents)
-    across the series' numbered catalog volumes."""
+    across the series' numbered catalog volumes. Stale listings excluded."""
     if not series_ids:
         return {}
     rows = session.execute(
@@ -142,6 +142,7 @@ def series_offer_summary(
             Volume.volume_number >= 0,
             StoreListing.in_stock.is_(True),
             StoreListing.price.isnot(None),
+            fresh_listing_condition(session),
         )
         .group_by(Volume.series_id)
     ).all()
@@ -254,7 +255,7 @@ def _rank_matches(session: Session, query_key: str, series_rows: list[Series]) -
     offers = dict(session.execute(
         select(Volume.series_id, func.count(StoreListing.id))
         .join(StoreListing, StoreListing.volume_id == Volume.id)
-        .where(Volume.series_id.in_(ids), StoreListing.in_stock.is_(True))
+        .where(Volume.series_id.in_(ids), StoreListing.in_stock.is_(True), fresh_listing_condition(session))
         .group_by(Volume.series_id)
     ).all())
 
@@ -305,6 +306,18 @@ def _aware(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=timezone.utc)
 
 
+def _trusted_since(session: Session, store_ids: set[int] | None = None) -> dict[int, datetime]:
+    """store id -> oldest ``last_checked`` whose stock flag is still trusted:
+    the store's newest ``last_checked`` minus ``listing_stale_hours``. The
+    single freshness rule behind :func:`stale_listing_ids` and
+    :func:`fresh_listing_condition`."""
+    query = select(StoreListing.store_id, func.max(StoreListing.last_checked)).group_by(StoreListing.store_id)
+    if store_ids is not None:
+        query = query.where(StoreListing.store_id.in_(store_ids))
+    window = timedelta(hours=get_settings().listing_stale_hours)
+    return {sid: _aware(latest) - window for sid, latest in session.execute(query).all() if latest is not None}
+
+
 def stale_listing_ids(session: Session, listings: list[StoreListing]) -> frozenset[int]:
     """Listings whose stock flag can no longer be trusted.
 
@@ -317,22 +330,28 @@ def stale_listing_ids(session: Session, listings: list[StoreListing]) -> frozens
     """
     if not listings:
         return frozenset()
-    store_ids = {l.store_id for l in listings}
-    newest = dict(
-        session.execute(
-            select(StoreListing.store_id, func.max(StoreListing.last_checked))
-            .where(StoreListing.store_id.in_(store_ids))
-            .group_by(StoreListing.store_id)
-        ).all()
-    )
-    window = timedelta(hours=get_settings().listing_stale_hours)
+    since = _trusted_since(session, {l.store_id for l in listings})
     stale: set[int] = set()
     for listing in listings:
-        latest = _aware(newest.get(listing.store_id))
+        cutoff = since.get(listing.store_id)
         checked = _aware(listing.last_checked)
-        if latest is not None and (checked is None or latest - checked > window):
+        if cutoff is not None and (checked is None or checked < cutoff):
             stale.add(listing.id)
     return frozenset(stale)
+
+
+def fresh_listing_condition(session: Session):
+    """SQL filter keeping listings that are NOT stale (same rule as
+    :func:`stale_listing_ids`), for aggregate queries — best price and
+    in-stock counts — that never load the listings themselves. One grouped
+    query per call; the result is one clause per store."""
+    since = _trusted_since(session)
+    if not since:
+        return true()
+    return or_(
+        StoreListing.store_id.not_in(list(since)),
+        *(and_(StoreListing.store_id == sid, StoreListing.last_checked >= cutoff) for sid, cutoff in since.items()),
+    )
 
 
 def _volume_stats(
@@ -509,6 +528,7 @@ def search_volumes(session: Session, query: str, limit: int = 3) -> list[VolumeH
                 StoreListing.volume_id.in_([v.id for v in volumes]),
                 StoreListing.in_stock.is_(True),
                 StoreListing.price.isnot(None),
+                fresh_listing_condition(session),
             )
             .group_by(StoreListing.volume_id)
         ).all()

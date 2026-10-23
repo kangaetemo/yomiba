@@ -23,10 +23,25 @@ from ..models import CatalogSeries, PriceHistory, Series, Store, StoreListing, V
 from ..utils import from_cents, utcnow
 from . import series_slugs
 from .covers import cover_url
+from .swr_cache import SwrCache
 
 REFERENCE_DAYS = 30
 MIN_REFERENCE_DAYS = 7
-HOME_MIN_PERCENT = 10
+HOME_MIN_PERCENT = 20
+#: Smaller drops (a 60-kuruş rounding change) are still recorded and kept
+#: in the API, but public lists and badges leave them out.
+MIN_NOTICEABLE_PERCENT = 10
+MIN_NOTICEABLE_SAVING_CENTS = 500
+#: The site-wide list (home, /indirimler) is shared by every visitor and
+#: takes seconds to compute; prices change on a 4-hour refresh cycle. Older
+#: lists are still served while one is recomputed in the background.
+CACHE_SECONDS = 300
+
+_cache = SwrCache("price deals", CACHE_SECONDS)
+
+
+def clear_cache() -> None:
+    _cache.clear()
 
 
 def aware(value: datetime) -> datetime:
@@ -95,6 +110,15 @@ def _reference(intervals, changed_at):
 
 
 def current_price_deals(session: Session, *, volume_id: int | None = None, hours=168, now=None):
+    """Current deals, newest first. The site-wide list (no volume, no fixed
+    ``now``) is cached (see CACHE_SECONDS); callers must not mutate it."""
+    if volume_id is not None or now is not None:
+        return _compute(session, volume_id=volume_id, hours=hours, now=now)
+    return _cache.get(session, (hours,),
+                      lambda own: _compute(own, volume_id=None, hours=hours, now=None))
+
+
+def _compute(session: Session, *, volume_id: int | None, hours, now):
     now = aware(now or utcnow())
     start = now - timedelta(days=REFERENCE_DAYS)
     freshness = now - timedelta(hours=max(1, get_settings().listing_stale_hours))
@@ -113,6 +137,9 @@ def current_price_deals(session: Session, *, volume_id: int | None = None, hours
             PriceHistory.checked_at <= now, PriceHistory.price > 0,
             or_(previous_price.is_(None), PriceHistory.price < previous_price,
                 PriceHistory.in_stock.is_(True) & previous_stock.is_(False)))
+    if volume_id is not None:
+        # A volume page needs only its own listings' history scanned.
+        candidates = candidates.where(StoreListing.volume_id == volume_id)
     query = (
         select(StoreListing, Volume, Series, Store)
         .join(Volume, Volume.id == StoreListing.volume_id)
@@ -164,6 +191,7 @@ def current_price_deals(session: Session, *, volume_id: int | None = None, hours
             continue  # returning to an ordinary price after a short-lived rise
         saving = reference - listing.price
         percent = saving * 100 / reference
+        noticeable = percent >= MIN_NOTICEABLE_PERCENT and saving >= MIN_NOTICEABLE_SAVING_CENTS
         alternatives = [r[0].price for r in buyable if r[0].id != listing.id and r[0].price > listing.price]
         alternative = min(alternatives) if alternatives else None
         deals.append({
@@ -173,7 +201,8 @@ def current_price_deals(session: Session, *, volume_id: int | None = None, hours
             "old_price": from_cents(reference), "new_price": from_cents(listing.price),
             "saving": from_cents(saving), "drop_pct": round(percent, 1),
             "reference_kind": kind, "reference_days": round(coverage / 86400, 1),
-            "significant": kind == "usual" and percent >= HOME_MIN_PERCENT,
+            "noticeable": noticeable,
+            "significant": noticeable and kind == "usual" and percent >= HOME_MIN_PERCENT,
             "lowest_ever": False,
             "changed_at": changed_at.isoformat(), "in_stock": True,
             "product_url": listing.product_url, "image_url": cover_url(volume.cover_key),

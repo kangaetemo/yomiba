@@ -12,7 +12,8 @@ import { VolumeCard } from "@/components/VolumeCard";
 import { VolumeTile } from "@/components/VolumeTile";
 import { ApiError } from "@/lib/api";
 import { oneShotVolumeNumber, seriesPath, volumePath } from "@/lib/paths";
-import { SITE_URL, openGraph } from "@/lib/site";
+import { publisherPath } from "@/lib/seriesIndex";
+import { SITE_URL, metaDescription, openGraph } from "@/lib/site";
 import { currentUserOrNull } from "@/services/auth";
 import { getSeries } from "@/services/catalog";
 import type { CollectionStatus, SeriesDetail, SeriesVolume } from "@/types";
@@ -70,13 +71,12 @@ function cheapestInStock(volumes: SeriesVolume[]): SeriesVolume | null {
 function seriesDescription(detail: SeriesDetail): string {
   const cheapest = cheapestInStock(detail.volumes);
   const inStock = detail.volumes.filter((v) => v.in_stock_count > 0).length;
-  const by = detail.author ? `${detail.author} imzalı, ` : "";
-  const parts = [
-    `${detail.title} mangası (${by}${detail.publisher}): ${detail.volumes.length} cildin fiyatlarını Türk kitapçılarında karşılaştır.`,
-    cheapest ? `En ucuz cilt ${formatTL(cheapest.best_price)}, ${inStock} cilt stokta.` : null,
-    "Koleksiyonunu takip et, eksik ciltler için fiyat alarmı kur.",
-  ];
-  return parts.filter(Boolean).join(" ");
+  return metaDescription([
+    `${detail.title} mangası (${detail.publisher}), ${detail.volumes.length} cilt: Türk kitapçılarındaki fiyatları karşılaştır.`,
+    cheapest ? `En ucuz cilt ${formatTL(cheapest.best_price)}, ${inStock} cilt stokta.` : "Stok durumunu ve fiyat geçmişini gör.",
+    detail.author ? `Yazar: ${detail.author}.` : null,
+    "Eksik ciltler için fiyat alarmı kur.",
+  ]);
 }
 
 export async function generateMetadata({ params }: SeriesPageProps): Promise<Metadata> {
@@ -211,7 +211,15 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
               <p className="eyebrow">Seri</p>
               <h1 className="text-3xl leading-tight font-semibold text-ink sm:text-[2.6rem]">{detail.title}</h1>
               <p className="text-sm text-muted">
-                {[detail.author, detail.publisher, `${detail.volumes.length} cilt`, upcoming.length > 0 ? `${upcoming.length} yakında` : null].filter(Boolean).join(" · ")}
+                {detail.author && <>{detail.author} · </>}
+                {detail.publisher_slug ? (
+                  <Link href={publisherPath(detail.publisher_slug)} className="underline decoration-line-strong underline-offset-2 hover:text-accent">
+                    {detail.publisher}
+                  </Link>
+                ) : (
+                  detail.publisher
+                )}
+                {[` · ${detail.volumes.length} cilt`, upcoming.length > 0 ? ` · ${upcoming.length} yakında` : null].filter(Boolean).join("")}
               </p>
             </div>
             <FollowMissingButton signedIn={signedIn} untrackedIds={untrackedIds} trackedCount={tracked} />

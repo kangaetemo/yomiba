@@ -31,6 +31,17 @@ def _configure_logging() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
+def _warm_public_feeds(session: Session) -> None:
+    """The feeds every visitor's page waits for: the home page's (home feed
+    and its deals) and /indirimler's default 14-day list."""
+    from .routes.home import SSR_HOME_PARAMS, home_feed
+    from .services.price_deals import current_price_deals
+
+    home_feed(session, **SSR_HOME_PARAMS)
+    for hours in (7 * 24, 14 * 24):
+        current_price_deals(session, hours=hours)
+
+
 def create_app(auto_init: bool = True) -> FastAPI:
     _configure_logging()
     settings = get_settings()
@@ -45,8 +56,10 @@ def create_app(auto_init: bool = True) -> FastAPI:
         from .services.catalog_scheduler import CatalogSyncScheduler
         from .services.covers import CoverWorker
         from .services.price_refresh_scheduler import PriceRefreshScheduler
+        from .services.swr_cache import CacheWarmer
 
         runner = None
+        warmer = None
         price_refresh = None
         scheduler = None
         covers = None
@@ -112,11 +125,17 @@ def create_app(auto_init: bool = True) -> FastAPI:
                 covers.start()
                 logger.info("startup: cover worker started")
             app.state.cover_worker = covers
+            if auto_init:
+                warmer = CacheWarmer(database.SessionLocal, _warm_public_feeds)
+                warmer.start()
+                logger.info("startup: cache warmer started")
             app.state.ready = auto_init
             logger.info("startup: app ready")
             yield
         finally:
             app.state.ready = False
+            if warmer is not None:
+                warmer.stop(timeout=5)
             if price_refresh is not None:
                 price_refresh.stop(timeout=5)
                 logger.info("shutdown: price scheduler stopped=%s", not price_refresh.is_running)

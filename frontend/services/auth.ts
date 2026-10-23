@@ -1,5 +1,6 @@
 import { ApiError, getJson, patchJson, postJson } from "@/lib/api";
 import { unstable_rethrow } from "next/navigation";
+import { cache } from "react";
 
 export type CurrentUser = {
   id: number;
@@ -65,9 +66,10 @@ export function safeNext(raw: string | null | undefined): string | null {
  * Current user for chrome (header) rendering. When the backend
  * is unreachable or answers with an unexpected error, the page renders as
  * logged out instead of the whole site failing with a 500. Next.js rendering
- * control signals still propagate to the framework.
+ * control signals still propagate to the framework. Memoised per request:
+ * the layout and the page both ask, the backend is called once.
  */
-export async function currentUserOrNull(): Promise<CurrentUser | null> {
+export const currentUserOrNull = cache(async (): Promise<CurrentUser | null> => {
   try {
     return await currentUser();
   } catch (error) {
@@ -75,7 +77,7 @@ export async function currentUserOrNull(): Promise<CurrentUser | null> {
     console.error("currentUser failed; rendering as anonymous", error);
     return null;
   }
-}
+});
 
 export async function currentUser(): Promise<CurrentUser | null> {
   try {

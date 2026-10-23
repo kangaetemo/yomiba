@@ -38,7 +38,7 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
   - [x] `sitemap.xml` (seri + cilt sayfaları) ve `robots.txt` (21 Ekim, PR'da)
   - [x] cilt sayfalarına schema.org `Book` (+ fiyat varsa `Product` / `AggregateOffer`), seri sayfalarına `BookSeries`, gezinti için `BreadcrumbList` (21 Ekim, PR'da)
   - [x] sayfa başlığı ve açıklamaları ("Berserk Cilt 1 fiyatları"), canonical adresler, paylaşım önizlemeleri (kapak görseli) (21 Ekim, PR'da)
-  - [ ] Tüm seriler sayfası (A–Z): seri sayfalarına şu an yalnızca ana sayfa rafları ve arama ulaşıyor; iç bağlantı için gerekli.
+  - [x] Tüm seriler sayfası (`/seriler`, A–Z) ve yayınevi sayfaları (`/yayinevi/<ad>`); menü, alt bilgi ve ana sayfadan bağlantı (21 Ekim, PR'da)
   - Google Search Console ve Bing Webmaster kaydı. Bing, ChatGPT gibi yapay zekâ aramalarını da besliyor; sayfaların yapay zekâ cevaplarında kaynak gösterilmesi için temiz, taranabilir sayfalar ve yapılandırılmış veri önemli.
 - [ ] **Mağaza bağlantılarına kaynak etiketi.** Şu an mağaza linkleri `rel="noopener noreferrer"` ile açılıyor; `noreferrer` yüzünden mağaza ziyaretçinin Yomiba'dan geldiğini hiç görmüyor.
   - [x] `noreferrer` kaldırıldı (`noopener` kaldı).

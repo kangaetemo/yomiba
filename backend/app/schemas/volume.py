@@ -45,6 +45,8 @@ class PriceDealOut(BaseModel):
     drop_pct: float
     reference_kind: Literal["usual", "previous"]
     reference_days: float
+    #: At least MIN_NOTICEABLE_PERCENT and MIN_NOTICEABLE_SAVING_CENTS.
+    noticeable: bool = True
     significant: bool
     changed_at: datetime
 
@@ -54,6 +56,8 @@ class SeriesRefOut(BaseModel):
     slug: str = ""
     title: str
     publisher: str
+    #: Publisher page slug (/yayinevi/<slug>).
+    publisher_slug: str = ""
     author: str | None = None
     illustrator: str | None = None
 

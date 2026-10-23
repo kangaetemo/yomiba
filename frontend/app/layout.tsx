@@ -8,7 +8,7 @@ import { SearchDialogButton } from "@/components/SearchDialog";
 import { THEME_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
 import { LoginLink } from "@/components/LoginLink";
 import { SiteTracker } from "@/components/SiteTracker";
-import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { DEFAULT_OG_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site";
 
 // Turkish needs latin-ext (ş, ğ, ı, İ).
 const body = Figtree({
@@ -32,8 +32,8 @@ export const metadata: Metadata = {
     template: "%s | Yomiba",
   },
   description:
-    "Manga fiyatlarını Türk mağazaları (BKM Kitap, Gerekli Şeyler, Kitap Sepeti ve diğerleri) arasında karşılaştırın, koleksiyonunuzu takip edin, fiyat alarmı kurun.",
-  openGraph: { type: "website", siteName: SITE_NAME, locale: "tr_TR" },
+    "Manga fiyatlarını Türk kitapçıları (BKM Kitap, Gerekli Şeyler, Kitap Sepeti ve diğerleri) arasında karşılaştır, koleksiyonunu takip et, fiyat alarmı kur.",
+  openGraph: { type: "website", siteName: SITE_NAME, locale: "tr_TR", images: [DEFAULT_OG_IMAGE] },
   twitter: { card: "summary" },
 };
 
@@ -59,6 +59,14 @@ const SECTIONS = [
   { href: "/#indirimler", label: "İndirimler" },
   { href: "/#yeni", label: "Yeni çıkanlar" },
   { href: "/#populer", label: "Popüler" },
+];
+
+/** Crawlable links to every list page, on every page. */
+const FOOTER_LINKS = [
+  { href: "/seriler", label: "Tüm seriler" },
+  { href: "/one-shot", label: "One shot" },
+  { href: "/takvim", label: "Yayın takvimi" },
+  { href: "/indirimler", label: "İndirimler" },
 ];
 
 export default async function RootLayout({
@@ -92,6 +100,9 @@ export default async function RootLayout({
                   {s.label}
                 </Link>
               ))}
+              <Link href="/seriler" className={navLink}>
+                Tüm seriler
+              </Link>
             </nav>
             <nav aria-label="Hesap" className="flex items-center gap-1.5 text-sm sm:gap-3">
               <ThemeToggle />
@@ -154,6 +165,17 @@ export default async function RootLayout({
               Türkiye&apos;deki manga baskılarının fiyatını mağazalar arasında karşılaştırır,
               koleksiyonunu ve istek listeni tek yerde tutar.
             </p>
+            <nav aria-label="Site" className="pt-2">
+              <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                {FOOTER_LINKS.map((l) => (
+                  <li key={l.href}>
+                    <Link href={l.href} className="inline-flex min-h-9 items-center text-ink-2 hover:text-accent">
+                      {l.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
             <p className="text-xs text-faint">
               Fiyatlar mağazaların kamuya açık sayfalarından toplanır ve gecikmeli olabilir.
             </p>

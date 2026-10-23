@@ -497,3 +497,24 @@ def test_sitemap_lists_catalog_series_and_volumes(seeded):
     # Every listed slug opens its series page.
     for slug in by_slug:
         assert seeded.get(f"/series/{slug}").status_code == 200
+
+
+def test_series_index_lists_catalog_series(seeded):
+    data = seeded.get("/series").json()["series"]
+    berserk = next(s for s in data if s["title"] == "Berserk")
+    assert berserk["publisher"] == "Athica Yayınları"
+    assert berserk["publisher_slug"] == "athica-yayinlari"
+    assert berserk["volume_count"] == 2
+    assert berserk["only_volume"] is None
+    assert berserk["in_stock_offers"] > 0 and berserk["lowest_price"] is not None
+    # Every listed slug opens its series page.
+    for s in data:
+        assert seeded.get(f"/series/{s['slug']}").status_code == 200
+
+
+def test_series_and_volume_carry_the_publisher_page_slug(seeded):
+    series = next(s for s in seeded.get("/series").json()["series"] if s["title"] == "Berserk")
+    detail = seeded.get(f"/series/{series['slug']}").json()
+    assert detail["publisher_slug"] == "athica-yayinlari"
+    volume = seeded.get(f"/volume/{detail['volumes'][0]['id']}").json()
+    assert volume["series"]["publisher_slug"] == "athica-yayinlari"
