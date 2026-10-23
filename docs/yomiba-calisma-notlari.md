@@ -44,6 +44,7 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 - **İş akışı:** `.github/workflows/deploy.yml`. main'e push'ta "Application checks" geçince, her pazartesi 04:30'da (güncel taban imajlar ve paketler) ve elle *Actions → Deploy → Run workflow* ile sunucuda `deploy/guncelle.sh` çalışır.
 - **Güvenlik:** GitHub'daki anahtar sunucuda `command="…/guncelle.sh",restrict` ile yalnızca o betiğe kilitli. Sırlar: `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (sunucunun ed25519 host anahtarı), `DEPLOY_HOST`. Özel anahtar sunucudan silindi.
+- **21 Ekim: tam commit'e sabitlendi.** İş akışı `deploy <sha>` gönderiyor (testi geçen commit; haftalık/elle: testi geçmiş en yeni main). Sunucu daha yenisini çekmiyor, daha eskisine dönmüyor; çalışan konteynerlerin imaj etiketini (`org.opencontainers.image.revision`) kontrol edip `DEPLOY_SHA=` yazıyor, iş akışı bunu doğruluyor. Backend paketleri `backend/constraints.txt` ile sabit; "Dependency audit" iş akışı (pip-audit + `npm audit --omit=dev`) PR'larda ve haftalık çalışıyor, deploy'u engellemiyor.
 - **`guncelle.sh`:** kilit alıyor (iki deploy aynı anda çalışmaz), çektikten sonra kendini yeni sürümüyle yeniden başlatıyor, konteynerlerin sağlıklı olmasını bekliyor ve sitenin açıldığını kontrol ediyor; hata olursa iş akışı kırmızı biter.
 - **Doğrulama:** 9f25852 push'unda testler geçti, Deploy iş akışı SSH ile `guncelle.sh`'yi çalıştırıp başarıyla bitti (yalnızca belge değiştiği için build önbellekten geldi).
 
