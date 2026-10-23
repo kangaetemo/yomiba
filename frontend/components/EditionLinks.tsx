@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { formatTL } from "@/components/ui";
-import { seriesPath } from "@/lib/paths";
+import { seriesHref } from "@/lib/seriesIndex";
 import type { SeriesEdition } from "@/types";
 
 export function EditionLinks({ editions }: { editions: SeriesEdition[] }) {
@@ -18,7 +18,7 @@ export function EditionLinks({ editions }: { editions: SeriesEdition[] }) {
         {editions.map((e) => (
           <li key={e.id}>
             <Link
-              href={seriesPath(e.slug)}
+              href={seriesHref(e)}
               className="group flex items-center justify-between gap-4 rounded-xl border border-line bg-surface px-4 py-3 shadow-card transition-colors hover:border-line-strong"
             >
               <div className="min-w-0">

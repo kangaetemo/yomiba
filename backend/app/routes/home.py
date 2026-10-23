@@ -48,7 +48,11 @@ from ..models import (
     WishlistItem,
 )
 from ..services import series_slugs
-from ..services.catalog_service import fresh_listing_condition, public_volume_condition
+from ..services.catalog_service import (
+    fresh_listing_condition,
+    only_volume_numbers,
+    public_volume_condition,
+)
 from ..services.covers import cover_url
 from ..services.swr_cache import SwrCache
 from ..utils import from_cents, utcnow
@@ -188,6 +192,7 @@ def _compute_home(session: Session, *, popular: int, one_shot: int, new: int,
     }
     covers = _series_covers(session, detail_ids)
     slugs = series_slugs.slugs_for(session, detail_ids)
+    only = only_volume_numbers(session, detail_ids)
 
     def series_card(row):
         sid, offer_count, min_price = row
@@ -200,6 +205,7 @@ def _compute_home(session: Session, *, popular: int, one_shot: int, new: int,
             "author": series.author,
             "cover_url": covers.get(sid),
             "volume_count": volume_counts.get(sid, 0),
+            "only_volume": only.get(sid),
             "in_stock_offers": offer_count,
             "lowest_price": from_cents(min_price),
         }
@@ -297,8 +303,16 @@ def releases(
         .where(Volume.series_id.in_(_catalog_ids()), Volume.volume_number >= 0,
                Volume.release_date <= today, public_volume_condition())
     )
+    # Neighbouring months that have releases: the calendar steps between
+    # them, so neither visitors nor crawlers wander through empty months.
+    dated = (Volume.series_id.in_(_catalog_ids()), Volume.volume_number >= 0,
+             Volume.release_date.isnot(None), public_volume_condition())
+    previous = session.scalar(select(func.max(Volume.release_date)).where(*dated, Volume.release_date < start))
+    following = session.scalar(select(func.min(Volume.release_date)).where(*dated, Volume.release_date > end))
     return {"month": month, "today": today.isoformat(),
             "latest_month": latest.isoformat()[:7] if latest else None,
+            "previous_month": previous.isoformat()[:7] if previous else None,
+            "next_month": following.isoformat()[:7] if following else None,
             "volumes": _serialize_releases(session, rows)}
 
 
@@ -341,6 +355,7 @@ def _new_series(session: Session, limit: int) -> list[dict]:
     ).all())
     covers = _series_covers(session, ids)
     slugs = series_slugs.slugs_for(session, ids)
+    only = only_volume_numbers(session, ids)
     return [
         {
             "id": sid,
@@ -350,6 +365,7 @@ def _new_series(session: Session, limit: int) -> list[dict]:
             "author": rows[sid][0].author,
             "cover_url": covers.get(sid),
             "volume_count": volume_counts.get(sid, 0),
+            "only_volume": only.get(sid),
             "release_date": released.isoformat(),
             "in_stock_offers": offers.get(sid, (0, None))[0],
             "lowest_price": from_cents(offers.get(sid, (0, None))[1]),
@@ -402,6 +418,7 @@ def _one_shots(session: Session, interest: dict[int, float], limit: int) -> list
     ).all())
     covers = _series_covers(session, [s.id for s, _ in picked])
     shot_slugs = series_slugs.slugs_for(session, [s.id for s, _ in picked])
+    only = only_volume_numbers(session, [s.id for s, _ in picked])
     return [
         {
             "id": series.id,
@@ -411,6 +428,7 @@ def _one_shots(session: Session, interest: dict[int, float], limit: int) -> list
             "author": series.author,
             "cover_url": covers.get(series.id),
             "volume_count": 1,
+            "only_volume": only.get(series.id),
             "release_date": released[series.id].isoformat() if released.get(series.id) else None,
             "in_stock_offers": offers.get(series.id, (0, None))[0],
             "lowest_price": from_cents(offers.get(series.id, (0, None))[1]),

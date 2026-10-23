@@ -14,7 +14,7 @@ import { ApiError } from "@/lib/api";
 import { oneShotVolumeNumber, seriesPath, volumePath } from "@/lib/paths";
 import { publisherPath } from "@/lib/seriesIndex";
 import { searchVolumeLabel } from "@/lib/volumeLabel";
-import { SITE_URL, metaDescription, openGraph } from "@/lib/site";
+import { SITE_URL, metaDescription, openGraph, pageTitle } from "@/lib/site";
 import { currentUserOrNull } from "@/services/auth";
 import { getSeries } from "@/services/catalog";
 import type { CollectionStatus, SeriesDetail, SeriesVolume } from "@/types";
@@ -84,7 +84,11 @@ export async function generateMetadata({ params }: SeriesPageProps): Promise<Met
   const { slug } = await params;
   try {
     const detail = await getSeries(slug);
-    const title = `${detail.title} - ${detail.publisher}`;
+    const title = pageTitle([
+      `${detail.title} cilt fiyatları - ${detail.publisher}`,
+      `${detail.title} - ${detail.publisher}`,
+      detail.title,
+    ]);
     const description = seriesDescription(detail);
     const url = seriesPath(detail.slug);
     return {

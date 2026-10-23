@@ -22,6 +22,12 @@ export function metaDescription(sentences: (string | null | undefined)[], max = 
   return out;
 }
 
+/** Page titles get " | Yomiba" from the layout; search results show about
+ * 60 characters. The first candidate that fits wins, else the last. */
+export function pageTitle(candidates: string[], max = 56): string {
+  return candidates.find((t) => t.length <= max) ?? candidates[candidates.length - 1];
+}
+
 /** Open Graph block for a page. A page's `openGraph` replaces the layout's
  * whole object, so the shared fields are repeated here. */
 export function openGraph(og: { title: string; description?: string; url: string; image?: string | null }) {

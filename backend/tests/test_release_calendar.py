@@ -68,3 +68,17 @@ def test_calendar_includes_announced_releases_and_handles_empty_month(client, db
 def test_calendar_rejects_invalid_month(client, month):
     params = {} if month is None else {"month": month}
     assert client.get("/releases", params=params).status_code == 422
+
+
+def test_calendar_links_neighbouring_months_with_releases(client, db_session):
+    series = seed_catalog_series(db_session, "Komşu", "Athica", volumes=(1, 2, 3))
+    _vol(db_session, series, 1).release_date = date(2023, 11, 5)
+    _vol(db_session, series, 2).release_date = date(2024, 3, 9)
+    _vol(db_session, series, 3).release_date = date(2024, 8, 1)
+    db_session.commit()
+    body = client.get("/releases?month=2024-03").json()
+    assert (body["previous_month"], body["next_month"]) == ("2023-11", "2024-08")
+    empty = client.get("/releases?month=2024-05").json()
+    assert (empty["previous_month"], empty["next_month"]) == ("2024-03", "2024-08")
+    edge = client.get("/releases?month=2023-11").json()
+    assert (edge["previous_month"], edge["next_month"]) == (None, "2024-03")

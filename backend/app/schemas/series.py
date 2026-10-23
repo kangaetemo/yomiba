@@ -41,6 +41,8 @@ class SeriesEditionOut(BaseModel):
     title: str
     publisher: str
     volume_count: int = 0
+    # Set when the edition's page only redirects to this volume (one shot).
+    only_volume: int | None = None
     in_stock_offers: int = 0
     lowest_price: float | None = None
 
