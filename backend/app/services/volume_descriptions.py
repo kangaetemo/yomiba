@@ -22,6 +22,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import timedelta
 from difflib import SequenceMatcher
+from functools import lru_cache
 
 from bs4 import BeautifulSoup
 from sqlalchemy import case, exists, or_, select
@@ -128,6 +129,12 @@ _SENTENCE_END = re.compile(rf"(?<!\d)[.!?…]+(?=\s+[\"“'‘{_UPPER}])")
 _CUT_LENGTH = 800
 
 
+#: Letters of a text's opening compared first: two different blurbs differ
+#: there already, and comparing whole texts is slow (pure Python, quadratic).
+_OPENING = 300
+
+
+@lru_cache(maxsize=16384)
 def _letters(text: str) -> str:
     return "".join(ch for ch in text.casefold() if ch.isalpha())
 
@@ -145,6 +152,8 @@ def same_text(a: str, b: str) -> bool:
         if len(short) < _CUT_LENGTH:
             return False
         long = long[: len(short)]
+    if SequenceMatcher(None, short[:_OPENING], long[:_OPENING], autojunk=False).ratio() < 0.6:
+        return False
     matcher = SequenceMatcher(None, short, long, autojunk=False)
     return matcher.real_quick_ratio() >= 0.9 and matcher.quick_ratio() >= 0.9 and matcher.ratio() >= 0.9
 
@@ -249,6 +258,10 @@ class DescriptionReport:
                 f"remaining={self.remaining} by_store={dict(self.by_store)}")
 
 
+#: Whether this process has checked all stored texts for series blurbs.
+_swept = False
+
+
 class DescriptionFetcher:
     """Fills ``Volume.description`` from store product pages, first volumes
     of each series first. ``dry_run`` reads pages but writes nothing."""
@@ -275,14 +288,15 @@ class DescriptionFetcher:
             or_(Volume.description_checked_at.is_(None), Volume.description_checked_at < retry_before),
         )
 
-    def _mark_shared(self) -> None:
+    def _mark_shared(self, series_id: int | None = None) -> None:
         """A text two volumes of a series share (give or take a typo or a cut)
         is the series blurb: flag every copy and let each volume look for its
-        own text again."""
+        own text again. ``series_id`` limits it to one series."""
+        query = select(Volume).where(Volume.description.isnot(None), Volume.volume_number >= 0)
+        if series_id is not None:
+            query = query.where(Volume.series_id == series_id)
         by_series: dict[int, list[Volume]] = defaultdict(list)
-        for volume in self.session.scalars(
-            select(Volume).where(Volume.description.isnot(None), Volume.volume_number >= 0)
-        ):
+        for volume in self.session.scalars(query):
             by_series[volume.series_id].append(volume)
         for volumes in by_series.values():
             for i, volume in enumerate(volumes):
@@ -326,9 +340,13 @@ class DescriptionFetcher:
         report = DescriptionReport()
         # Volume 1 (or a series' first) before the rest: it is the series intro.
         first = case((Volume.volume_number <= 1, 0), else_=1)
-        if not self.dry_run:
+        global _swept
+        if not self.dry_run and not _swept:
+            # Texts stored earlier, once per process; after that each stored
+            # text is checked against its own series only.
             self._mark_shared()
             self.session.commit()
+            _swept = True
         queue = self.session.scalars(
             self._pending().order_by(first, Volume.series_id, Volume.volume_number)
         ).all()
@@ -374,8 +392,13 @@ class DescriptionFetcher:
                         volume.description_generic = own is None
                 if not self.dry_run:
                     volume.description_checked_at = utcnow()
-                    self._mark_shared()
+                    # Commit before comparing: a pending write would hold
+                    # SQLite's write lock through the comparisons and stall
+                    # the price refresh's writes.
                     self.session.commit()
+                    if found is not None:
+                        self._mark_shared(volume.series_id)
+                        self.session.commit()
             if self.dry_run:
                 self.session.rollback()
             report.remaining = max(0, len(queue) - report.volumes)
