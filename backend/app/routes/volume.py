@@ -128,8 +128,8 @@ def _build_volume_out(
         release_date=volume.release_date,
         covers_from=volume.covers_from,
         covers_to=volume.covers_to,
-        description=volume.description,
-        description_source=volume_descriptions.store_name(session, volume.description_source),
+        # The series blurb a store repeats on every volume is not this volume's own.
+        description=None if volume.description_generic else volume.description,
     )
 
 

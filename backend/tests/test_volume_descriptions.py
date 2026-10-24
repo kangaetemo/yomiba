@@ -75,9 +75,9 @@ def test_fetcher_fills_first_volumes_first_and_series_shows_intro(client, db_ses
     assert one.description_checked_at is not None
 
     body = client.get(f"/series/{series.id}").json()
-    assert body["description"] == BLURB and body["description_source"] == "Kitapseç"
+    assert body["description"] == BLURB
     volume = client.get(f"/volume/{two.id}").json()
-    assert volume["description"] == BLURB.upper() and volume["description_source"] == "BKM Kitap"
+    assert volume["description"] == BLURB.upper()
 
     # Nothing left to read: a second pass fetches no page.
     assert DescriptionFetcher(db_session, scrapers=scrapers).run(budget=10).pages == 0
@@ -116,3 +116,30 @@ def test_description_from_tab_panel_label_section_and_page_state():
             "</head><body></body></html>")
     assert description_from_page(ikas) == MONSTER_CLEAN
     assert description_from_page(f"<html><body><h1>Monster 1</h1>{PAYMENT}</body></html>") is None
+
+
+def test_series_blurb_repeated_on_every_volume_is_not_a_volume_text(client, db_session):
+    bkm, gs = Store(code="bkm", name="BKM Kitap"), Store(code="gs", name="Gerekli Şeyler")
+    db_session.add_all([bkm, gs])
+    series = seed_catalog_series(db_session, "Ölüm Defteri", "Akıl Çelen", volumes=(1, 2, 3))
+    one, two, three = (_vol(db_session, series, n) for n in (1, 2, 3))
+    own_two = BLURB.replace("Guts", "Light")
+    listings = [_offer(db_session, v, bkm, 15000) for v in (one, two, three)]
+    gs_two = _offer(db_session, two, gs, 16000, in_stock=False)
+    db_session.commit()
+    pages = {l.product_url: _page(BLURB) for l in listings}  # BKM: the series text on every volume
+    pages[gs_two.product_url] = _page(own_two)
+    scrapers = {"bkm": FakeScraper(pages), "gs": FakeScraper(pages)}
+
+    DescriptionFetcher(db_session, scrapers=scrapers).run(budget=20)  # volume 1 first, then 2 and 3
+    DescriptionFetcher(db_session, scrapers=scrapers).run(budget=20)  # volume 1 re-checked as shared
+    for v in (one, two, three):
+        db_session.refresh(v)
+    assert (two.description, two.description_generic) == (own_two, False)
+    assert one.description_generic and three.description_generic
+
+    assert client.get(f"/volume/{one.id}").json()["description"] is None
+    assert client.get(f"/volume/{two.id}").json()["description"] == own_two
+    assert client.get(f"/series/{series.id}").json()["description"] == BLURB
+    # Settled: nothing re-read until the retry window.
+    assert DescriptionFetcher(db_session, scrapers=scrapers).run(budget=20).pages == 0

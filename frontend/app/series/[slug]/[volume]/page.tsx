@@ -361,7 +361,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
             </dl>
           </section>
 
-          <Blurb id="tanitim-title" title="Tanıtım" text={detail.description} source={detail.description_source} />
+          <Blurb id="tanitim-title" title="Tanıtım" text={detail.description} />
 
           <section id="magazalar" aria-labelledby="magazalar-title" className="scroll-mt-28 space-y-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">

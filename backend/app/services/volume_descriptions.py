@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from bs4 import BeautifulSoup
-from sqlalchemy import case, exists, or_, select
+from sqlalchemy import case, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
@@ -238,9 +238,36 @@ class DescriptionFetcher:
         )
         return select(Volume).where(
             Volume.series_id.in_(select(CatalogSeries.series_id)),
-            Volume.volume_number >= 0, Volume.description.is_(None), has_page,
+            Volume.volume_number >= 0, has_page,
+            or_(Volume.description.is_(None), Volume.description_generic.is_(True)),
             or_(Volume.description_checked_at.is_(None), Volume.description_checked_at < retry_before),
         )
+
+    def _mark_shared(self) -> None:
+        """A text two volumes of a series share is the series blurb: flag
+        every copy and let each volume look for its own text again."""
+        shared = (
+            select(Volume.series_id, Volume.description)
+            .where(Volume.description.isnot(None), Volume.volume_number >= 0)
+            .group_by(Volume.series_id, Volume.description)
+            .having(func.count() > 1)
+        ).subquery()
+        for volume in self.session.scalars(
+            select(Volume).join(shared, (shared.c.series_id == Volume.series_id)
+                                & (shared.c.description == Volume.description))
+            .where(or_(Volume.description_generic.is_(None), Volume.description_generic.is_(False)))
+        ):
+            volume.description_generic = True
+            volume.description_checked_at = None
+        self.session.flush()
+
+    def _sibling_texts(self, volume: Volume) -> set[str]:
+        return set(self.session.scalars(
+            select(Volume.description).where(
+                Volume.series_id == volume.series_id, Volume.id != volume.id,
+                Volume.description.isnot(None),
+            )
+        ))
 
     def _scraper(self, code: str) -> BaseScraper | None:
         if code not in self._stores:
@@ -266,6 +293,9 @@ class DescriptionFetcher:
         report = DescriptionReport()
         # Volume 1 (or a series' first) before the rest: it is the series intro.
         first = case((Volume.volume_number <= 1, 0), else_=1)
+        if not self.dry_run:
+            self._mark_shared()
+            self.session.commit()
         queue = self.session.scalars(
             self._pending().order_by(first, Volume.series_id, Volume.volume_number)
         ).all()
@@ -278,6 +308,9 @@ class DescriptionFetcher:
                     (l for l in volume.listings if l.product_url and l.store and l.store.code in self._stores),
                     key=lambda l: (not l.in_stock, l.store.code),
                 )
+                siblings = self._sibling_texts(volume)
+                shared: tuple[str, str] | None = None
+                own: tuple[str, str] | None = None
                 tried: list[str] = []
                 for listing in listings[:MAX_PAGES_PER_VOLUME]:
                     scraper = self._scraper(listing.store.code)
@@ -288,17 +321,26 @@ class DescriptionFetcher:
                     text = self._read(scraper, listing.product_url)
                     if not text:
                         continue
-                    report.stored += 1
-                    report.by_store[listing.store.code] += 1
-                    if self.dry_run:
-                        report.samples.append((volume.id, listing.store.code, text))
-                    else:
-                        volume.description, volume.description_source = text, listing.store.code
+                    if text in siblings or (volume.description_generic and text == volume.description):
+                        # The series blurb again: another store may have this volume's own text.
+                        shared = shared or (text, listing.store.code)
+                        continue
+                    own = (text, listing.store.code)
                     break
-                else:
+                found = own or shared
+                if found is None:
                     report.misses.append((volume.id, tried))
+                else:
+                    report.stored += 1
+                    report.by_store[found[1]] += 1
+                    if self.dry_run:
+                        report.samples.append((volume.id, found[1], found[0] if own else f"[seri metni] {found[0]}"))
+                    elif own or volume.description is None:
+                        volume.description, volume.description_source = found
+                        volume.description_generic = own is None
                 if not self.dry_run:
                     volume.description_checked_at = utcnow()
+                    self._mark_shared()
                     self.session.commit()
             if self.dry_run:
                 self.session.rollback()
@@ -328,7 +370,3 @@ def series_description(session: Session, series_id: int) -> tuple[str, str] | No
     ).first()
     return (row[0], row[1] or "") if row else None
 
-
-def store_name(session: Session, code: str | None) -> str | None:
-    """Display name of a description's source store."""
-    return session.scalar(select(Store.name).where(Store.code == code)) if code else None

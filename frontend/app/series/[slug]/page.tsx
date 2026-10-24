@@ -258,7 +258,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
         </div>
       </section>
 
-      <Blurb id="konu" title="Konu" text={detail.description} source={detail.description_source} />
+      <Blurb id="konu" title="Konu" text={detail.description} />
 
       {upcoming.length > 0 ? (
         <section aria-labelledby="yakinda" className="space-y-3 rounded-xl border border-line bg-surface p-4">

@@ -97,7 +97,6 @@ def get_series_detail(
         upcoming_volumes=upcoming,
         editions=editions,
         description=intro[0] if intro else None,
-        description_source=volume_descriptions.store_name(session, intro[1]) if intro else None,
         one_shot=(
             detail.series.jp_status == "completed"
             and detail.series.tr_status == "completed"

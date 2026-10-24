@@ -60,9 +60,8 @@ class SeriesOut(BaseModel):
     upcoming_volumes: list[SeriesVolumeOut] = []
     #: Other editions of the same work; empty for most series.
     editions: list[SeriesEditionOut] = []
-    #: Story intro: the first volume's back-cover text and its store.
+    #: Story intro: the first volume's back-cover text.
     description: str | None = None
-    description_source: str | None = None
     #: A finished single-volume work (completed in Japan and in Turkey, one
     #: numbered volume): the site skips its volume list and opens the volume.
     one_shot: bool = False
