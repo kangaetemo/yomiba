@@ -187,7 +187,9 @@ def description_from_page(page: str) -> str | None:
             continue
         if text := clean_description(value):
             return text
-    soup = BeautifulSoup(page, "html.parser")
+    # lxml (C) instead of html.parser: a whole product page in pure Python
+    # held the GIL for a noticeable time and slowed every request with it.
+    soup = BeautifulSoup(page, "lxml")
     metas = [soup.find("meta", attrs=a) for a in ({"property": "og:description"}, {"name": "description"})]
     if text := _from_markup(soup):
         return text

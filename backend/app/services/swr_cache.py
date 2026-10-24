@@ -39,6 +39,10 @@ WATCHED_TABLES = (
 _WATCHED_WRITE = re.compile(
     r"^\s*(INSERT|UPDATE|DELETE)\b.*?\b(" + "|".join(WATCHED_TABLES) + r")\b",
     re.IGNORECASE | re.DOTALL)
+#: ...except a volume's text intro (the description worker writes one per
+#: volume, all day): no cached feed shows it.
+_IGNORED_WRITE = re.compile(
+    r"^\s*UPDATE volumes SET (description(_source|_checked_at)?=\?(, )?)+ WHERE", re.IGNORECASE)
 _caches: list["SwrCache"] = []
 
 
@@ -118,7 +122,8 @@ def mark_all_stale() -> None:
 
 @event.listens_for(Engine, "before_cursor_execute")
 def _note_watched_write(conn, cursor, statement, parameters, context, executemany):
-    if not conn.info.get("swr_dirty") and _WATCHED_WRITE.match(statement):
+    if (not conn.info.get("swr_dirty") and _WATCHED_WRITE.match(statement)
+            and not _IGNORED_WRITE.match(statement)):
         conn.info["swr_dirty"] = True
 
 
