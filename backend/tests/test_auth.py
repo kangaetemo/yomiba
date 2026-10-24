@@ -122,3 +122,10 @@ def test_two_users_have_independent_personal_data(client, db_session):
     assert db_session.scalar(select(PriceAlert.user_id)) != 999
     client.cookies.set(COOKIE_NAME, token_b)
     assert client.get(f"/volume/{volume_id}").json()["collection_status"] == "missing"
+
+
+def test_site_url_is_an_allowed_write_origin(client):
+    from app.config import get_settings
+
+    site = get_settings().site_url.rstrip("/")
+    assert client.post("/auth/logout", headers={"Origin": site}).status_code != 403

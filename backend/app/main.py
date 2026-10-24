@@ -180,7 +180,12 @@ def create_app(auto_init: bool = True) -> FastAPI:
     async def reject_cross_origin_writes(request: Request, call_next):
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("origin")
-            allowed = {o.rstrip("/") for o in settings.cors_origins} | {settings.backend_url.rstrip("/")}
+            # The site's own address is always allowed, even when CORS_ORIGINS
+            # on the server still lists an old host.
+            allowed = {o.rstrip("/") for o in settings.cors_origins} | {
+                settings.backend_url.rstrip("/"),
+                settings.site_url.rstrip("/"),
+            }
             # Some browsers and privacy add-ons leave Origin out; the browser's
             # own Sec-Fetch-Site header still marks a same-origin request.
             same_origin = origin is None and request.headers.get("sec-fetch-site") == "same-origin"
