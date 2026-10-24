@@ -124,7 +124,7 @@ class Settings:
     mangakol_max_isbn_requests: int = int(os.getenv("MANGAKOL_MAX_ISBN_REQUESTS", "600"))
 
     # Price-alert e-mail. Without SMTP_HOST mails stay queued in email_outbox.
-    site_url: str = os.getenv("SITE_URL", "https://yomiba.com")
+    site_url: str = os.getenv("SITE_URL", "https://yomiba.net")
     smtp_host: str = os.getenv("SMTP_HOST", "")
     smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
     smtp_user: str = os.getenv("SMTP_USER", "")
