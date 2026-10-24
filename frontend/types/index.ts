@@ -198,9 +198,8 @@ export interface SeriesDetail {
   editions?: SeriesEdition[];
   /** A finished single-volume work: its series page opens the volume. */
   one_shot?: boolean;
-  /** Story intro: the first volume's back-cover text, and its store. */
+  /** Story intro: the first volume's back-cover text. */
   description?: string | null;
-  description_source?: string | null;
 }
 
 /** GET /series: one row of the A–Z list (and publisher pages). */
@@ -259,9 +258,8 @@ export interface VolumeDetail {
   /** Original volumes of an omnibus book (2-in-1: 9–10). */
   covers_from?: number | null;
   covers_to?: number | null;
-  /** Back-cover text from a store page, and that store's name. */
+  /** Back-cover text from a store page. */
   description?: string | null;
-  description_source?: string | null;
   /** Admin only: enabled stores with no listing for this volume. */
   missing_stores?: { store: string; series_listings: number; error: string | null }[];
   /** Admin only: when the series' prices were last refreshed. */

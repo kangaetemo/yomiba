@@ -88,6 +88,10 @@ class Volume(Base):
     description: Mapped[str | None] = mapped_column(Text)
     description_source: Mapped[str | None] = mapped_column(String(50))
     description_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: The text is the series blurb some stores put on every volume (shared
+    #: with another volume of the series): fine as the series intro, not
+    #: shown as this volume's own; other stores are tried for a better one.
+    description_generic: Mapped[bool | None] = mapped_column(Boolean)
 
     series: Mapped[Series] = relationship(back_populates="volumes")
     listings: Mapped[list[StoreListing]] = relationship(
