@@ -16,6 +16,7 @@ from __future__ import annotations
 import html
 import logging
 import re
+import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -51,6 +52,38 @@ _SPEC_LINE = re.compile(
 )
 
 
+#: Text copied out of a print PDF keeps the accent as a separate spacing
+#: mark after the letter ("gu¨çlu¨", "kis¸i", "degˆil"; the circumflex stands
+#: in for the breve of ğ).
+_SPACING_MARKS = {
+    "\u00a8": {"u": "ü", "U": "Ü", "o": "ö", "O": "Ö"},
+    "\u00b8": {"s": "ş", "S": "Ş", "c": "ç", "C": "Ç"},
+    "\u02c6": {"g": "ğ", "G": "Ğ"},
+    "\u02d8": {"g": "ğ", "G": "Ğ"},
+}
+_UPPER = "A-ZÇĞİÖŞÜ"
+
+
+def _fix_letters(text: str) -> str:
+    text = unicodedata.normalize("NFC", text)
+    for mark, letters in _SPACING_MARKS.items():
+        for base, letter in letters.items():
+            text = text.replace(base + mark, letter)
+    # Backticks used as apostrophes or quotes ("Ryuk`un", "`gul`").
+    return text.replace("`", "’")
+
+
+def _join_wrapped_lines(lines: list[str]) -> list[str]:
+    """A line break that does not end a sentence is the PDF's line wrap."""
+    paragraphs: list[str] = []
+    for line in lines:
+        if paragraphs and not re.search(r"[.!?…:;\"”»)]$", paragraphs[-1]):
+            paragraphs[-1] = f"{paragraphs[-1]} {line}"
+        else:
+            paragraphs.append(line)
+    return paragraphs
+
+
 def clean_description(raw: object) -> str | None:
     """Plain text with paragraph breaks, or None when it is not a blurb."""
     if not isinstance(raw, str) or not raw.strip():
@@ -59,10 +92,12 @@ def clean_description(raw: object) -> str | None:
     if "<" in text:
         text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>", "\n", text)
         text = BeautifulSoup(text, "html.parser").get_text()
-    text = html.unescape(text).replace("\xa0", " ")
+    text = _fix_letters(html.unescape(text).replace("\xa0", " "))
     lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
     lines = [line for line in lines if line and not _SPEC_LINE.match(line)]
-    text = "\n".join(lines)
+    text = "\n".join(_join_wrapped_lines(lines))
+    # "biridir.Bu deftere", "defter:Death Note": a missing space after a sentence.
+    text = re.sub(rf"([a-zçğıöşü][.!?…:])([{_UPPER}])", r"\1 \2", text)
     if len(text) < MIN_LENGTH or _SHOP_TEXT.search(text):
         return None
     if len(text) > MAX_LENGTH:

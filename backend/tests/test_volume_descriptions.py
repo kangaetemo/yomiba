@@ -80,3 +80,16 @@ def test_fetcher_fills_first_volumes_first_and_series_shows_intro(client, db_ses
 
     # Nothing left to read: a second pass fetches no page.
     assert DescriptionFetcher(db_session, scrapers=scrapers).run(budget=10).pages == 0
+
+
+def test_clean_description_repairs_pdf_copy_text():
+    raw = ("Severek anne dedikleri kis¸i gerc¸ek anneleri degˆil. Gerc¸egˆi o¨gˆrenen u¨c¸lu¨yu¨ "
+           "nasıl bir kader beklemektedir...!?\nDeiji, yarı-iblis köpeği ile birlikte para için iblis\n"
+           "avına çıkar. Ölüm Tanrısı Ryuk`un defteri:Death Note.Bu deftere adı yazılanlar ölür…\n"
+           "Yeni paragraf burada başlıyor.")
+    assert clean_description(raw) == (
+        "Severek anne dedikleri kişi gerçek anneleri değil. Gerçeği öğrenen üçlüyü "
+        "nasıl bir kader beklemektedir...!?\nDeiji, yarı-iblis köpeği ile birlikte para için iblis "
+        "avına çıkar. Ölüm Tanrısı Ryuk’un defteri: Death Note. Bu deftere adı yazılanlar ölür…\n"
+        "Yeni paragraf burada başlıyor."
+    )
