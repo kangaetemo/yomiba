@@ -180,9 +180,19 @@ def create_app(auto_init: bool = True) -> FastAPI:
     async def reject_cross_origin_writes(request: Request, call_next):
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("origin")
-            allowed = set(settings.cors_origins) | {settings.backend_url.rstrip("/")}
-            if origin not in allowed:
-                return JSONResponse(status_code=403, content={"detail": "Geçersiz istek kaynağı."})
+            allowed = {o.rstrip("/") for o in settings.cors_origins} | {settings.backend_url.rstrip("/")}
+            # Some browsers and privacy add-ons leave Origin out; the browser's
+            # own Sec-Fetch-Site header still marks a same-origin request.
+            same_origin = origin is None and request.headers.get("sec-fetch-site") == "same-origin"
+            if origin not in allowed and not same_origin:
+                logger.warning(
+                    "rejected write %s %s: origin=%r sec-fetch-site=%r",
+                    request.method, request.url.path, origin, request.headers.get("sec-fetch-site"),
+                )
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": f"Geçersiz istek kaynağı ({origin or 'kaynak bilgisi yok'})."},
+                )
         return await call_next(request)
 
     @app.middleware("http")
