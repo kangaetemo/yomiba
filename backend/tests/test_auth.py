@@ -63,6 +63,20 @@ def test_expiry_invalid_cookie_and_csrf(client, db_session):
     assert client.post("/auth/register", headers={"Origin": ""}, json={"email": "x@example.com", "password": "correct horse battery staple", "display_name": "X"}).status_code == 403
 
 
+def test_write_without_origin_needs_same_origin_fetch_metadata(client):
+    from fastapi.testclient import TestClient
+
+    bare = TestClient(client.app, base_url="https://testserver")
+    refused = bare.post("/auth/logout")
+    assert refused.status_code == 403
+    assert "kaynak bilgisi yok" in refused.json()["detail"]
+    assert bare.post("/auth/logout", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+    assert bare.post("/auth/logout", headers={"Sec-Fetch-Site": "same-origin"}).status_code != 403
+    evil = client.post("/auth/logout", headers={"Origin": "https://evil.example", "Sec-Fetch-Site": "same-origin"})
+    assert evil.status_code == 403
+    assert "https://evil.example" in evil.json()["detail"]
+
+
 def test_public_reads_and_admin_authorization(client, db_session):
     admin_token = client.cookies.get(COOKIE_NAME)
     assert client.get("/import/records").status_code == 200
