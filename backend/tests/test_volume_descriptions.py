@@ -94,3 +94,25 @@ def test_clean_description_repairs_pdf_copy_text():
         "avına çıkar. Ölüm Tanrısı Ryuk’un defteri: Death Note. Bu deftere adı yazılanlar ölür…\n"
         "Yeni paragraf burada başlıyor."
     )
+
+
+MONSTER = ("Herkes hayatının bir noktasında tereddüte düşer. Yetenekli cerrah Dr. Kenzo Tenma için de bu du- "
+           "rum farklı değil.\nSeri katilin kimliği belli. Cinayetlerinin nedeniyse muamma.")
+MONSTER_CLEAN = ("Herkes hayatının bir noktasında tereddüte düşer. Yetenekli cerrah Dr. Kenzo Tenma için de bu durum "
+                 "farklı değil.\nSeri katilin kimliği belli. Cinayetlerinin nedeniyse muamma.")
+PAYMENT = "<div id='tab-2'><p>Kredi kartına 12 aya varan taksit seçenekleri ve ücretsiz kargo fırsatı sizi bekliyor.</p></div>"
+
+
+def test_description_from_tab_panel_label_section_and_page_state():
+    tabs = (f"<html><body><h1>Monster Cilt 1</h1><p>250,00 TL</p><ul><li><a href='#tab-1'>Ürün Bilgisi</a></li>"
+            f"<li><a href='#tab-2'>Ödeme Seçenekleri</a></li></ul><div id='tab-1'><p>{MONSTER}</p></div>{PAYMENT}"
+            "</body></html>")
+    assert description_from_page(tabs) == MONSTER_CLEAN
+    section = (f"<html><body><div class='urun'><div><h3>ÜRÜN AÇIKLAMASI</h3></div><div><h4>Açıklama</h4>"
+               f"<p>{MONSTER}</p></div></div>{PAYMENT}</body></html>")
+    assert description_from_page(section) == MONSTER_CLEAN
+    state = json.dumps({"props": {"product": {"description": f"<p>{MONSTER}</p>"}}})
+    ikas = (f'<html><head>{_page(None)[12:-14]}<script id="__NEXT_DATA__" type="application/json">{state}</script>'
+            "</head><body></body></html>")
+    assert description_from_page(ikas) == MONSTER_CLEAN
+    assert description_from_page(f"<html><body><h1>Monster 1</h1>{PAYMENT}</body></html>") is None
