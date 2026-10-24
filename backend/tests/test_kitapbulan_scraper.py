@@ -1,12 +1,15 @@
-"""Kitapbulan scraper tests (fixture-backed; endpoint contract live-verified
-against kitapbulan.com on 2026-09-10: /arama?q=...&pg=N SSR cards +
-product-page JSON-LD. Same T-Soft CMS as Kitap Sepeti.
+"""Kitapbulan scraper tests (Shopify storefront since 2026-10-24; contract
+live-verified that day: /search?q=...&type=product&page=N lists product
+links, /products/<handle>.js carries title, vendor, price in kuruş,
+availability and the barcode/ISBN).
 
-Kitapbulan-specific: the vitrin fallback guard — queries without a real
-match return a grid of unrelated products, which must be dropped."""
+Kitapbulan-specific: the fuzzy search pads results with unrelated products,
+which must be dropped (and must not cost a product JSON request), and
+English editions are recognised by the ISBN in the handle."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from decimal import Decimal
 
@@ -18,19 +21,52 @@ import pytest
 # calling it through the module at test time sees the patched binding.
 from app.scrapers import base as scraper_base
 from app.scrapers.base import ScraperError
-from app.scrapers.kitapbulan import KitapbulanScraper
-from tests.helpers import fixture_text, mock_client
+from app.scrapers.kitapbulan import KitapbulanScraper, product_handle
+from tests.helpers import mock_client
 
-SEARCH_P1 = fixture_text("kb_search_p1.html")
-SEARCH_P2 = fixture_text("kb_search_p2.html")
-SEARCH_NOMATCH = fixture_text("kb_search_nomatch.html")
-DETAIL = fixture_text("kb_detail.html")
-EMPTY_PAGE = "<html><body><div id='product-list-panel'></div></body></html>"
 BLOCKED_PAGE = (
     "<html><head><title>Just a moment...</title></head>"
     "<body>challenge-platform Enable JavaScript and cookies to continue"
     "</body></html>"
 )
+
+#: Handles of the "berserk" search as the live store lists them: Turkish
+#: volumes, then fuzzy padding (another series, a VIZ edition).
+BERSERK_8 = "berserk-8-9786256187986"
+BERSERK_CILT_6 = "berserk-cilt-6-9786256187085"
+IBLIS_KESER = "iblis-keser-3-cilt-9786257590365"
+VIZ_BERSERK = "berserk-deluxe-edition-1-9781506711980"
+
+
+def _product(handle: str, title: str, *, price: int = 22120, available: bool = True,
+             vendor: str = "Athica Yayınları", tags=("Türkçe",)) -> dict:
+    isbn = handle.rsplit("-", 1)[-1]
+    return {
+        "id": 1, "title": title, "handle": handle, "vendor": vendor, "type": "Kitap",
+        "tags": list(tags), "price": price, "available": available,
+        "featured_image": f"//cdn.shopify.com/s/files/1/0817/files/{isbn}_Default.jpg?v=1",
+        "variants": [{"id": 2, "sku": isbn, "barcode": isbn, "price": price, "available": available}],
+        "url": f"/products/{handle}",
+    }
+
+
+def _card(handle: str, title: str) -> str:
+    # A cover link (image alt only) and a title link to the same product,
+    # with Shopify's search tracking parameters.
+    href = f"/products/{handle}?_pos=1&_sid=abc&_ss=r"
+    return (
+        f'<div class="card"><a href="{href}"><img src="x.jpg" alt="{title}"></a>'
+        f'<h3><a href="{href}">{title}</a></h3><span>221,20 TL</span></div>'
+    )
+
+
+def _page(*cards: tuple[str, str], padding: int = 0) -> str:
+    menu = "".join(f'<li><a href="/collections/k-{i}">Kategori {i}</a></li>' for i in range(padding))
+    body = "".join(_card(h, t) for h, t in cards)
+    return f"<html><body><nav><ul>{menu}</ul></nav><main>{body}</main><footer>{menu}</footer></body></html>"
+
+
+EMPTY_PAGE = _page()
 
 
 def make_scraper(handler, **settings_overrides):
@@ -41,129 +77,122 @@ def make_scraper(handler, **settings_overrides):
     return scraper
 
 
-def _page_of(request: httpx.Request) -> int:
-    return int(request.url.params.get("pg", "1"))
+def _handler(pages: list[str], products: dict[str, dict], log: list[str] | None = None):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if log is not None:
+            log.append(str(request.url))
+        if request.url.path == "/search":
+            assert request.url.params.get("type") == "product"
+            page = int(request.url.params.get("page", "1"))
+            return httpx.Response(200, text=pages[page - 1] if page <= len(pages) else EMPTY_PAGE)
+        if request.url.path.startswith("/products/") and request.url.path.endswith(".js"):
+            handle = request.url.path[len("/products/"):-len(".js")]
+            if handle in products:
+                return httpx.Response(200, text=json.dumps(products[handle]))
+        return httpx.Response(404, text="not found")
+    return handler
 
 
-def default_handler(request: httpx.Request) -> httpx.Response:
-    """One-Piece search: p1 (4 cards, one collection + one vitrin fallback),
-    p2 (duplicate + one new card), then empty pages. Details: 404."""
-    if request.url.path == "/arama":
-        page = _page_of(request)
-        if page == 1:
-            return httpx.Response(200, text=SEARCH_P1)
-        if page == 2:
-            return httpx.Response(200, text=SEARCH_P2)
-        return httpx.Response(200, text=EMPTY_PAGE)
-    return httpx.Response(404, text="not found")
+BERSERK_PAGES = [
+    _page((BERSERK_8, "Berserk 8"), (BERSERK_CILT_6, "Berserk Cilt 6"),
+          (VIZ_BERSERK, "Berserk Deluxe Edition 1"), (IBLIS_KESER, "İblis Keser 3.Cilt")),
+    _page((BERSERK_8, "Berserk 8"), ("berserk-kutu-set-1-3-9786256180000", "Berserk Kutu Set 1-3")),
+]
+BERSERK_PRODUCTS = {
+    BERSERK_8: _product(BERSERK_8, "Berserk 8"),
+    BERSERK_CILT_6: _product(BERSERK_CILT_6, "Berserk Cilt 6", available=False, price=28000),
+    IBLIS_KESER: _product(IBLIS_KESER, "İblis Keser 3.Cilt", vendor="Gerekli Şeyler Yayıncılık"),
+}
 
 
 @pytest.fixture()
-def scraper():
-    return make_scraper(default_handler)
+def log():
+    return []
+
+
+@pytest.fixture()
+def scraper(log):
+    return make_scraper(_handler(BERSERK_PAGES, BERSERK_PRODUCTS, log))
 
 
 # -- parsing + relevance guard ---------------------------------------------------
 
-def test_parses_search_cards(scraper):
-    results = scraper.search("one piece")
-    assert len(results) == 3  # collection + vitrin fallback filtered
+def test_parses_products(scraper):
+    results = scraper.search("berserk")
     by_url = {r.product_url: r for r in results}
+    assert set(by_url) == {
+        f"https://kitapbulan.com/products/{BERSERK_8}",
+        f"https://kitapbulan.com/products/{BERSERK_CILT_6}",
+    }
+    vol8 = by_url[f"https://kitapbulan.com/products/{BERSERK_8}"]
+    assert vol8.title == "Berserk 8"
+    assert vol8.series_title == "Berserk"
+    assert vol8.volume_number == 8
+    assert vol8.publisher == "Athica Yayınları"
+    assert vol8.isbn == "9786256187986"
+    assert vol8.language == "tr"
+    assert vol8.price == Decimal("221.20")
+    assert vol8.in_stock is True
+    assert vol8.image_url == "https://cdn.shopify.com/s/files/1/0817/files/9786256187986_Default.jpg?v=1"
 
-    vol36 = by_url["https://www.kitapbulan.com/one-piece-36"]
-    assert vol36.title == "One Piece 36"
-    assert vol36.series_title == "One Piece"
-    assert vol36.volume_number == 36
-    assert vol36.publisher == "Atlas Yayıncılık"
-    assert vol36.price == Decimal("184.00")
-    assert vol36.currency == "TRY"
-    assert vol36.image_url == (
-        "https://static.ticimax.cloud/61090/Uploads/UrunResimleri/buyuk/one-piece-36.jpg"
-    )
-
-    # Imported English edition: "Volume 99" marker parsed, publisher Shueisha.
-    vol99 = by_url["https://www.kitapbulan.com/one-piece-volume-99-one-piece"]
-    assert vol99.volume_number == 99
-    assert vol99.publisher == "Shueisha"
-    assert vol99.price == Decimal("250.00")
-    assert vol99.series_title.startswith("One Piece")
-
-    vol10 = by_url["https://www.kitapbulan.com/one-piece-10"]
-    assert vol10.volume_number == 10
-    assert vol10.price == Decimal("184.00")
+    vol6 = by_url[f"https://kitapbulan.com/products/{BERSERK_CILT_6}"]
+    assert vol6.volume_number == 6
+    assert vol6.in_stock is False
+    assert vol6.price == Decimal("280.00")
 
 
 def test_stats_counts(scraper):
-    scraper.search("one piece")
+    scraper.search("berserk")
     stats = scraper.stats
     assert stats["pages_fetched"] == 3  # p1 + p2 + empty p3
     assert stats["raw_products"] == 6
-    assert stats["duplicates_skipped"] == 1  # one-piece-36 repeated on p2
-    assert stats["rejected"] == {"collection": 1, "irrelevant": 1}
-    assert stats["accepted"] == 3
+    assert stats["duplicates_skipped"] == 1  # Berserk 8 repeated on p2
+    assert stats["rejected"] == {"foreign_edition": 1, "irrelevant": 1, "collection": 1}
+    assert stats["accepted"] == 2
     assert stats["stop_reason"] == "empty_page"
 
 
-def test_vitrin_fallback_returns_empty():
-    """A query with no real match: the store pads the grid with unrelated
-    vitrin products; none of them may leak into the results."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/arama":
-            page = _page_of(request)
-            if page == 1:
-                return httpx.Response(200, text=SEARCH_NOMATCH)
-            return httpx.Response(200, text=EMPTY_PAGE)
-        return httpx.Response(404)
-
-    scraper = make_scraper(handler)
-    results = scraper.search("watchmen")
-    assert results == []
-    assert scraper.stats["rejected"] == {"irrelevant": 2}
-    assert scraper.stats["accepted"] == 0
+def test_unrelated_and_foreign_products_cost_no_request(scraper, log):
+    scraper.search("berserk")
+    fetched = [url for url in log if url.endswith(".js")]
+    assert sorted(fetched) == sorted(
+        f"https://kitapbulan.com/products/{h}.js" for h in (BERSERK_8, BERSERK_CILT_6)
+    )
 
 
-def test_short_query_tokens_do_not_gate_relevance():
-    """Tokens shorter than 3 characters ('v', 'for') are noise: a query like
-    'v one piece' must keep the One Piece cards (title lacks the 'v' token)."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/arama":
-            page = _page_of(request)
-            if page == 1:
-                return httpx.Response(200, text=SEARCH_P1)
-            return httpx.Response(200, text=EMPTY_PAGE)
-        return httpx.Response(404)
-
-    scraper = make_scraper(handler)
-    results = scraper.search("v one piece")
-    assert len(results) == 2  # 'v' ignored; 'one' + 'piece' match the page-1 cards
+def test_title_from_handle_when_links_have_no_text():
+    page = (f'<html><body><a href="/products/{BERSERK_8}"><img src="x.jpg"></a>'
+            f'<a href="/products/{IBLIS_KESER}"></a></body></html>')
+    scraper = make_scraper(_handler([page], BERSERK_PRODUCTS))
+    results = scraper.search("berserk")
+    assert [r.title for r in results] == ["Berserk 8"]
+    assert scraper.stats["rejected"] == {"irrelevant": 1}
 
 
-# -- enrichment -------------------------------------------------------------------
-
-def test_enrichment_isbn_from_sku_brand_and_stock():
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/arama":
-            page = _page_of(request)
-            if page == 1:
-                return httpx.Response(200, text=SEARCH_P1)
-            return httpx.Response(200, text=EMPTY_PAGE)
-        return httpx.Response(200, text=DETAIL)
-
-    results = make_scraper(handler).search("one piece")
-    vol36 = next(r for r in results if r.volume_number == 36)
-    assert vol36.isbn == "9786256335424"  # from sku/mpn
-    assert vol36.publisher == "Atlas Yayıncılık"  # card value kept (already set)
-    assert vol36.in_stock is True  # availability InStock
+def test_short_query_tokens_do_not_gate_relevance(scraper):
+    """Tokens shorter than 3 characters ('v', 'tr') are noise."""
+    results = scraper.search("v berserk")
+    assert len(results) == 2
 
 
-def test_detail_404_keeps_search_data(scraper):
-    results = scraper.search("one piece")
-    vol36 = next(r for r in results if r.volume_number == 36)
-    assert vol36.isbn is None
-    assert vol36.in_stock is True  # unknown defaults to True
-    assert vol36.publisher == "Atlas Yayıncılık"
+def test_missing_product_json_drops_the_card():
+    products = {BERSERK_8: BERSERK_PRODUCTS[BERSERK_8]}
+    scraper = make_scraper(_handler(BERSERK_PAGES[:1], products))
+    results = scraper.search("berserk")
+    assert [r.volume_number for r in results] == [8]
+    assert scraper.stats["rejected"]["detail_failed"] == 1
+
+
+def test_common_filter_rejects_merchandise_from_search():
+    """'Grandista' is a merch token of the COMMON relevance filter only:
+    this proves the filter is wired into the store pipeline."""
+    handle = "berserk-guts-grandista-figur-4983164000000"
+    products = {**BERSERK_PRODUCTS, handle: _product(handle, "Berserk Guts Grandista", vendor="Banpresto")}
+    page = _page((BERSERK_8, "Berserk 8"), (handle, "Berserk Guts Grandista"))
+    scraper = make_scraper(_handler([page], products))
+    results = scraper.search("berserk")
+    assert [r.title for r in results] == ["Berserk 8"]
+    assert scraper.stats["rejected"].get("non_manga") == 1
 
 
 # -- blocking -----------------------------------------------------------------------
@@ -174,114 +203,82 @@ def test_blocked_search_raises():
 
     scraper = make_scraper(handler)
     with pytest.raises(ScraperError, match="blocked"):
-        scraper.search("one piece")
+        scraper.search("berserk")
     assert scraper.stats["pages_fetched"] == 0
 
 
-def test_detail_blocked_keeps_search_data():
+def test_search_404_raises():
+    """The old T-Soft search (/arama) answers 404 since the move: a broken
+    search must fail the store, never read as "no products"."""
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/arama":
-            page = _page_of(request)
-            if page == 1:
-                return httpx.Response(200, text=SEARCH_P1)
-            return httpx.Response(200, text=EMPTY_PAGE)
-        return httpx.Response(403, text=BLOCKED_PAGE)
+        return httpx.Response(404, text="not found")
 
-    results = make_scraper(handler).search("one piece")
-    vol36 = next(r for r in results if r.volume_number == 36)
-    assert vol36.isbn is None
-    assert vol36.price == Decimal("184.00")
+    with pytest.raises(ScraperError, match="HTTP 404"):
+        make_scraper(handler).search("berserk")
 
 
 # -- bounds -----------------------------------------------------------------------
 
 def test_max_results_bound():
-    scraper = make_scraper(default_handler, kitapbulan_max_search_results=1)
-    results = scraper.search("one piece")
+    scraper = make_scraper(_handler(BERSERK_PAGES, BERSERK_PRODUCTS), kitapbulan_max_search_results=1)
+    results = scraper.search("berserk")
     assert len(results) == 1
     assert scraper.stats["stop_reason"] == "max_results"
     assert scraper.stats["pages_fetched"] == 1
 
 
-def test_common_filter_rejects_merchandise_from_search():
-    """'Grandista' is a strong merch token of the COMMON relevance filter
-    but not of this store's local keyword list: only the common layer can
-    reject it, so this proves the filter is wired into the store pipeline.
-    """
-    page = SEARCH_P1.replace("One Piece 36", "One Piece 36 Grandista")
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/arama":
-            p = _page_of(request)
-            return httpx.Response(200, text=page if p == 1 else EMPTY_PAGE)
-        return httpx.Response(404, text="not found")
-
-    scraper = make_scraper(handler)
-    results = scraper.search("one piece")
-    assert not any("Grandista" in r.title for r in results)
-    assert scraper.stats["rejected"].get("non_manga") == 1
-    # the other fixture books are untouched
-    assert any("One Piece. Volume 99" in r.title for r in results)
+def test_links_parse_inside_large_storefront_page():
+    page = _page((BERSERK_8, "Berserk 8"), padding=2000)
+    results = make_scraper(_handler([page], BERSERK_PRODUCTS)).search("berserk")
+    assert [r.volume_number for r in results] == [8]
 
 
-# -- paging cost (VDS CPU, 2026-10-21) ----------------------------------------------
-
-def _card_page(*titles: str, padding: int = 0) -> str:
-    """A search page with one card per title, optionally inside a large
-    storefront (menus/footer) that the parser must skip."""
-    card = (
-        '<div class="col-6 col-sm-6 col-md-4 col-lg-3 col-xl-3 mb-2 product-item">'
-        '<a href="/atlas-yayincilik" class="fw-bold brand-title">Atlas Yayıncılık</a>'
-        '<a href="/{slug}" class="product-title">{title}</a>'
-        '<div class="fw-black current-price"><span class="product-price">184,00</span> TL</div>'
-        "</div>"
-    )
-    menu = "".join(f'<li class="menu-item"><a href="/k/{i}">Kategori {i}</a></li>' for i in range(padding))
-    cards = "".join(card.format(slug=t.lower().replace(" ", "-"), title=t) for t in titles)
-    return (
-        f"<html><body><nav><ul>{menu}</ul></nav><div id='product-list-panel'>"
-        f"<div class='row'>{cards}</div></div><footer><ul>{menu}</ul></footer></body></html>"
-    )
+def _numbered(title: str, n: int) -> tuple[str, str]:
+    return (f"{title.lower().replace(' ', '-')}-{n}-978625600{n:04d}", f"{title} {n}")
 
 
-def _pages_handler(pages: list[str]):
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/arama":
-            page = _page_of(request)
-            return httpx.Response(200, text=pages[page - 1] if page <= len(pages) else EMPTY_PAGE)
-        return httpx.Response(404)
-    return handler
-
-
-def test_cards_parse_inside_large_storefront_page():
-    page = _card_page("One Piece 1", "One Piece 2", padding=2000)
-    scraper = make_scraper(_pages_handler([page]))
-    results = scraper.search("one piece")
-    assert sorted(r.volume_number for r in results) == [1, 2]
-    assert all(r.publisher == "Atlas Yayıncılık" and r.price == Decimal("184.00") for r in results)
-
-
-def test_stops_after_two_pages_without_relevant_cards():
+def test_stops_after_two_pages_without_relevant_products():
     pages = [
-        _card_page("One Piece 1", "One Piece 2"),
-        _card_page("Sam ve Watson 1", "Dedektif Kedi 2"),
-        _card_page("Sam ve Watson 3", "Dedektif Kedi 4"),
-        _card_page("One Piece 3"),  # never fetched
+        _page(_numbered("Berserk", 1)),
+        _page(_numbered("Chainsaw Man", 1)),
+        _page(_numbered("Chainsaw Man", 2)),
+        _page(_numbered("Berserk", 2)),  # never fetched
     ]
-    scraper = make_scraper(_pages_handler(pages))
-    results = scraper.search("one piece")
-    assert sorted(r.volume_number for r in results) == [1, 2]
+    products = {h: _product(h, t) for h, t in (_numbered("Berserk", 1), _numbered("Berserk", 2))}
+    scraper = make_scraper(_handler(pages, products))
+    results = scraper.search("berserk")
+    assert [r.volume_number for r in results] == [1]
     assert scraper.stats["pages_fetched"] == 3
     assert scraper.stats["stop_reason"] == "no_relevant_items"
 
 
 def test_one_unrelated_page_does_not_stop_paging():
-    pages = [
-        _card_page("One Piece 1"),
-        _card_page("Sam ve Watson 1"),
-        _card_page("One Piece 2"),
-    ]
-    scraper = make_scraper(_pages_handler(pages))
-    results = scraper.search("one piece")
+    pages = [_page(_numbered("Berserk", 1)), _page(_numbered("Chainsaw Man", 1)), _page(_numbered("Berserk", 2))]
+    products = {h: _product(h, t) for h, t in (_numbered("Berserk", 1), _numbered("Berserk", 2))}
+    scraper = make_scraper(_handler(pages, products))
+    results = scraper.search("berserk")
     assert sorted(r.volume_number for r in results) == [1, 2]
     assert scraper.stats["stop_reason"] == "empty_page"
+
+
+# -- listing re-check ---------------------------------------------------------------
+
+def test_check_listing_reads_product_json():
+    scraper = make_scraper(_handler([], BERSERK_PRODUCTS))
+    check = scraper.check_listing(f"https://kitapbulan.com/products/{BERSERK_CILT_6}")
+    assert check.in_stock is False
+    assert check.price == Decimal("280.00")
+
+
+def test_check_listing_old_url_is_unknown(log):
+    """Pre-Shopify listing URLs ("www.kitapbulan.com/one-piece-36") are
+    gone; they are never requested again."""
+    scraper = make_scraper(_handler([], BERSERK_PRODUCTS, log))
+    assert scraper.check_listing("https://www.kitapbulan.com/one-piece-36") is None
+    assert scraper.check_listing("https://kitapbulan.com/products/gone-9786250000000") is None
+    assert log == ["https://kitapbulan.com/products/gone-9786250000000.js"]
+
+
+def test_product_handle():
+    assert product_handle(f"https://kitapbulan.com/products/{BERSERK_8}?_pos=1") == BERSERK_8
+    assert product_handle("https://www.kitapbulan.com/berserk-8") is None

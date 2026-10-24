@@ -74,7 +74,7 @@ CANDIDATES: tuple[Candidate, ...] = (
     Candidate("bkm", "BKM Kitap", "aktif",
               "https://cdn.bkmkitap.com/srv/service/product/searchAll/berserk?language=tr"),
     Candidate("kitapsepeti", "Kitap Sepeti", "aktif", "https://www.kitapsepeti.com/arama?q=berserk"),
-    Candidate("kitapbulan", "Kitapbulan", "aktif", "https://www.kitapbulan.com/arama?q=berserk"),
+    Candidate("kitapbulan", "Kitapbulan", "aktif", "https://kitapbulan.com/search?q=berserk&type=product"),
     Candidate("gerekliseyler", "Gerekli Şeyler", "aktif", "https://www.gerekliseyler.com.tr/arama/berserk"),
     Candidate("kitapsec", "Kitapseç", "aktif", "https://www.kitapsec.com/Arama/index.php?a=berserk"),
     Candidate("komikseyler", "Komikşeyler", "aktif",
