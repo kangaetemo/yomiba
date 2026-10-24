@@ -25,6 +25,26 @@
   }
 }
 
+/* NavigationProgress: a segment sliding across the top bar. */
+@keyframes nav-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.nav-progress {
+  animation: nav-progress 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress {
+    animation-duration: 3s;
+  }
+}
+
 /*
  * Yomiba design tokens — "editorial manga paper".
  * Warm paper surfaces, ink text, a hanko-red accent (deals, primary actions)

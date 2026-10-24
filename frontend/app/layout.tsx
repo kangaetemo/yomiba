@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Figtree, Fraunces } from "next/font/google";
 import "./globals.css";
 import { currentUserOrNull } from "@/services/auth";
@@ -8,6 +9,7 @@ import { SearchDialogButton } from "@/components/SearchDialog";
 import { THEME_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
 import { LoginLink } from "@/components/LoginLink";
 import { SiteTracker } from "@/components/SiteTracker";
+import { NavigationProgress } from "@/components/NavigationProgress";
 import { DEFAULT_OG_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site";
 
 // Turkish needs latin-ext (ş, ğ, ı, İ).
@@ -182,6 +184,10 @@ export default async function RootLayout({
           </div>
         </footer>
         <SiteTracker />
+        {/* useSearchParams needs a boundary, or static pages render on the client. */}
+        <Suspense fallback={null}>
+          <NavigationProgress />
+        </Suspense>
       </body>
     </html>
   );

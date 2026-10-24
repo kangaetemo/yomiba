@@ -3,6 +3,7 @@
  * client hooks. UI components never call fetch() directly.
  */
 
+import { cache } from "react";
 import { ApiError, deleteJson, getJson, patchJson, postJson, putJson } from "@/lib/api";
 import type {
   CollectionStatus,
@@ -72,13 +73,13 @@ export function searchSeries(query: string): Promise<SearchResponse> {
 }
 
 /** `ref` is the public slug; a numeric id (old links) resolves too. */
-export function getSeries(ref: string | number): Promise<SeriesDetail> {
-  return getJson<SeriesDetail>(`/series/${encodeURIComponent(String(ref))}`);
-}
+/** Memoised per server request: generateMetadata and the page (and a
+ * volume page resolving its number) share one backend call. */
+export const getSeries = cache((ref: string | number): Promise<SeriesDetail> =>
+  getJson<SeriesDetail>(`/series/${encodeURIComponent(String(ref))}`));
 
-export function getVolume(id: number): Promise<VolumeDetail> {
-  return getJson<VolumeDetail>(`/volume/${id}`);
-}
+export const getVolume = cache((id: number): Promise<VolumeDetail> =>
+  getJson<VolumeDetail>(`/volume/${id}`));
 
 export function getPriceHistory(volumeId: number): Promise<PriceHistory> {
   return getJson<PriceHistory>(`/volume/${volumeId}/price-history`);

@@ -103,3 +103,31 @@ def test_rebuilds_after_a_change_are_spaced_out(db_session):
     db_session.commit()
     built_at = cache._values[next(iter(cache._values))][0]
     assert not cache._is_stale(built_at)  # just built: waits MIN_REBUILD_SECONDS
+
+
+def test_description_worker_writes_keep_the_cache(db_session, monkeypatch):
+    from app.models import Publisher, Series, Volume
+    from app.services import swr_cache
+    from app.utils import utcnow
+
+    monkeypatch.setattr(swr_cache, "MIN_REBUILD_SECONDS", 0)
+    pub = Publisher(name="P", normalized_name="p")
+    db_session.add(pub)
+    db_session.flush()
+    series = Series(publisher_id=pub.id, title="S", normalized_title="s", slug="s")
+    db_session.add(series)
+    db_session.flush()
+    volume = Volume(series_id=series.id, volume_number=1)
+    db_session.add(volume)
+    db_session.commit()
+
+    cache = SwrCache("test", 3600)
+    cache.get(db_session, ("k",), lambda s: "v")
+    built_at = next(iter(cache._values.values()))[0]
+    volume.description, volume.description_source = "Bir hikâye.", "bkm"
+    volume.description_checked_at = utcnow()
+    db_session.commit()
+    assert not cache._is_stale(built_at)
+    volume.cover_key = "covers/1.jpg"  # covers do show on the home page
+    db_session.commit()
+    assert cache._is_stale(built_at)
