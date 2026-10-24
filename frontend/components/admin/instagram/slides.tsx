@@ -6,12 +6,12 @@
  */
 
 import type { CSSProperties, ReactNode } from "react";
-import type { InstagramVolume } from "@/services/instagram";
+import type { InstagramVolume, LaunchVolume } from "@/services/instagram";
 
 export const SLIDE_W = 1080;
 export const SLIDE_H = 1350;
 
-const C = {
+export const C = {
   paper: "#f7f2e7",
   surface: "#fffdf8",
   surface3: "#e7dcc6",
@@ -24,7 +24,7 @@ const C = {
   accentSoft: "#f2b8a6",
   indigo: "#2f4f7a",
 };
-const DISPLAY = "var(--font-display-face), Georgia, serif";
+export const DISPLAY = "var(--font-display-face), Georgia, serif";
 const BODY = "var(--font-body), system-ui, sans-serif";
 
 const DAY = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", timeZone: "UTC" });
@@ -40,12 +40,12 @@ const weekdayLabel = (iso: string) => {
 };
 
 /** "One Piece 105", "Dragon Ball 5 (9–10)". */
-export function bookTitle(v: InstagramVolume): string {
+export function bookTitle(v: LaunchVolume): string {
   const span = v.covers_from && v.covers_to ? ` (${v.covers_from}–${v.covers_to})` : "";
   return `${v.series_title} ${v.number}${span}`;
 }
 
-function Frame({ background, color, children }: { background: string; color: string; children: ReactNode }) {
+export function Frame({ background, color, children }: { background: string; color: string; children: ReactNode }) {
   return (
     <div style={{ position: "relative", width: SLIDE_W, height: SLIDE_H, overflow: "hidden", background, color, fontFamily: BODY }}>
       {children}
@@ -53,7 +53,7 @@ function Frame({ background, color, children }: { background: string; color: str
   );
 }
 
-function Brand({ page, dark = false, sealOnAccent = false }: { page: string; dark?: boolean; sealOnAccent?: boolean }) {
+export function Brand({ page, dark = false, sealOnAccent = false }: { page: string; dark?: boolean; sealOnAccent?: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -70,8 +70,8 @@ function Brand({ page, dark = false, sealOnAccent = false }: { page: string; dar
 }
 
 /** A real cover, or the site's 読 placeholder when the volume has none yet. */
-function CoverArt({ v, style, border = false, compact = false }: {
-  v: InstagramVolume; style: CSSProperties; border?: boolean; compact?: boolean;
+export function CoverArt({ v, style, border = false, compact = false }: {
+  v: LaunchVolume; style: CSSProperties; border?: boolean; compact?: boolean;
 }) {
   const frame: CSSProperties = {
     borderRadius: 10, overflow: "hidden", boxSizing: "border-box", background: C.surface3,
@@ -93,19 +93,19 @@ function CoverArt({ v, style, border = false, compact = false }: {
   );
 }
 
-const SWIPE = (
+export const SWIPE = (
   <svg aria-hidden width="34" height="34" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
 );
 
 /** Fan positions (left, top, rotation) by how many covers are shown. */
-const FANS: Record<number, [number, number, number][]> = {
+export const FANS: Record<number, [number, number, number][]> = {
   1: [[390, 740, -3]],
   2: [[250, 760, -7], [530, 760, 7]],
   3: [[150, 790, -10], [390, 730, 0], [630, 790, 10]],
   4: [[60, 820, -12], [280, 760, -4], [500, 760, 4], [720, 820, 12]],
   5: [[30, 820, -14], [230, 760, -7], [400, 720, 0], [570, 760, 7], [760, 840, 14]],
 };
-const FAN_Z: Record<number, number[]> = { 1: [1], 2: [1, 2], 3: [1, 3, 2], 4: [1, 2, 3, 2], 5: [1, 2, 5, 3, 2] };
+export const FAN_Z: Record<number, number[]> = { 1: [1], 2: [1, 2], 3: [1, 3, 2], 4: [1, 2, 3, 2], 5: [1, 2, 5, 3, 2] };
 
 export function CoverSlide({ fan, total, weekLabel, page }: {
   fan: InstagramVolume[]; total: number; weekLabel: string; page: string;
@@ -142,7 +142,14 @@ export function CoverSlide({ fan, total, weekLabel, page }: {
 
 const MAX_STORE_ROWS = 6;
 
-export function CompareSlide({ v, others, page }: { v: InstagramVolume; others: InstagramVolume[]; page: string }) {
+/** One volume's price at every store. The weekly post's defaults; the launch
+ * post passes its own eyebrow, meta line and footer. */
+export function CompareSlide({
+  v, others, page, eyebrow = "BU HAFTA RAFLARDA", meta, footerNote, link = "yomiba.net/takvim",
+}: {
+  v: LaunchVolume; others: LaunchVolume[]; page: string;
+  eyebrow?: string; meta?: string; footerNote?: string; link?: string;
+}) {
   const offers = v.offers.length > MAX_STORE_ROWS ? v.offers.slice(0, MAX_STORE_ROWS - 1) : v.offers;
   const hidden = v.offers.length - offers.length;
   const max = Math.max(...offers.map((o) => o.price), 1);
@@ -157,9 +164,11 @@ export function CompareSlide({ v, others, page }: { v: InstagramVolume; others: 
             <CoverArt v={v} style={{ position: "relative", width: 340, height: 510, transform: "rotate(-3deg)", boxShadow: "0 20px 40px rgba(31,27,22,0.3)" }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>BU HAFTA RAFLARDA</div>
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>{eyebrow}</div>
             <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: bookTitle(v).length > 18 ? 68 : 80, lineHeight: 0.95, fontWeight: 900, letterSpacing: -2 }}>{bookTitle(v)}</h2>
-            <div style={{ fontSize: 26, color: C.muted }}>{v.publisher} · {dayLabel(v.release_date)}</div>
+            <div style={{ fontSize: 26, color: C.muted }}>
+              {meta ?? (v.release_date ? `${v.publisher} · ${dayLabel(v.release_date)}` : v.publisher)}
+            </div>
             <div style={{ marginTop: 12, background: C.ink, color: C.paper, borderRadius: 16, padding: "22px 26px", display: "flex", flexDirection: "column", gap: 4, transform: "rotate(1deg)" }}>
               <div style={{ fontSize: 22, fontWeight: 600, color: "rgba(247,242,231,0.7)" }}>
                 {spread !== null ? "Mağazalar arasındaki fark" : v.offers.length ? "Şu an tek mağazada" : "Fiyat"}
@@ -192,9 +201,11 @@ export function CompareSlide({ v, others, page }: { v: InstagramVolume; others: 
             {others.slice(0, 7).map((o) => (
               <CoverArt key={o.id} v={o} compact style={{ width: 52, height: 78, borderRadius: 4, boxShadow: "0 3px 8px rgba(31,27,22,0.2)" }} />
             ))}
-            {others.length ? <div style={{ fontSize: 24, fontWeight: 700, color: C.ink2, marginLeft: 8 }}>+{others.length} cilt daha</div> : null}
+            {(footerNote ?? others.length) ? (
+              <div style={{ fontSize: 24, fontWeight: 700, color: C.ink2, marginLeft: 8 }}>{footerNote ?? `+${others.length} cilt daha`}</div>
+            ) : null}
           </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>yomiba.net/takvim</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>{link}</div>
         </div>
       </div>
     </Frame>

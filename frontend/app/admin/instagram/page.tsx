@@ -2,12 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { InstagramStudio } from "@/components/admin/instagram/InstagramStudio";
+import { LaunchStudio } from "@/components/admin/instagram/LaunchStudio";
 import { Segmented } from "@/components/Segmented";
 import { TIME_ZONE } from "@/lib/time";
 import { currentUser } from "@/services/auth";
-import { getInstagramReleases } from "@/services/instagram";
+import { getInstagramLaunch, getInstagramReleases } from "@/services/instagram";
 
 export const metadata: Metadata = { title: "Instagram taslakları" };
+
+const KINDS = [
+  { key: "hafta", label: "Haftanın çıkanları", href: "/admin/instagram" },
+  { key: "acilis", label: "Site açılışı", href: "/admin/instagram?tur=acilis" },
+];
 
 const WEEKS = [
   { key: "-2", label: "2 hafta önce" },
@@ -49,6 +55,37 @@ export default async function InstagramPage({ searchParams }: {
   if (!user) redirect("/login?next=%2Fadmin%2Finstagram");
   if (user.role !== "ADMIN") redirect("/");
   const query = await searchParams;
+  const launch = one(query.tur) === "acilis";
+  const header = (
+    <header className="space-y-1">
+      <p className="text-sm"><Link href="/admin" className="text-new hover:underline">← Admin</Link></p>
+      <h1 className="text-2xl font-bold tracking-tight text-ink">Instagram taslakları</h1>
+      <p className="text-sm text-muted">
+        {launch
+          ? "Sitenin açıldığını duyuran kaydırmalı post: katalogdaki gerçek sayılar ve mağazalar arasında fiyatı en çok değişen ciltlerden biriyle."
+          : "Haftanın çıkan ciltlerinden kaydırmalı post: sitedeki kapaklar ve şu anki mağaza fiyatlarıyla."}
+        {" "}Görselleri indirip açıklama metnini kopyalayarak Instagram&apos;da paylaşabilirsin; buradan hiçbir şey otomatik paylaşılmaz.
+      </p>
+    </header>
+  );
+  const kinds = (
+    <Segmented label="Post türü" current="page" items={KINDS.map((k) => ({
+      key: k.key, href: k.href, active: (k.key === "acilis") === launch, children: k.label,
+    }))} />
+  );
+  if (launch) {
+    const data = await getInstagramLaunch().catch(() => null);
+    return (
+      <div className="space-y-6">
+        {header}
+        {kinds}
+        {data ? <LaunchStudio data={data} /> : (
+          <p className="rounded-xl border border-line bg-surface p-5 text-sm text-muted">Veriler yüklenemedi. Sayfayı yenilemeyi dene.</p>
+        )}
+      </div>
+    );
+  }
+
   const offset = WEEKS.find((w) => w.key === one(query.hafta))?.key ?? "0";
   const { start, end } = week(Number(offset));
   const label = weekLabel(start, end);
@@ -56,14 +93,8 @@ export default async function InstagramPage({ searchParams }: {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
-        <p className="text-sm"><Link href="/admin" className="text-new hover:underline">← Admin</Link></p>
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Instagram taslakları</h1>
-        <p className="text-sm text-muted">
-          Haftanın çıkan ciltlerinden kaydırmalı post: sitedeki kapaklar ve şu anki mağaza fiyatlarıyla.
-          Görselleri indirip açıklama metnini kopyalayarak Instagram&apos;da paylaşabilirsin; buradan hiçbir şey otomatik paylaşılmaz.
-        </p>
-      </header>
+      {header}
+      {kinds}
       <Segmented label="Hafta" current="page" items={WEEKS.map((w) => ({
         key: w.key, href: w.key === "0" ? "/admin/instagram" : `/admin/instagram?hafta=${w.key}`,
         active: w.key === offset, children: w.label,
