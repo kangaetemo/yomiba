@@ -18,12 +18,13 @@ import json
 import logging
 import re
 import unicodedata
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import timedelta
+from difflib import SequenceMatcher
 
 from bs4 import BeautifulSoup
-from sqlalchemy import case, exists, func, or_, select
+from sqlalchemy import case, exists, or_, select
 from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
@@ -36,7 +37,7 @@ from ..utils import utcnow
 logger = logging.getLogger("yomiba.descriptions")
 
 MIN_LENGTH = 80
-MAX_LENGTH = 1500
+MAX_LENGTH = 2500
 RETRY_DAYS = 30
 MAX_PAGES_PER_VOLUME = 3
 
@@ -112,9 +113,40 @@ def clean_description(raw: object) -> str | None:
         return None
     if len(text) > MAX_LENGTH:
         cut = text[:MAX_LENGTH]
-        end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "), cut.rfind("\n"))
-        text = cut[: end + 1].strip() if end > MIN_LENGTH else cut.rsplit(" ", 1)[0] + "…"
+        ends = [m.end() for m in _SENTENCE_END.finditer(cut)] + [cut.rfind("\n")]
+        end = max(ends)
+        text = cut[:end].strip() if end > MIN_LENGTH else cut.rsplit(" ", 1)[0] + "…"
     return text
+
+
+#: A sentence ends at . ! ? … followed by a new sentence; "Manga 65. sayıya"
+#: (a number) is not an end.
+_SENTENCE_END = re.compile(rf"(?<!\d)[.!?…]+(?=\s+[\"“'‘{_UPPER}])")
+
+
+#: Letters a store-cut copy has at least.
+_CUT_LENGTH = 800
+
+
+def _letters(text: str) -> str:
+    return "".join(ch for ch in text.casefold() if ch.isalpha())
+
+
+def same_text(a: str, b: str) -> bool:
+    """Two copies of one blurb: equal up to typos, spacing and punctuation,
+    or one cut short (a store's length limit)."""
+    a, b = _letters(a), _letters(b)
+    if not a or not b:
+        return False
+    short, long = sorted((a, b), key=len)
+    if len(short) < 0.9 * len(long):
+        # Only a long text is a cut copy; a short one is its own blurb that
+        # opens like the series text.
+        if len(short) < _CUT_LENGTH:
+            return False
+        long = long[: len(short)]
+    matcher = SequenceMatcher(None, short, long, autojunk=False)
+    return matcher.real_quick_ratio() >= 0.9 and matcher.quick_ratio() >= 0.9 and matcher.ratio() >= 0.9
 
 
 #: A blurb pulled out of the page markup is a block of prose; a block much
@@ -244,25 +276,26 @@ class DescriptionFetcher:
         )
 
     def _mark_shared(self) -> None:
-        """A text two volumes of a series share is the series blurb: flag
-        every copy and let each volume look for its own text again."""
-        shared = (
-            select(Volume.series_id, Volume.description)
-            .where(Volume.description.isnot(None), Volume.volume_number >= 0)
-            .group_by(Volume.series_id, Volume.description)
-            .having(func.count() > 1)
-        ).subquery()
+        """A text two volumes of a series share (give or take a typo or a cut)
+        is the series blurb: flag every copy and let each volume look for its
+        own text again."""
+        by_series: dict[int, list[Volume]] = defaultdict(list)
         for volume in self.session.scalars(
-            select(Volume).join(shared, (shared.c.series_id == Volume.series_id)
-                                & (shared.c.description == Volume.description))
-            .where(or_(Volume.description_generic.is_(None), Volume.description_generic.is_(False)))
+            select(Volume).where(Volume.description.isnot(None), Volume.volume_number >= 0)
         ):
-            volume.description_generic = True
-            volume.description_checked_at = None
+            by_series[volume.series_id].append(volume)
+        for volumes in by_series.values():
+            for i, volume in enumerate(volumes):
+                if volume.description_generic:
+                    continue
+                if any(same_text(volume.description, other.description)
+                       for j, other in enumerate(volumes) if j != i):
+                    volume.description_generic = True
+                    volume.description_checked_at = None
         self.session.flush()
 
-    def _sibling_texts(self, volume: Volume) -> set[str]:
-        return set(self.session.scalars(
+    def _sibling_texts(self, volume: Volume) -> list[str]:
+        return list(self.session.scalars(
             select(Volume.description).where(
                 Volume.series_id == volume.series_id, Volume.id != volume.id,
                 Volume.description.isnot(None),
@@ -321,7 +354,8 @@ class DescriptionFetcher:
                     text = self._read(scraper, listing.product_url)
                     if not text:
                         continue
-                    if text in siblings or (volume.description_generic and text == volume.description):
+                    if any(same_text(text, s) for s in siblings) or (
+                            volume.description_generic and same_text(text, volume.description)):
                         # The series blurb again: another store may have this volume's own text.
                         shared = shared or (text, listing.store.code)
                         continue

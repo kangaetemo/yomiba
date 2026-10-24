@@ -8,12 +8,16 @@ from app.services.volume_descriptions import (
     DescriptionFetcher,
     clean_description,
     description_from_page,
+    same_text,
 )
 from tests.test_home_feed import _offer, _vol
 from tests.test_import_service import seed_catalog_series
 
 BLURB = ("Simsiyah ve kocaman bir adam, Guts! Sırtında devasa bir kılıç taşıyan bu yalnız savaşçı, "
          "peşine düşen iblislerle her gece yeniden savaşmak zorunda.")
+#: Another volume's own text.
+OTHER = ("Ölüm Tanrısı Ryuk'un defterini bulan lise öğrencisi Light Yagami, adını yazdığı herkesin "
+         "öldüğünü fark edince suçsuz bir dünya kurmaya karar verir.")
 
 
 def _page(description=None, og=None):
@@ -31,7 +35,7 @@ def test_clean_description_strips_html_and_spec_lines():
     assert clean_description("Kısa metin.") is None
     assert clean_description(f"{BLURB} En uygun fiyatla hemen satın al!") is None
     long = clean_description(" ".join([BLURB] * 20))
-    assert len(long) <= MAX_LENGTH and long.endswith(".")
+    assert len(long) <= MAX_LENGTH and long.endswith((".", "!"))
 
 
 def test_description_from_json_ld_then_og():
@@ -60,7 +64,7 @@ def test_fetcher_fills_first_volumes_first_and_series_shows_intro(client, db_ses
     described = _offer(db_session, one, ks, 16000)
     second = _offer(db_session, two, bkm, 15000)
     db_session.commit()
-    pages = {described.product_url: _page(BLURB), second.product_url: _page("<p>" + BLURB.upper() + "</p>")}
+    pages = {described.product_url: _page(BLURB), second.product_url: _page("<p>" + OTHER + "</p>")}
     scrapers = {"bkm": FakeScraper(pages), "ks": FakeScraper(pages)}
 
     dry = DescriptionFetcher(db_session, scrapers=scrapers, dry_run=True).run(budget=1)
@@ -77,7 +81,7 @@ def test_fetcher_fills_first_volumes_first_and_series_shows_intro(client, db_ses
     body = client.get(f"/series/{series.id}").json()
     assert body["description"] == BLURB
     volume = client.get(f"/volume/{two.id}").json()
-    assert volume["description"] == BLURB.upper()
+    assert volume["description"] == OTHER
 
     # Nothing left to read: a second pass fetches no page.
     assert DescriptionFetcher(db_session, scrapers=scrapers).run(budget=10).pages == 0
@@ -123,7 +127,7 @@ def test_series_blurb_repeated_on_every_volume_is_not_a_volume_text(client, db_s
     db_session.add_all([bkm, gs])
     series = seed_catalog_series(db_session, "Ölüm Defteri", "Akıl Çelen", volumes=(1, 2, 3))
     one, two, three = (_vol(db_session, series, n) for n in (1, 2, 3))
-    own_two = BLURB.replace("Guts", "Light")
+    own_two = OTHER
     listings = [_offer(db_session, v, bkm, 15000) for v in (one, two, three)]
     gs_two = _offer(db_session, two, gs, 16000, in_stock=False)
     db_session.commit()
@@ -143,3 +147,19 @@ def test_series_blurb_repeated_on_every_volume_is_not_a_volume_text(client, db_s
     assert client.get(f"/series/{series.id}").json()["description"] == BLURB
     # Settled: nothing re-read until the retry window.
     assert DescriptionFetcher(db_session, scrapers=scrapers).run(budget=20).pages == 0
+
+
+TITAN = ("Yüzyıllar önce insanlık, devasa yaratıklar olan Titanlar tarafından neredeyse yok edildi. "
+         "Hayatta kalanlar üç dev duvarın ardına sığındı. Eren Yeager, Armin Arlert ve üvey kız kardeşi "
+         "Mikasa duvarın içinde büyür. Bundan sonra hiçbir şey eskisi gibi olmayacaktır. ") * 12
+TITAN += "Manga 65. sayıya ulaşmış ve hala devam etmektedir. Seri dünya çapında büyük ilgi gördü."
+
+
+def test_long_text_is_not_cut_at_a_number_and_near_copies_are_one_text():
+    text = clean_description(TITAN)
+    assert len(text) <= MAX_LENGTH and text.endswith(".") and not text.endswith("65.")
+    typo = TITAN.replace("Mikasa duvarın içinde büyür. Bundan", "Mikasa duvarın içinde büyür. çBundan", 1)
+    assert same_text(TITAN, typo)
+    assert same_text(TITAN, TITAN[:1200] + " Manga 65.")  # one store cut it short
+    assert not same_text(BLURB, OTHER)
+    assert not same_text(TITAN[:300], TITAN[:300] + " Bu ciltte Eren ilk kez dev bir Titan'a dönüşür.")
