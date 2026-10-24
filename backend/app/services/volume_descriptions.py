@@ -185,10 +185,8 @@ def _block_text(element) -> str | None:
     return text if text and len(text) <= _MAX_BLOCK else None
 
 
-def _from_markup(soup) -> str | None:
-    for tag in soup(_NOISE):
-        tag.decompose()
-    # 1. The panel a "Ürün Açıklaması" tab points to, else the label's section.
+def _from_label(soup) -> str | None:
+    # The panel a "Ürün Açıklaması" tab points to, else the label's section.
     for label in soup.find_all(string=_LABEL):
         holder = label.parent
         target = None
@@ -207,7 +205,11 @@ def _from_markup(soup) -> str | None:
                 break
             if text := _block_text(node):
                 return text
-    # 2. The most specific "description"-named container that reads as a blurb.
+    return None
+
+
+def _from_container(soup) -> str | None:
+    # The most specific "description"-named container that reads as a blurb.
     named = [el for el in soup.find_all(True) if _CONTAINER.search(" ".join([el.get("id") or "", *el.get("class", [])]))]
     for element in sorted(named, key=lambda el: len(el.find_all(True))):
         if text := _block_text(element):
@@ -221,18 +223,28 @@ def description_from_page(page: str) -> str | None:
         text = clean_description(node.get("description"))
         if text:
             return text
+    # lxml (C) instead of html.parser: a whole product page in pure Python
+    # held the GIL for a noticeable time and slowed every request with it.
+    soup = BeautifulSoup(page, "lxml")
+    metas = [soup.find("meta", attrs=a) for a in ({"property": "og:description"}, {"name": "description"})]
+    for tag in soup(_NOISE):
+        tag.decompose()
+    if text := _from_label(soup):
+        return text
+    # Embedded page state also holds the "Çok satanlar" products around this
+    # one (Edessa put 100 Kurşun's text on Haikyu 10): trust it only when it
+    # describes a single product.
+    found = set()
     for match in _JSON_DESCRIPTION.finditer(page):
         try:
             value = json.loads(f'"{match.group(1)}"')
         except ValueError:
             continue
         if text := clean_description(value):
-            return text
-    # lxml (C) instead of html.parser: a whole product page in pure Python
-    # held the GIL for a noticeable time and slowed every request with it.
-    soup = BeautifulSoup(page, "lxml")
-    metas = [soup.find("meta", attrs=a) for a in ({"property": "og:description"}, {"name": "description"})]
-    if text := _from_markup(soup):
+            found.add(text)
+    if len(found) == 1:
+        return found.pop()
+    if text := _from_container(soup):
         return text
     for meta in metas:
         text = clean_description(meta.get("content") if meta else None)
@@ -316,6 +328,11 @@ class DescriptionFetcher:
             )
         ))
 
+    def _other_series_text(self, volume: Volume, text: str) -> bool:
+        return self.session.scalar(select(exists().where(
+            Volume.description == text, Volume.series_id != volume.series_id,
+        ))) or False
+
     def _scraper(self, code: str) -> BaseScraper | None:
         if code not in self._stores:
             return None
@@ -370,7 +387,8 @@ class DescriptionFetcher:
                     report.pages += 1
                     tried.append(listing.product_url)
                     text = self._read(scraper, listing.product_url)
-                    if not text:
+                    if not text or self._other_series_text(volume, text):
+                        # Another series' text: a product beside this one on the page.
                         continue
                     if any(same_text(text, s) for s in siblings) or (
                             volume.description_generic and same_text(text, volume.description)):

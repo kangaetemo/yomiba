@@ -163,3 +163,27 @@ def test_long_text_is_not_cut_at_a_number_and_near_copies_are_one_text():
     assert same_text(TITAN, TITAN[:1200] + " Manga 65.")  # one store cut it short
     assert not same_text(BLURB, OTHER)
     assert not same_text(TITAN[:300], TITAN[:300] + " Bu ciltte Eren ilk kez dev bir Titan'a dönüşür.")
+
+
+def test_page_state_with_other_products_is_not_this_volumes_text():
+    state = json.dumps({"props": {"bestsellers": [{"description": OTHER}], "product": {"description": BLURB}}})
+    page = (f'<html><head><script id="__NEXT_DATA__" type="application/json">{state}</script></head>'
+            "<body><h1>Haikyu 10</h1>SECTION</body></html>")
+    assert description_from_page(page.replace("SECTION", "")) is None
+    section = f"<div><h3>Ürün Açıklaması</h3><p>{BLURB}</p></div>"
+    assert description_from_page(page.replace("SECTION", section)) == BLURB
+
+
+def test_text_of_another_series_is_not_stored(db_session):
+    edessa = Store(code="edessa", name="Edessa")
+    db_session.add(edessa)
+    berserk = seed_catalog_series(db_session, "Berserk", "Athica", volumes=(1,))
+    haikyu = seed_catalog_series(db_session, "Haikyu", "Gerekli Şeyler", volumes=(10,))
+    one, ten = _vol(db_session, berserk, 1), _vol(db_session, haikyu, 10)
+    one.description = BLURB
+    listing = _offer(db_session, ten, edessa, 15000)
+    db_session.commit()
+    scrapers = {"edessa": FakeScraper({listing.product_url: _page(BLURB)})}
+    DescriptionFetcher(db_session, scrapers=scrapers).run(budget=5)
+    db_session.refresh(ten)
+    assert ten.description is None
