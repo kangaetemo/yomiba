@@ -14,6 +14,7 @@ request spacing is shared with imports and price refreshes.
 from __future__ import annotations
 
 import html
+import json
 import logging
 import re
 import unicodedata
@@ -96,8 +97,10 @@ def clean_description(raw: object) -> str | None:
     lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
     lines = [line for line in lines if line and not _SPEC_LINE.match(line)]
     text = "\n".join(_join_wrapped_lines(lines))
+    # Hyphenated line ends rejoined with a space ("du- rum").
+    text = re.sub(r"(?<=[a-zçğıöşü])- (?=[a-zçğıöşü])", "", text)
     # "biridir.Bu deftere", "defter:Death Note": a missing space after a sentence.
-    text = re.sub(rf"([a-zçğıöşü][.!?…:])([{_UPPER}])", r"\1 \2", text)
+    text = re.sub(rf"([a-zçğıöşü)][.!?…:]|[.!?…]\))([{_UPPER}])", r"\1 \2", text)
     if len(text) < MIN_LENGTH or _SHOP_TEXT.search(text):
         return None
     if len(text) > MAX_LENGTH:
@@ -107,15 +110,81 @@ def clean_description(raw: object) -> str | None:
     return text
 
 
+#: A blurb pulled out of the page markup is a block of prose; a block much
+#: longer than a blurb is the page (several tabs, footer) rather than one.
+_MAX_BLOCK = 3000
+#: Tab and section labels the stores put over the blurb (Gerekli Şeyler
+#: "Ürün Bilgisi", Büyülü Dükkan / Edessa "Ürün Açıklaması").
+_LABEL = re.compile(
+    r"^\s*(ürün açıklaması|açıklama|ürün bilgisi|ürün detayı|kitap hakkında|tanıtım|arka kapak( yazısı)?)\s*:?\s*$",
+    re.IGNORECASE,
+)
+_CONTAINER = re.compile(r"descr|aciklama|açıklama|urun-?bilgi|product-?info|product-?detail|detay", re.IGNORECASE)
+#: Embedded page state (Next.js / ikas __NEXT_DATA__, Shopify product JSON).
+_JSON_DESCRIPTION = re.compile(r'"description"\s*:\s*"((?:[^"\\]|\\.){%d,})"' % MIN_LENGTH)
+_NOISE = ("script", "style", "noscript", "svg", "button", "form", "select", "nav", "header", "footer")
+
+
+def _block_text(element) -> str | None:
+    raw = element.get_text("\n")
+    if len(raw) > _MAX_BLOCK * 2:
+        return None
+    # Prose only: titles, prices and spec cells around the blurb are short
+    # lines that do not end a sentence.
+    lines = [line for line in (l.strip() for l in raw.splitlines())
+             if line and not _LABEL.match(line) and (len(line) >= 40 or re.search(r"[.!?…\"”]$", line))]
+    text = clean_description("\n".join(lines))
+    return text if text and len(text) <= _MAX_BLOCK else None
+
+
+def _from_markup(soup) -> str | None:
+    for tag in soup(_NOISE):
+        tag.decompose()
+    # 1. The panel a "Ürün Açıklaması" tab points to, else the label's section.
+    for label in soup.find_all(string=_LABEL):
+        holder = label.parent
+        target = None
+        for attr in ("href", "aria-controls", "data-target", "data-bs-target", "data-tab"):
+            ref = str(holder.get(attr) or "").lstrip("#")
+            if ref and not ref.startswith(("http", "/")):
+                target = soup.find(id=ref)
+                if target is not None:
+                    break
+        if target is not None and (text := _block_text(target)):
+            return text
+        node = holder
+        for _ in range(4):
+            node = node.parent
+            if node is None:
+                break
+            if text := _block_text(node):
+                return text
+    # 2. The most specific "description"-named container that reads as a blurb.
+    named = [el for el in soup.find_all(True) if _CONTAINER.search(" ".join([el.get("id") or "", *el.get("class", [])]))]
+    for element in sorted(named, key=lambda el: len(el.find_all(True))):
+        if text := _block_text(element):
+            return text
+    return None
+
+
 def description_from_page(page: str) -> str | None:
     node = BaseScraper.product_json_ld_node(BaseScraper.extract_json_ld(page))
     if node is not None:
         text = clean_description(node.get("description"))
         if text:
             return text
+    for match in _JSON_DESCRIPTION.finditer(page):
+        try:
+            value = json.loads(f'"{match.group(1)}"')
+        except ValueError:
+            continue
+        if text := clean_description(value):
+            return text
     soup = BeautifulSoup(page, "html.parser")
-    for attrs in ({"property": "og:description"}, {"name": "description"}):
-        meta = soup.find("meta", attrs=attrs)
+    metas = [soup.find("meta", attrs=a) for a in ({"property": "og:description"}, {"name": "description"})]
+    if text := _from_markup(soup):
+        return text
+    for meta in metas:
         text = clean_description(meta.get("content") if meta else None)
         if text:
             return text
