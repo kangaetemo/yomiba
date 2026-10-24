@@ -187,3 +187,11 @@ def test_text_of_another_series_is_not_stored(db_session):
     DescriptionFetcher(db_session, scrapers=scrapers).run(budget=5)
     db_session.refresh(ten)
     assert ten.description is None
+
+
+def test_clean_description_drops_the_dot_of_a_lowercased_capital_i():
+    raw = ("Hi̇nata ve kageyama kulüpteki̇lere üçe üç meydan okur! Tsuki·şi·ma’nin uzun boy "
+           "avantajina karşılık kombi̇nasyon oluşturup hızlı hücumla kazanmaya çalışırlar.")
+    assert clean_description(raw) == (
+        "Hinata ve kageyama kulüptekilere üçe üç meydan okur! Tsukişima’nin uzun boy "
+        "avantajina karşılık kombinasyon oluşturup hızlı hücumla kazanmaya çalışırlar.")

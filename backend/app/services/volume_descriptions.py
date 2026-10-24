@@ -94,6 +94,10 @@ def _join_wrapped_lines(lines: list[str]) -> list[str]:
     return paragraphs
 
 
+#: "i" plus a combining dot above (or a middle dot standing in for it).
+_DOTTED_I = re.compile("i[\u0307\u00b7]")
+
+
 def clean_description(raw: object) -> str | None:
     """Plain text with paragraph breaks, or None when it is not a blurb."""
     if not isinstance(raw, str) or not raw.strip():
@@ -103,6 +107,8 @@ def clean_description(raw: object) -> str | None:
         text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>", "\n", text)
         text = BeautifulSoup(text, "html.parser").get_text()
     text = _fix_letters(html.unescape(text).replace("\xa0", " "))
+    # "Hi̇nata": a lowercased "İ" keeps its dot as a separate mark.
+    text = _DOTTED_I.sub("i", text)
     lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
     lines = [line for line in lines if line and not _SPEC_LINE.match(line) and not _PAGE_LINE.search(line)]
     text = "\n".join(_join_wrapped_lines(lines))
