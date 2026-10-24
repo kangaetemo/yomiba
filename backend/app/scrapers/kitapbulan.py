@@ -1,37 +1,30 @@
-"""Kitapbulan scraper (live-verified against kitapbulan.com, 2026-09-10).
+"""Kitapbulan scraper (live-verified against kitapbulan.com, 2026-10-24).
+
+The store moved from T-Soft (``www.kitapbulan.com/arama?q=``, ``/<slug>``
+product pages) to Shopify on 2026-10-23/24. Every old URL answers 404.
 
 Data sources (all public, no authentication):
 
-1. Search (paginated): ``GET https://www.kitapbulan.com/arama?q=<query>&pg=<n>``
-   Server-side rendered product cards (same T-Soft v5 template as
-   Kitap Sepeti):
-     * ``a.image-wrapper`` -> product URL (href) + cover (``img[data-original]``)
-     * ``a.brand-title``   -> publisher
-     * ``a.product-title`` -> title
-     * ``.current-price span.product-price`` -> current price ("184,00")
-   The pagination parameter is ``pg`` (page size is server-side, ~6 items).
+1. Search (paginated): ``GET https://kitapbulan.com/search?q=<query>&type=product&page=<n>``
+   Shopify search page, 24 products per page. Only the product links are
+   read (``a[href*="/products/<handle>"]``, link text / image alt as the
+   title): the theme's card markup is not part of the contract. The handle
+   ends with the product's ISBN-13 ("berserk-8-9786256187986").
 
-2. Detail page (enrichment, best effort): schema.org JSON-LD ``Product`` with
-   ``sku``/``mpn`` (ISBN) or ``isbn``, ``brand``, ``offers`` (price +
-   availability).
+2. Product JSON (one per relevant result): ``GET /products/<handle>.js``,
+   Shopify's public storefront product JSON: ``title``, ``vendor``
+   (publisher), ``price`` (kuruş), ``available`` (stock), ``tags``
+   ("Türkçe"), ``variants[0].barcode`` (ISBN) and ``featured_image``.
 
-RELEVANCE GUARD (specific to this store): when a query has no real match the
-store pads the results grid with unrelated vitrin products (verified live:
-searching "watchmen" renders "Sam & Watson" etc.). Every query token of
-length >= 3 must appear in the normalized title or the card is dropped.
-This prevents false "in stock" listings for series the store does not carry.
+RELEVANCE GUARD (specific to this store): the search is fuzzy and pads the
+results with unrelated products (verified live: "berserk" lists Chainsaw Man
+and İblis Keser after the 17 Berserk volumes, "1000 sonuç"). Every query
+token of length >= 3 must appear in the title or the product is dropped,
+and paging stops after two pages without a relevant product.
 
-Behaviour mirrors the other store scrapers: bounded pagination, URL
-deduplication, non-manga / collection filtering, bot-wall fail-fast
-(``looks_like_blocked_page`` -> ``ScraperError``, never retried), and
-best-effort JSON-LD enrichment limited by ``settings.max_detail_requests``.
-The search cards carry no stock signal, so ``in_stock`` comes from the
-detail page ``offers.availability`` when fetched (InStock -> True,
-OutOfStock -> False); otherwise it defaults to True (unknown), like the
-other stores.
-
-robots.txt allows the site for regular clients (``User-agent: Python`` is
-disallowed; the scraper uses the configured browser-like app UA).
+Foreign editions (VIZ, Yen Press ...) are recognised by the ISBN in the
+handle and dropped before their product JSON is fetched: the catalog lists
+Turkish editions only, and a long series lists dozens of English volumes.
 
 The scraper never writes to the database.
 """
@@ -40,13 +33,15 @@ from __future__ import annotations
 
 import logging
 import re
-from urllib.parse import quote_plus, urljoin
+from decimal import Decimal
+from urllib.parse import quote_plus, urljoin, urlsplit
 
 from bs4 import BeautifulSoup, SoupStrainer
 
 from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
-from .base import BaseScraper, ScraperError
-from .common import FOREIGN_PUBLISHER_RE, looks_like_blocked_page, parse_tr_price
+from ..normalization.isbn import is_foreign_isbn
+from .base import BaseScraper, ListingCheck, ScraperError
+from .common import looks_like_blocked_page
 from .search_result import SearchResult
 from .relevance import filter_manga_results
 
@@ -57,24 +52,32 @@ NON_MANGA_KEYWORDS: tuple[str, ...] = (
     "poster", "pelus", "mousepad", "kutulu fig",
 )
 
-#: Only the product cards are built into a tree. A search page is a full
-#: storefront page for ~6 cards and a long series pages up to 40 times per
-#: import; parsing whole pages kept the VDS backend near one core
-#: (py-spy, 2026-10-21: ~80% of HTML parsing time was this store).
-_CARDS_ONLY = SoupStrainer("div", class_=re.compile(r"(^|\s)product-item(\s|$)"))
-#: Stop paging after this many pages in a row without a card that passes the
-#: relevance guard: past the series the store only lists unrelated products.
+#: Only the product links are built into a tree (a search page is a full
+#: storefront page; parsing whole pages kept the VDS backend near one core,
+#: py-spy 2026-10-21).
+_PRODUCT_LINKS = SoupStrainer("a", href=re.compile(r"/products/"))
+_HANDLE_RE = re.compile(r"/products/([^/?#]+)")
+_HANDLE_ISBN_RE = re.compile(r"-(97[89]\d{10})$")
+#: Stop paging after this many pages in a row without a product that passes
+#: the relevance guard: past the series the store only lists unrelated ones.
 _IRRELEVANT_PAGE_LIMIT = 2
+
+
+def product_handle(url: str) -> str | None:
+    """Shopify handle of a kitapbulan product URL (None for any other URL,
+    e.g. an old T-Soft ``www.kitapbulan.com/<slug>`` page)."""
+    match = _HANDLE_RE.search(urlsplit(url).path)
+    return match.group(1) if match else None
 
 
 class KitapbulanScraper(BaseScraper):
     store_id = "kitapbulan"
     store_name = "Kitapbulan"
-    base_url = "https://www.kitapbulan.com"
-    #: Product pages carry schema.org offers: listings the search misses are
-    #: re-checked there (BaseScraper.check_listing).
+    base_url = "https://kitapbulan.com"
+    #: The product JSON carries stock and price: listings the search misses
+    #: are re-checked there (BaseScraper.check_listing).
     verifies_unseen_listings = True
-    search_path = "/arama?q={query}"
+    search_path = "/search?q={query}&type=product"
     #: Minimum token length for the relevance guard ("v", "for" etc. are noise).
     _RELEVANCE_TOKEN_MIN_LEN = 3
 
@@ -97,17 +100,19 @@ class KitapbulanScraper(BaseScraper):
         items = self._search_pages(query, query_tokens)
         results: list[SearchResult] = []
         for item in items:
-            result, reason = self._parse_card(item, query_tokens)
+            result, reason = self._item_to_result(item, query_tokens)
             if reason is not None:
-                self.stats["rejected"][reason] = self.stats["rejected"].get(reason, 0) + 1
+                self._reject(reason)
                 continue
             results.append(result)
 
-        results = self._enrich_with_details(results)
         self.stats["accepted"] = len(results)
         results = filter_manga_results(results, stats=self.stats)
         results.sort(key=lambda r: r.relevance, reverse=True)
         return results
+
+    def _reject(self, reason: str) -> None:
+        self.stats["rejected"][reason] = self.stats["rejected"].get(reason, 0) + 1
 
     # -- paginated search ----------------------------------------------------------
     def _search_pages(self, query: str, query_tokens: list[str] | None = None) -> list[dict]:
@@ -115,11 +120,11 @@ class KitapbulanScraper(BaseScraper):
         max_results = max(1, self.settings.kitapbulan_max_search_results)
 
         items: list[dict] = []
-        seen_urls: set[str] = set()
+        seen_handles: set[str] = set()
         irrelevant_pages = 0
 
         for page in range(1, max_pages + 1):
-            url = f"{self.base_url}{self.search_path.format(query=quote_plus(query))}&pg={page}"
+            url = f"{self.base_url}{self.search_path.format(query=quote_plus(query))}&page={page}"
             response = self.get(url)
             if looks_like_blocked_page(response.status_code, response.text):
                 raise ScraperError(
@@ -139,23 +144,19 @@ class KitapbulanScraper(BaseScraper):
                 break
             self.stats["pages_fetched"] += 1
 
-            soup = BeautifulSoup(response.text, "lxml", parse_only=_CARDS_ONLY)
-            cards = soup.select("div.product-item")
+            cards = self._page_items(response.text)
             if not cards:
                 self.stats["stop_reason"] = "empty_page"
                 break
 
             new_on_page = 0
             relevant_on_page = 0
-            for card in cards:
+            for item in cards:
                 self.stats["raw_products"] += 1
-                item = self._card_to_item(card)
-                if item is None:
-                    continue
-                if item["url"] in seen_urls:
+                if item["handle"] in seen_handles:
                     self.stats["duplicates_skipped"] += 1
                     continue
-                seen_urls.add(item["url"])
+                seen_handles.add(item["handle"])
                 items.append(item)
                 new_on_page += 1
                 if self._is_relevant(item["title"], query_tokens):
@@ -179,44 +180,36 @@ class KitapbulanScraper(BaseScraper):
         return items
 
     @staticmethod
+    def _page_items(html: str) -> list[dict]:
+        """Products of one search page, in page order: one item per handle
+        (a card links the cover and the title to the same product). The
+        title is the longest link text / image alt; without one, the handle
+        words stand in (the product JSON has the real title)."""
+        soup = BeautifulSoup(html, "lxml", parse_only=_PRODUCT_LINKS)
+        by_handle: dict[str, dict] = {}
+        for anchor in soup.find_all("a"):
+            handle = product_handle(anchor.get("href") or "")
+            if not handle:
+                continue
+            text = re.sub(r"\s+", " ", anchor.get_text(" ", strip=True))
+            if not text:
+                img = anchor.find("img")
+                text = re.sub(r"\s+", " ", (img.get("alt") or "") if img else "").strip()
+            item = by_handle.setdefault(handle, {"handle": handle, "title": ""})
+            if len(text) > len(item["title"]):
+                item["title"] = text
+        for item in by_handle.values():
+            if not item["title"]:
+                item["title"] = _HANDLE_ISBN_RE.sub("", item["handle"]).replace("-", " ")
+        return list(by_handle.values())
+
+    @staticmethod
     def _is_relevant(title: str, query_tokens: list[str] | None) -> bool:
-        """The relevance guard of ``_parse_card``: every query token in the title."""
+        """The relevance guard: every significant query token in the title."""
         if not query_tokens:
             return True
         normalized_title = normalize_text(title)
         return all(token in normalized_title for token in query_tokens)
-
-    @staticmethod
-    def _card_to_item(card) -> dict | None:
-        title_anchor = card.select_one("a.product-title")
-        if title_anchor is None:
-            return None
-        title = re.sub(r"\s+", " ", title_anchor.get_text(" ", strip=True))
-        href = title_anchor.get("href")
-        if not title or not href:
-            return None
-        url = href if href.startswith("http") else urljoin(KitapbulanScraper.base_url + "/", href)
-
-        publisher_el = card.select_one("a.brand-title")
-        publisher = re.sub(r"\s+", " ", publisher_el.get_text(" ", strip=True)) if publisher_el else ""
-
-        price_el = card.select_one(".current-price .product-price") or card.select_one(
-            "span.product-price"
-        )
-        price = parse_tr_price(price_el.get_text(" ", strip=True)) if price_el else None
-
-        img = card.select_one("img")
-        image = None
-        if img is not None:
-            image = img.get("data-original") or img.get("data-src") or img.get("src")
-
-        return {
-            "title": title,
-            "url": url,
-            "publisher": publisher or None,
-            "price": price,
-            "image": image,
-        }
 
     # -- parsing ---------------------------------------------------------------------
     @staticmethod
@@ -224,109 +217,126 @@ class KitapbulanScraper(BaseScraper):
         normalized = normalize_text(title)
         return any(keyword in normalized for keyword in NON_MANGA_KEYWORDS)
 
-    def _parse_card(
-        self, item: dict, query_tokens: list[str]
-    ) -> tuple[SearchResult | None, str | None]:
-        title = item["title"]
+    def _title_reason(self, title: str, query_tokens: list[str]) -> str | None:
         if self._is_non_manga(title):
-            logger.debug("kitapbulan: skipping non-manga item: %r", title)
-            return None, "non_manga_keyword"
-
-        parsed = parse_volume_title(title)
+            return "non_manga_keyword"
         # An omnibus span ("Cilt 5 - 6") may be one 2-in-1 book: the importer
         # decides against the catalog, only real boxes are dropped here.
-        if parsed.is_collection and parse_volume_range(title) is None:
-            logger.debug("kitapbulan: skipping collection: %r", title)
-            return None, "collection"
-
-        # Vitrin fallback guard: the store pads empty results with unrelated
-        # products; require every significant query token in the title.
+        if parse_volume_title(title).is_collection and parse_volume_range(title) is None:
+            return "collection"
         if not self._is_relevant(title, query_tokens):
-            logger.debug("kitapbulan: skipping irrelevant card: %r", title)
-            return None, "irrelevant"
+            return "irrelevant"
+        return None
 
-        return (
-            SearchResult(
-                store_id=self.store_id,
-                store_name=self.store_name,
-                title=title,
-                product_url=item["url"],
-                series_title=parsed.base_title or None,
-                volume_number=parsed.volume_number,
-                publisher=item.get("publisher"),
-                price=item.get("price"),
-                currency="TRY",
-                in_stock=True,
-                image_url=item.get("image"),
-                relevance=1.0,
-            ),
-            None,
+    def _item_to_result(
+        self, item: dict, query_tokens: list[str]
+    ) -> tuple[SearchResult | None, str | None]:
+        # Cheap checks on the search page first: every product JSON is one
+        # request, and the fuzzy search lists many unrelated products.
+        handle_isbn = _HANDLE_ISBN_RE.search(item["handle"])
+        if handle_isbn and is_foreign_isbn(handle_isbn.group(1)):
+            return None, "foreign_edition"
+        reason = self._title_reason(item["title"], query_tokens)
+        if reason is not None:
+            logger.debug("kitapbulan: skipping %s card: %r", reason, item["title"])
+            return None, reason
+
+        try:
+            product = self._product_json(item["handle"])
+        except ScraperError:
+            logger.warning("kitapbulan: product JSON blocked/failed for %s", item["handle"])
+            return None, "detail_failed"
+        if product is None:
+            return None, "detail_failed"
+
+        title = re.sub(r"\s+", " ", str(product.get("title") or "")).strip() or item["title"]
+        reason = self._title_reason(title, query_tokens)
+        if reason is not None:
+            return None, reason
+        return self._product_to_result(product, title, item["handle"]), None
+
+    def _product_to_result(self, product: dict, title: str, handle: str) -> SearchResult:
+        variants = product.get("variants") or [{}]
+        variant = variants[0] if isinstance(variants[0], dict) else {}
+        isbn = normalize_isbn(variant.get("barcode") or variant.get("sku"))
+        if isbn is None:
+            match = _HANDLE_ISBN_RE.search(handle)
+            isbn = match.group(1) if match else None
+        image = product.get("featured_image")
+        if isinstance(image, str) and image.startswith("//"):
+            image = "https:" + image
+        parsed = parse_volume_title(title)
+        return SearchResult(
+            store_id=self.store_id,
+            store_name=self.store_name,
+            title=title,
+            product_url=f"{self.base_url}/products/{handle}",
+            series_title=parsed.base_title or None,
+            volume_number=parsed.volume_number,
+            isbn=isbn,
+            publisher=(product.get("vendor") or None),
+            language=self._language(product.get("tags")),
+            price=self._price(variant.get("price", product.get("price"))),
+            currency="TRY",
+            in_stock=bool(product.get("available")),
+            image_url=image or None,
+            relevance=1.0,
         )
 
-    # -- detail-page enrichment (isbn / publisher / language / stock) ----------------
-    def _enrich_with_details(self, results: list[SearchResult]) -> list[SearchResult]:
-        # Cards carry no stock signal and an un-enriched result defaults to
-        # "in stock", so every result needs its detail page (up to the
-        # search's own result cap), not just the first few.
-        limit = max(self.settings.max_detail_requests, self.settings.kitapbulan_max_search_results)
-        for index, result in enumerate(results[:limit]):
-            # An English edition is never imported (the catalog is Turkish
-            # only): its detail page would be a wasted request — a long
-            # series lists a hundred of them ahead of the Turkish volumes.
-            if FOREIGN_PUBLISHER_RE.search(result.publisher or ""):
-                continue
-            try:
-                results[index] = self._enrich_one(result)
-            except ScraperError:
-                logger.warning(
-                    "kitapbulan: detail enrichment blocked/failed for %s (keeping search data)",
-                    result.product_url,
-                )
-            except Exception:
-                logger.exception("kitapbulan: unexpected enrichment error for %s", result.product_url)
-        return results
+    # -- product JSON ----------------------------------------------------------------
+    def _product_json(self, handle: str) -> dict | None:
+        """``/products/<handle>.js``; None when the product is gone (4xx).
+        Raises ScraperError on a bot wall."""
+        response = self.get(urljoin(self.base_url + "/", f"products/{handle}.js"))
+        if looks_like_blocked_page(response.status_code, response.text):
+            raise ScraperError(f"kitapbulan: product JSON blocked (HTTP {response.status_code}) for {handle}")
+        if response.status_code >= 400:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        return data if isinstance(data, dict) else None
 
-    def _enrich_one(self, result: SearchResult) -> SearchResult:
-        response = self.get(result.product_url)
-        if response.status_code >= 400 or looks_like_blocked_page(
-            response.status_code, response.text
-        ):
-            raise ScraperError(
-                f"kitapbulan: detail page HTTP {response.status_code} for {result.product_url}"
-            )
-
-        node = self.product_json_ld_node(self.extract_json_ld(response.text))
-        if node is None:
-            return result
-
-        updates: dict = {}
-        raw_isbn = node.get("isbn") or node.get("sku") or node.get("mpn")
-        if raw_isbn and not result.isbn:
-            isbn = normalize_isbn(raw_isbn)
-            if isbn:
-                updates["isbn"] = isbn
-        brand = node.get("brand")
-        if isinstance(brand, dict) and brand.get("name") and not result.publisher:
-            updates["publisher"] = brand.get("name")
-        if node.get("inLanguage") and not result.language:
-            updates["language"] = node.get("inLanguage")
-        in_stock = self._availability(node.get("offers"))
-        if in_stock is not None:
-            updates["in_stock"] = in_stock
-        if not updates:
-            return result
-        return result.model_copy(update=updates)
+    def check_listing(self, url: str) -> ListingCheck | None:
+        """Stock and price of one listing from its product JSON. None when
+        unknown (an old pre-Shopify URL, HTTP error, bot wall)."""
+        handle = product_handle(url)
+        if handle is None:
+            return None
+        try:
+            product = self._product_json(handle)
+        except ScraperError:
+            return None
+        if product is None or "available" not in product:
+            return None
+        variants = product.get("variants") or [{}]
+        variant = variants[0] if isinstance(variants[0], dict) else {}
+        return ListingCheck(
+            in_stock=bool(product.get("available")),
+            price=self._price(variant.get("price", product.get("price"))),
+        )
 
     @staticmethod
-    def _availability(offers) -> bool | None:
-        """Map schema.org offers.availability to a stock flag (None = unknown)."""
-        if isinstance(offers, list):
-            offers = offers[0] if offers else None
-        if not isinstance(offers, dict):
+    def _price(kurus) -> Decimal | None:
+        """Shopify prices are integers in kuruş (22120 -> 221.20)."""
+        if isinstance(kurus, bool) or not isinstance(kurus, (int, str)):
             return None
-        value = str(offers.get("availability") or "")
-        if "OutOfStock" in value or "Discontinued" in value:
-            return False
-        if "InStock" in value or "LimitedAvailability" in value or "PreOrder" in value:
-            return True
+        try:
+            value = int(kurus)
+        except ValueError:
+            return None
+        return (Decimal(value) / 100).quantize(Decimal("0.01")) if value >= 0 else None
+
+    @staticmethod
+    def _language(tags) -> str | None:
+        """The store tags each book with its language ("Türkçe", "İngilizce")."""
+        if not isinstance(tags, list):
+            return None
+        for tag in tags:
+            key = normalize_text(str(tag))
+            if key == "turkce":
+                return "tr"
+            if key in ("ingilizce", "english"):
+                return "en"
         return None
