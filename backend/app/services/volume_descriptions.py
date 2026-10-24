@@ -131,6 +131,8 @@ class DescriptionReport:
     by_store: Counter = field(default_factory=Counter)
     #: Dry run only: (volume id, store code, text) of what would be stored.
     samples: list[tuple[int, str, str]] = field(default_factory=list)
+    #: (volume id, product URLs read) of volumes no page described.
+    misses: list[tuple[int, list[str]]] = field(default_factory=list)
 
     def __str__(self) -> str:
         return (f"volumes={self.volumes} pages={self.pages} stored={self.stored} "
@@ -198,11 +200,13 @@ class DescriptionFetcher:
                     (l for l in volume.listings if l.product_url and l.store and l.store.code in self._stores),
                     key=lambda l: (not l.in_stock, l.store.code),
                 )
+                tried: list[str] = []
                 for listing in listings[:MAX_PAGES_PER_VOLUME]:
                     scraper = self._scraper(listing.store.code)
                     if scraper is None or report.pages >= budget:
                         continue
                     report.pages += 1
+                    tried.append(listing.product_url)
                     text = self._read(scraper, listing.product_url)
                     if not text:
                         continue
@@ -213,6 +217,8 @@ class DescriptionFetcher:
                     else:
                         volume.description, volume.description_source = text, listing.store.code
                     break
+                else:
+                    report.misses.append((volume.id, tried))
                 if not self.dry_run:
                     volume.description_checked_at = utcnow()
                     self.session.commit()

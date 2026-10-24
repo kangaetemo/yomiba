@@ -65,6 +65,7 @@ def test_fetcher_fills_first_volumes_first_and_series_shows_intro(client, db_ses
 
     dry = DescriptionFetcher(db_session, scrapers=scrapers, dry_run=True).run(budget=1)
     assert dry.pages == 1 and dry.stored == 0 and one.description is None
+    assert dry.misses == [(one.id, [empty.product_url])]
 
     report = DescriptionFetcher(db_session, scrapers=scrapers).run(budget=10)
     assert report.stored == 2 and report.pages == 3
