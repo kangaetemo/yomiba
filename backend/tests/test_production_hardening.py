@@ -197,7 +197,7 @@ def test_real_startup_migrates_only_temporary_database(monkeypatch, tmp_path):
             with engine.connect() as connection:
                 assert connection.exec_driver_sql("PRAGMA journal_mode").scalar() == "wal"
                 assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
-                assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0030_description_generic"
+                assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0031_reset_edessa_descriptions"
     finally:
         engine.dispose()
 
