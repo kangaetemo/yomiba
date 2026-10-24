@@ -65,6 +65,13 @@ _SPACING_MARKS = {
 _UPPER = "A-ZÇĞİÖŞÜ"
 
 
+#: Store page widgets caught with the blurb ("Bu ürüne ilk yorumu siz yapın!").
+_PAGE_LINE = re.compile(
+    r"ilk yorumu|yorum yap|yorum yaz|değerlendirme yap|henüz yorum|sepete ekle|favorilere ekle|stokta (yok|var)",
+    re.IGNORECASE,
+)
+
+
 def _fix_letters(text: str) -> str:
     text = unicodedata.normalize("NFC", text)
     for mark, letters in _SPACING_MARKS.items():
@@ -95,7 +102,7 @@ def clean_description(raw: object) -> str | None:
         text = BeautifulSoup(text, "html.parser").get_text()
     text = _fix_letters(html.unescape(text).replace("\xa0", " "))
     lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
-    lines = [line for line in lines if line and not _SPEC_LINE.match(line)]
+    lines = [line for line in lines if line and not _SPEC_LINE.match(line) and not _PAGE_LINE.search(line)]
     text = "\n".join(_join_wrapped_lines(lines))
     # Hyphenated line ends rejoined with a space ("du- rum").
     text = re.sub(r"(?<=[a-zçğıöşü])- (?=[a-zçğıöşü])", "", text)

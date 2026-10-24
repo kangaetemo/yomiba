@@ -109,7 +109,7 @@ def test_description_from_tab_panel_label_section_and_page_state():
             "</body></html>")
     assert description_from_page(tabs) == MONSTER_CLEAN
     section = (f"<html><body><div class='urun'><div><h3>ÜRÜN AÇIKLAMASI</h3></div><div><h4>Açıklama</h4>"
-               f"<p>{MONSTER}</p></div></div>{PAYMENT}</body></html>")
+               f"<p>{MONSTER}</p><p>Bu ürüne ilk yorumu siz yapın!</p></div></div>{PAYMENT}</body></html>")
     assert description_from_page(section) == MONSTER_CLEAN
     state = json.dumps({"props": {"product": {"description": f"<p>{MONSTER}</p>"}}})
     ikas = (f'<html><head>{_page(None)[12:-14]}<script id="__NEXT_DATA__" type="application/json">{state}</script>'
