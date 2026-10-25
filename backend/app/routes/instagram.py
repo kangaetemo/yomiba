@@ -3,7 +3,7 @@
 * GET /admin/instagram/releases: the weekly carousel (a cover slide, a
   slide per featured volume, the full list and a closing slide; no prices,
   so the post does not read as an ad). Returns the volumes released in the
-  window (same rows as /releases) with the series' credits and status and
+  window (same rows as /releases) with the series' author and
   its reader interest, so the page can pick the volumes to feature. Offers
   are included too (cheapest first) for the admin's picker.
 * GET /admin/instagram/launch: the "site açıldı" announcement carousel.
@@ -80,12 +80,11 @@ def instagram_releases(
         .order_by(Volume.release_date, Volume.id)
     ).all()
     volumes = _with_offers(session, _serialize_releases(session, rows))
-    series = {sid: (author, jp, tr) for sid, author, jp, tr in session.execute(
-        select(Series.id, Series.author, Series.jp_status, Series.tr_status)
-        .where(Series.id.in_({v["series_id"] for v in volumes}))
-    )}
+    authors = dict(session.execute(
+        select(Series.id, Series.author).where(Series.id.in_({v["series_id"] for v in volumes}))
+    ).all())
     for v in volumes:
-        v["author"], v["jp_status"], v["tr_status"] = series.get(v["series_id"], (None, None, None))
+        v["author"] = authors.get(v["series_id"])
     return {"start": start.isoformat(), "end": end.isoformat(),
             "generated_at": utcnow().isoformat(), "volumes": volumes}
 

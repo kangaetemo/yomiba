@@ -212,17 +212,13 @@ export function CompareSlide({
   );
 }
 
-const STATUS: Record<string, string> = { completed: "Tamamlandı", ongoing: "Devam ediyor" };
 const MONTH = new Intl.DateTimeFormat("tr-TR", { month: "long", timeZone: "UTC" });
 const WEEKDAY_ONLY = new Intl.DateTimeFormat("tr-TR", { weekday: "long", timeZone: "UTC" });
 
-/** One featured volume of the week: big cover, release day, credits and
- * series status. No prices: the weekly post should not read as an ad. */
+/** One featured volume of the week: big cover, release day and credits.
+ * No prices: the weekly post should not read as an ad. */
 export function VolumeSlide({ v, others, page }: { v: InstagramVolume; others: InstagramVolume[]; page: string }) {
   const date = isoDate(v.release_date);
-  const statuses = [["JAPONYA", v.jp_status], ["TÜRKİYE", v.tr_status]]
-    .map(([where, key]) => [where, key ? STATUS[key] : undefined] as const)
-    .filter((row): row is readonly [string, string] => !!row[1]);
   const title = bookTitle(v);
   return (
     <Frame background={C.paper} color={C.ink}>
@@ -240,16 +236,6 @@ export function VolumeSlide({ v, others, page }: { v: InstagramVolume; others: I
               <div style={{ fontFamily: DISPLAY, fontSize: 110, fontWeight: 900, lineHeight: 1 }}>{date.getUTCDate()}</div>
               <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 2 }}>{MONTH.format(date).toLocaleUpperCase("tr-TR")}</div>
             </div>
-            {statuses.length ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {statuses.map(([where, label]) => (
-                  <div key={where} style={{ display: "flex", flexDirection: "column", gap: 2, background: C.surface, border: `2px solid ${C.line}`, borderRadius: 14, padding: "14px 20px" }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2, color: C.faint }}>{where}</div>
-                    <div style={{ fontSize: 28, fontWeight: 800 }}>{label}</div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
