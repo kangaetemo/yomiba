@@ -25,6 +25,7 @@ def test_releases_with_offers_per_store(client, db_session):
     bkm, ks, dr = Store(code="bkm", name="BKM Kitap"), Store(code="ks", name="Kitapsec"), Store(code="dr", name="D&R")
     db_session.add_all([bkm, ks, dr])
     berserk = seed_catalog_series(db_session, "Berserk", "Athica", volumes=(1, 2))
+    berserk.author = "Kentaro Miura"
     zom = seed_catalog_series(db_session, "Zom 100", "Marmara Çizgi", volumes=(1,))
     b1, b2, z1 = _vol(db_session, berserk, 1), _vol(db_session, berserk, 2), _vol(db_session, zom, 1)
     b1.release_date = date(2026, 10, 20)
@@ -47,6 +48,8 @@ def test_releases_with_offers_per_store(client, db_session):
     ]
     assert berserk1["lowest_price"] == 145.0 and berserk1["in_stock_offers"] == 2
     assert berserk1["publisher"] == "Athica" and berserk1["release_date"] == "2026-10-20"
+    assert berserk1["author"] == "Kentaro Miura" and "jp_status" not in berserk1
+    assert zom1["author"] is None
     assert zom1["offers"] == [] and zom1["lowest_price"] is None
     assert zom1["interest"] > berserk1["interest"] == 0
 
@@ -56,3 +59,28 @@ def test_window_is_limited_and_admin_only(client, db_session):
     assert client.get("/admin/instagram/releases?start=2026-10-01&end=2026-11-15").status_code == 422
     client.cookies.clear()
     assert client.get("/admin/instagram/releases?start=2026-10-20&end=2026-10-26").status_code == 401
+
+
+def test_launch_stats_and_price_spread_examples(client, db_session):
+    stores = [Store(code=c, name=n) for c, n in (("bkm", "BKM Kitap"), ("ks", "Kitapsec"), ("dr", "D&R"))]
+    db_session.add_all(stores)
+    bkm, ks, dr = stores
+    berserk = seed_catalog_series(db_session, "Berserk", "Athica", volumes=(1, 2))
+    zom = seed_catalog_series(db_session, "Zom 100", "Marmara Çizgi", volumes=(1,))
+    b1, b2, z1 = _vol(db_session, berserk, 1), _vol(db_session, berserk, 2), _vol(db_session, zom, 1)
+    for store, price in ((bkm, 20000), (ks, 15000), (dr, 17000)):
+        _offer(db_session, b1, store, price)
+    for store, price in ((bkm, 12000), (ks, 11000), (dr, 11500)):
+        _offer(db_session, z1, store, price)
+    _offer(db_session, b2, bkm, 30000)
+    _offer(db_session, b2, ks, 10000)  # two offers only: not an example
+    db_session.commit()
+
+    body = client.get("/admin/instagram/launch").json()
+
+    assert body["stats"] == {"series": 2, "volumes": 3, "publishers": 2, "stores": 3, "offers": 8}
+    assert [(v["series_title"], v["number"]) for v in body["examples"]] == [("Berserk", 1), ("Zom 100", 1)]
+    assert [o["price"] for o in body["examples"][0]["offers"]] == [150.0, 170.0, 200.0]
+    assert body["examples"][0]["release_date"] is None
+    client.cookies.clear()
+    assert client.get("/admin/instagram/launch").status_code == 401

@@ -271,7 +271,7 @@ def _serialize_releases(session: Session, rows) -> list[dict]:
             "covers_from": v.covers_from,
             "covers_to": v.covers_to,
             "cover_url": cover_url(v.cover_key) or fallback_covers.get(v.series_id),
-            "release_date": v.release_date.isoformat(),
+            "release_date": v.release_date.isoformat() if v.release_date else None,
             "lowest_price": from_cents(min_price),
             "in_stock_offers": stores or 0,
         }
