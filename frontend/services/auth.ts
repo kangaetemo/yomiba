@@ -82,6 +82,12 @@ export const currentUserOrNull = cache(async (): Promise<CurrentUser | null> => 
 });
 
 export async function currentUser(): Promise<CurrentUser | null> {
+  if (typeof window === "undefined") {
+    // Without the session cookie the backend can only answer 401: skip the
+    // round trip for every anonymous visitor (and search engine crawler).
+    const { cookies } = await import("next/headers");
+    if (!(await cookies()).has("yomiba_session")) return null;
+  }
   try {
     return await getMe();
   } catch (error) {

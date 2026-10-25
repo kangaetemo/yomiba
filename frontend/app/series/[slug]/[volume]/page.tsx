@@ -38,7 +38,7 @@ export async function generateMetadata({
     const { series, volumeId } = await resolveVolume(await params);
     const detail = await getVolume(volumeId);
     const name = volumeName(detail, oneShotVolumeNumber(series) !== null);
-    const title = pageTitle([`${name} fiyatları - ${detail.series.publisher}`, `${name} fiyatları`]);
+    const title = pageTitle([`${name} fiyatları - ${detail.series.publisher}`, `${name} fiyatları`, name]);
     const description = volumeDescription(detail, name);
     const url = volumePath(detail.series.slug, detail.number);
     return {
@@ -59,9 +59,14 @@ function volumeName(detail: VolumeDetail, oneShot: boolean): string {
 }
 
 /** Search snippet: the lowest price today and how many stores sell it. */
-function volumeDescription(detail: VolumeDetail, name: string): string {
+function volumeDescription(detail: VolumeDetail, fullName: string): string {
   const best = detail.unverified ? null : cheapest(detail.stores);
   const inStock = detail.stores.filter((s) => s.stock && !s.stale && s.price !== null).length;
+  // A very long series title would fill the snippet before the volume number,
+  // leaving every volume of the series with the same description.
+  const name = fullName.length > 90 && fullName !== detail.series.title
+    ? `${detail.series.title.slice(0, 70).replace(/\s+\S*$/, "")}… ${searchVolumeLabel(detail.number)}`
+    : fullName;
   return metaDescription([
     best
       ? `${name} (${detail.series.publisher}) ${inStock} mağazada satışta, en ucuz fiyat ${formatTL(best.price)}.`
@@ -161,6 +166,11 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 export default async function VolumePage({ params }: VolumePageProps) {
   const { series: seriesDetail, volumeId: numId } = await resolveVolume(await params);
 
+  // Started together with the volume: neither depends on it, and a page
+  // otherwise waits for each backend round trip in turn.
+  // Secondary views degrade to empty states; they never break the page.
+  const historyRequest = getPriceHistory(numId).catch((): PriceHistory | null => null);
+  const userRequest = currentUserOrNull();
   let detail;
   try {
     detail = await getVolume(numId);
@@ -169,11 +179,10 @@ export default async function VolumePage({ params }: VolumePageProps) {
     throw e;
   }
 
-  const user = await currentUserOrNull();
-  // Secondary views degrade to empty states; they never break the page.
+  const user = await userRequest;
   const series: SeriesDetail = seriesDetail;
   const [history, wishlist, alertState] = await Promise.all([
-    getPriceHistory(numId).catch((): PriceHistory | null => null),
+    historyRequest,
     user ? getWishlist(numId).catch((): WishlistState | null => null) : null,
     user ? getPriceAlert(numId).catch((): { alert: PriceAlert | null } | null => null) : null,
   ]);
