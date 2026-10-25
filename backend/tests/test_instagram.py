@@ -25,6 +25,7 @@ def test_releases_with_offers_per_store(client, db_session):
     bkm, ks, dr = Store(code="bkm", name="BKM Kitap"), Store(code="ks", name="Kitapsec"), Store(code="dr", name="D&R")
     db_session.add_all([bkm, ks, dr])
     berserk = seed_catalog_series(db_session, "Berserk", "Athica", volumes=(1, 2))
+    berserk.author, berserk.jp_status, berserk.tr_status = "Kentaro Miura", "completed", "ongoing"
     zom = seed_catalog_series(db_session, "Zom 100", "Marmara Çizgi", volumes=(1,))
     b1, b2, z1 = _vol(db_session, berserk, 1), _vol(db_session, berserk, 2), _vol(db_session, zom, 1)
     b1.release_date = date(2026, 10, 20)
@@ -47,6 +48,8 @@ def test_releases_with_offers_per_store(client, db_session):
     ]
     assert berserk1["lowest_price"] == 145.0 and berserk1["in_stock_offers"] == 2
     assert berserk1["publisher"] == "Athica" and berserk1["release_date"] == "2026-10-20"
+    assert (berserk1["author"], berserk1["jp_status"], berserk1["tr_status"]) == ("Kentaro Miura", "completed", "ongoing")
+    assert zom1["author"] is None
     assert zom1["offers"] == [] and zom1["lowest_price"] is None
     assert zom1["interest"] > berserk1["interest"] == 0
 

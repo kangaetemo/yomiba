@@ -1,10 +1,11 @@
 """Data for the Instagram post drafts on the admin page (/admin/instagram).
 
 * GET /admin/instagram/releases: the weekly carousel (a cover slide, a
-  store-by-store price comparison for a few featured volumes, the full list
-  and a closing slide). Returns the volumes released in the window (same
-  rows as /releases) with every current in-stock offer, cheapest first, and
-  the series' reader interest so the page can pick the volumes to feature.
+  slide per featured volume, the full list and a closing slide; no prices,
+  so the post does not read as an ad). Returns the volumes released in the
+  window (same rows as /releases) with the series' credits and status and
+  its reader interest, so the page can pick the volumes to feature. Offers
+  are included too (cheapest first) for the admin's picker.
 * GET /admin/instagram/launch: the "site açıldı" announcement carousel.
   Catalog counts for the cover, and the volumes whose price differs most
   between stores (three or more fresh in-stock offers, not all the same
@@ -79,6 +80,12 @@ def instagram_releases(
         .order_by(Volume.release_date, Volume.id)
     ).all()
     volumes = _with_offers(session, _serialize_releases(session, rows))
+    series = {sid: (author, jp, tr) for sid, author, jp, tr in session.execute(
+        select(Series.id, Series.author, Series.jp_status, Series.tr_status)
+        .where(Series.id.in_({v["series_id"] for v in volumes}))
+    )}
+    for v in volumes:
+        v["author"], v["jp_status"], v["tr_status"] = series.get(v["series_id"], (None, None, None))
     return {"start": start.isoformat(), "end": end.isoformat(),
             "generated_at": utcnow().isoformat(), "volumes": volumes}
 

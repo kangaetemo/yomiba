@@ -19,6 +19,10 @@ export type InstagramVolume = {
   interest: number;
   /** Current in-stock offers, cheapest first, one per store. */
   offers: InstagramOffer[];
+  /** Series credits and status ("completed", "ongoing", ...); weekly post only. */
+  author?: string | null;
+  jp_status?: string | null;
+  tr_status?: string | null;
 };
 
 export type InstagramReleases = { start: string; end: string; generated_at: string; volumes: InstagramVolume[] };

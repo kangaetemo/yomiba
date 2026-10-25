@@ -134,7 +134,7 @@ export function CoverSlide({ fan, total, weekLabel, page }: {
         );
       })}
       <div style={{ position: "absolute", right: 72, bottom: 64, zIndex: 10, display: "flex", alignItems: "center", gap: 14, background: C.paper, color: C.ink, borderRadius: 999, padding: "16px 28px", fontSize: 26, fontWeight: 800 }}>
-        Kaydır, fiyatları gör {SWIPE}
+        Kaydır, hepsini gör {SWIPE}
       </div>
     </Frame>
   );
@@ -212,6 +212,64 @@ export function CompareSlide({
   );
 }
 
+const STATUS: Record<string, string> = { completed: "Tamamlandı", ongoing: "Devam ediyor" };
+const MONTH = new Intl.DateTimeFormat("tr-TR", { month: "long", timeZone: "UTC" });
+const WEEKDAY_ONLY = new Intl.DateTimeFormat("tr-TR", { weekday: "long", timeZone: "UTC" });
+
+/** One featured volume of the week: big cover, release day, credits and
+ * series status. No prices: the weekly post should not read as an ad. */
+export function VolumeSlide({ v, others, page }: { v: InstagramVolume; others: InstagramVolume[]; page: string }) {
+  const date = isoDate(v.release_date);
+  const statuses = [["JAPONYA", v.jp_status], ["TÜRKİYE", v.tr_status]]
+    .map(([where, key]) => [where, key ? STATUS[key] : undefined] as const)
+    .filter((row): row is readonly [string, string] => !!row[1]);
+  const title = bookTitle(v);
+  return (
+    <Frame background={C.paper} color={C.ink}>
+      <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 40 }}>
+        <Brand page={page} />
+        <div style={{ display: "flex", gap: 56, alignItems: "center", height: 690 }}>
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <div aria-hidden style={{ position: "absolute", left: -40, top: -36, width: 300, height: 300, backgroundImage: "radial-gradient(circle, rgba(31,27,22,0.22) 3px, transparent 3.5px)", backgroundSize: "18px 18px" }} />
+            <CoverArt v={v} style={{ position: "relative", width: 460, height: 690, transform: "rotate(-3deg)", boxShadow: "0 24px 48px rgba(31,27,22,0.32)" }} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 36, minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>BU HAFTA RAFLARDA</div>
+            <div style={{ width: 250, height: 250, borderRadius: "50%", background: C.accent, color: C.surface, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", transform: "rotate(-8deg)", boxShadow: `0 0 0 8px ${C.paper}, 0 0 0 12px ${C.accent}` }}>
+              <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 2 }}>{WEEKDAY_ONLY.format(date).toLocaleUpperCase("tr-TR")}</div>
+              <div style={{ fontFamily: DISPLAY, fontSize: 110, fontWeight: 900, lineHeight: 1 }}>{date.getUTCDate()}</div>
+              <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 2 }}>{MONTH.format(date).toLocaleUpperCase("tr-TR")}</div>
+            </div>
+            {statuses.length ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {statuses.map(([where, label]) => (
+                  <div key={where} style={{ display: "flex", flexDirection: "column", gap: 2, background: C.surface, border: `2px solid ${C.line}`, borderRadius: 14, padding: "14px 20px" }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2, color: C.faint }}>{where}</div>
+                    <div style={{ fontSize: 28, fontWeight: 800 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: title.length > 18 ? 76 : 96, lineHeight: 0.95, fontWeight: 900, letterSpacing: -2 }}>{title}</h2>
+          <div style={{ fontSize: 30, color: C.muted }}>{v.author ? `${v.author} · ${v.publisher}` : v.publisher}</div>
+        </div>
+        <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, borderTop: `2px solid ${C.line}`, paddingTop: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {others.slice(0, 7).map((o) => (
+              <CoverArt key={o.id} v={o} compact style={{ width: 52, height: 78, borderRadius: 4, boxShadow: "0 3px 8px rgba(31,27,22,0.2)" }} />
+            ))}
+            {others.length ? <div style={{ fontSize: 24, fontWeight: 700, color: C.ink2, marginLeft: 8 }}>+{others.length} cilt daha</div> : null}
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>yomiba.net/takvim</div>
+        </div>
+      </div>
+    </Frame>
+  );
+}
+
 export const LIST_MAX = 8;
 
 export function ListSlide({ volumes, total, weekLabel, page }: {
@@ -236,21 +294,14 @@ export function ListSlide({ volumes, total, weekLabel, page }: {
               <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
                 <div style={{ fontSize: 18, fontWeight: 700, color: C.faint }}>{weekdayLabel(v.release_date)}</div>
                 <div style={{ fontFamily: DISPLAY, fontSize: 28, fontWeight: 700, lineHeight: 1.05 }}>{bookTitle(v)}</div>
-                {v.offers.length ? (
-                  <>
-                    <div style={{ fontSize: 20, color: C.muted }}>en ucuz <span style={{ fontSize: 26, fontWeight: 800, color: C.ink }}>{formatPrice(v.offers[0].price)}</span></div>
-                    <div style={{ fontSize: 18, color: C.muted }}>{v.offers[0].store}</div>
-                  </>
-                ) : (
-                  <div style={{ fontSize: 20, color: C.muted }}>Henüz stokta değil</div>
-                )}
+                <div style={{ fontSize: 20, color: C.muted }}>{v.publisher}</div>
               </div>
             </div>
           ))}
         </div>
         <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: `2px solid ${C.line}`, paddingTop: 22 }}>
           <div style={{ fontSize: 22, color: C.muted }}>
-            {total > volumes.length ? `+${total - volumes.length} cilt daha sitede` : "Fiyatlar paylaşım anındaki fiyatlardır"}
+            {total > volumes.length ? `+${total - volumes.length} cilt daha takvimde` : "Haftanın tüm çıkışları takvimde"}
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>yomiba.net/takvim</div>
         </div>
@@ -260,9 +311,9 @@ export function ListSlide({ volumes, total, weekLabel, page }: {
 }
 
 const STEPS = [
-  { n: "1", title: "Seriyi bul", text: "Türkiye’deki mangalar ve mağaza fiyatları tek yerde" },
-  { n: "2", title: "Fiyat alarmı kur", text: "İstediğin cilt için hedef fiyatını yaz" },
-  { n: "3", title: "E-postayla haber al", text: "Fiyat hedefinin altına inince" },
+  { n: "1", title: "Takvime bak", text: "Türkiye’de çıkan her cilt, gün gün" },
+  { n: "2", title: "Koleksiyonunu tut", text: "Elindeki ciltleri işaretle, serini takip et" },
+  { n: "3", title: "İstek listene ekle", text: "Almak istediklerin tek yerde" },
 ];
 
 export function CtaSlide({ page }: { page: string }) {
@@ -272,7 +323,7 @@ export function CtaSlide({ page }: { page: string }) {
       <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 44 }}>
         <Brand page={page} dark sealOnAccent />
         <h2 style={{ margin: "40px 0 0", fontFamily: DISPLAY, fontSize: 116, lineHeight: 0.95, fontWeight: 900, letterSpacing: -3 }}>
-          Fiyatı düşünce<br />biz haber<br />verelim.
+          Yeni ciltleri<br />kaçırma.
         </h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {STEPS.map((s) => (

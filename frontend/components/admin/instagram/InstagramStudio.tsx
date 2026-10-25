@@ -2,16 +2,17 @@
 
 /**
  * Admin: the weekly "Bu hafta çıkanlar" Instagram carousel from real catalog
- * data. Pick up to three volumes to feature (each gets a store-by-store
- * price slide), swipe through the preview, download the slides as PNG and
- * copy the caption. Nothing is posted anywhere.
+ * data. Pick up to three volumes to feature (each gets its own slide),
+ * swipe through the preview, download the slides as PNG and copy the
+ * caption. No prices, so the post does not read as an ad. Nothing is posted
+ * anywhere.
  */
 
 import { useState } from "react";
 import type { InstagramVolume } from "@/services/instagram";
 import { CaptionEditor, SlideCarousel, type Slide } from "./parts";
 import {
-  CompareSlide, CoverSlide, CtaSlide, LIST_MAX, ListSlide, bookTitle, dayLabel, formatPrice,
+  CoverSlide, CtaSlide, LIST_MAX, ListSlide, VolumeSlide, bookTitle, dayLabel,
 } from "./slides";
 
 const MAX_FEATURED = 3;
@@ -20,11 +21,9 @@ const FAN_MAX = 5;
 const byInterest = (a: InstagramVolume, b: InstagramVolume) =>
   b.interest - a.interest || b.offers.length - a.offers.length || a.id - b.id;
 
-/** Default picks: the most wanted volumes that two or more stores sell. */
+/** Default picks: the volumes readers want most. */
 function defaultFeatured(volumes: InstagramVolume[]): number[] {
-  const priced = volumes.filter((v) => v.offers.length >= 2).sort(byInterest);
-  const rest = volumes.filter((v) => v.offers.length === 1).sort(byInterest);
-  return [...priced, ...rest].slice(0, MAX_FEATURED).map((v) => v.id);
+  return [...volumes].sort(byInterest).slice(0, MAX_FEATURED).map((v) => v.id);
 }
 
 function hashtag(title: string): string {
@@ -34,20 +33,16 @@ function hashtag(title: string): string {
 function buildCaption(volumes: InstagramVolume[], featured: InstagramVolume[]): string {
   const named = (featured.length ? featured : volumes.slice(0, 3)).map(bookTitle);
   const more = volumes.length > named.length ? " ve daha fazlası." : ".";
-  const spread = featured.find((v) => v.offers.length >= 2);
-  const swipe = spread
-    ? `👉 Kaydır: ${bookTitle(spread)} mağazalar arasında ${formatPrice(spread.offers[spread.offers.length - 1].price - spread.offers[0].price)} fark ediyor.`
-    : "👉 Kaydır: haftanın tam listesi ve en ucuz mağazalar içeride.";
   const tags = ["#manga", "#mangatürkiye", "#yenimanga",
     ...new Set(featured.map((v) => hashtag(v.series_title))), "#yomiba"];
   return [
     `Bu hafta raflara ${volumes.length} yeni cilt geldi 📚`,
     `${named.join(", ")}${more}`,
     "",
-    swipe,
+    "👉 Kaydır: haftanın tüm çıkışları içeride.",
     "",
-    "Hepsinin güncel fiyatı: yomiba.net/takvim (link profilde)",
-    "Bu postu kaydet, alışverişe çıkmadan bak 🔖",
+    "Hepsi takvimde: yomiba.net/takvim (link profilde)",
+    "Bu postu kaydet, çıkışları kaçırma 🔖",
     "",
     "Sen hangisini alıyorsun? 👇",
     "",
@@ -73,7 +68,7 @@ export function InstagramStudio({ volumes, weekLabel, fileStem }: {
     { key: "kapak", label: "Kapak", node: <CoverSlide fan={fan} total={volumes.length} weekLabel={weekLabel} page={page(1)} /> },
     ...featured.map((v, i) => ({
       key: `cilt-${v.id}`, label: bookTitle(v),
-      node: <CompareSlide v={v} others={ranked.filter((o) => o.id !== v.id)} page={page(i + 2)} />,
+      node: <VolumeSlide v={v} others={ranked.filter((o) => o.id !== v.id)} page={page(i + 2)} />,
     })),
     { key: "liste", label: "Liste", node: <ListSlide volumes={listed} total={volumes.length} weekLabel={weekLabel} page={page(featured.length + 2)} /> },
     { key: "cagri", label: "Çağrı", node: <CtaSlide page={page(total)} /> },
@@ -102,12 +97,12 @@ export function InstagramStudio({ volumes, weekLabel, fileStem }: {
 
         <section className="space-y-3">
           <h2 className="font-semibold text-ink">
-            Öne çıkanlar <span className="font-normal text-muted">({featured.length}/{MAX_FEATURED}, her biri bir fiyat sayfası)</span>
+            Öne çıkanlar <span className="font-normal text-muted">({featured.length}/{MAX_FEATURED}, her biri bir cilt sayfası)</span>
           </h2>
           <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
             {[...volumes].sort((a, b) => a.release_date.localeCompare(b.release_date) || a.id - b.id).map((v) => {
               const checked = featuredIds.includes(v.id);
-              const disabled = !checked && (featuredIds.length >= MAX_FEATURED || v.offers.length === 0);
+              const disabled = !checked && featuredIds.length >= MAX_FEATURED;
               return (
                 <li key={v.id}>
                   <label className={`flex min-h-11 items-center gap-3 px-3 py-2 ${disabled ? "opacity-60" : "cursor-pointer"}`}>
@@ -119,7 +114,7 @@ export function InstagramStudio({ volumes, weekLabel, fileStem }: {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-ink">{bookTitle(v)}</span>
                       <span className="block text-xs text-muted">
-                        {dayLabel(v.release_date)} · {v.offers.length ? `${v.offers.length} mağaza, en ucuz ${formatPrice(v.offers[0].price)}` : "stokta değil"}
+                        {dayLabel(v.release_date)} · {v.publisher}
                       </span>
                     </span>
                   </label>

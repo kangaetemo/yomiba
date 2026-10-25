@@ -63,7 +63,7 @@ export default async function InstagramPage({ searchParams }: {
       <p className="text-sm text-muted">
         {launch
           ? "Sitenin açıldığını duyuran kaydırmalı post: katalogdaki gerçek sayılar ve mağazalar arasında fiyatı en çok değişen ciltlerden biriyle."
-          : "Haftanın çıkan ciltlerinden kaydırmalı post: sitedeki kapaklar ve şu anki mağaza fiyatlarıyla."}
+          : "Haftanın çıkan ciltlerinden kaydırmalı post: sitedeki kapaklarla, fiyat olmadan."}
         {" "}Görselleri indirip açıklama metnini kopyalayarak Instagram&apos;da paylaşabilirsin; buradan hiçbir şey otomatik paylaşılmaz.
       </p>
     </header>
