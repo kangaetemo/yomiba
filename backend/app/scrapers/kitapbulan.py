@@ -81,6 +81,11 @@ class KitapbulanScraper(BaseScraper):
     #: Minimum token length for the relevance guard ("v", "for" etc. are noise).
     _RELEVANCE_TOKEN_MIN_LEN = 3
 
+    def _store_min_interval(self) -> float:
+        # Shopify answers bursts with 429 (2026-10-26: five series in five
+        # minutes gave up after three quick retries).
+        return max(super()._store_min_interval(), self.settings.kitapbulan_min_request_interval_seconds)
+
     def search(self, query: str) -> list[SearchResult]:
         self.stats = {
             "pages_fetched": 0,

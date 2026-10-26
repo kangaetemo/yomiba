@@ -112,6 +112,60 @@ def test_429_is_retried_and_recovers():
     assert calls["n"] == 2
 
 
+def test_429_gets_more_attempts_than_other_errors():
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(429, text="slow down")
+
+    scraper = make_scraper(handler)
+    with pytest.raises(ScraperError, match="HTTP 429 after 4 attempts"):
+        scraper.get("https://x.test/page")
+    assert calls["n"] == 4  # SCRAPER_RATE_LIMIT_MAX_RETRIES=3 (5xx keeps 2)
+
+
+def test_429_waits_longer_and_pauses_the_store(monkeypatch):
+    """A 429 waits SCRAPER_RATE_LIMIT_BACKOFF_SECONDS (doubling, capped) and
+    holds back the store's other imports for the same time."""
+    scraper_base._store_slots.clear()
+    sleeps: list[float] = []
+    monkeypatch.setattr(scraper_base.time, "sleep", sleeps.append)
+    monkeypatch.setattr(scraper_base.random, "uniform", lambda a, b: a)
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(429) if calls["n"] < 4 else httpx.Response(200, text="ok")
+
+    scraper = make_scraper(handler, scraper_rate_limit_backoff_seconds=10.0)
+    started = time.monotonic()
+    assert scraper.get("https://x.test/page").status_code == 200
+    assert sleeps == [10.0, 20.0, 40.0]
+    assert scraper_base._store_slots["bkm"] >= started + 40.0
+
+    sleeps.clear()
+    calls["n"] = 0
+    scraper_base._store_slots.clear()
+    scraper = make_scraper(lambda r: httpx.Response(429, headers={"Retry-After": "300"}),
+                           scraper_rate_limit_backoff_seconds=10.0)
+    with pytest.raises(ScraperError):
+        scraper.get("https://x.test/page")
+    assert sleeps == [60.0, 60.0, 60.0]  # Retry-After honoured up to the cap
+    scraper_base._store_slots.clear()
+
+
+def test_kitapbulan_has_a_wider_store_interval():
+    from app.scrapers.kitapbulan import KitapbulanScraper
+
+    scraper = KitapbulanScraper(client=mock_client(lambda r: httpx.Response(200)))
+    scraper.settings = replace(scraper_base.get_settings(), scraper_store_min_interval_seconds=0.25,
+                               kitapbulan_min_request_interval_seconds=1.0)
+    assert scraper._store_min_interval() == 1.0
+    assert make_scraper(lambda r: httpx.Response(200), scraper_store_min_interval_seconds=0.25,
+                        kitapbulan_min_request_interval_seconds=1.0)._store_min_interval() == 0.25
+
+
 def test_rate_limit_keeps_per_store_interval():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="ok")
