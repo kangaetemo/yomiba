@@ -10,9 +10,10 @@
 
 import { useState } from "react";
 import type { InstagramVolume } from "@/services/instagram";
-import { CaptionEditor, SlideCarousel, type Slide } from "./parts";
+import { CaptionEditor, SlideCarousel, useTextEdits, type Slide } from "./parts";
 import {
-  CoverSlide, CtaSlide, LIST_MAX, ListSlide, VolumeSlide, bookTitle, dayLabel,
+  CoverSlide, CtaSlide, LIST_MAX, ListSlide, VolumeSlide, bookTitle, coverTexts, ctaTexts, dayLabel, listTexts,
+  volumeTexts,
 } from "./slides";
 
 const MAX_FEATURED = 3;
@@ -57,6 +58,7 @@ export function InstagramStudio({ volumes, weekLabel, fileStem }: {
   const featured = featuredIds.map((id) => volumes.find((v) => v.id === id)).filter((v): v is InstagramVolume => !!v);
   const generated = buildCaption(volumes, featured);
   const [caption, setCaption] = useState<string | null>(null);
+  const texts = useTextEdits();
 
   const ranked = [...volumes].sort(byInterest);
   const fan = [...featured, ...ranked.filter((v) => !featuredIds.includes(v.id))].slice(0, FAN_MAX);
@@ -64,14 +66,17 @@ export function InstagramStudio({ volumes, weekLabel, fileStem }: {
     .sort((a, b) => a.release_date.localeCompare(b.release_date) || a.id - b.id);
   const total = featured.length + 3;
   const page = (n: number) => `${n} / ${total}`;
+  const { slide } = texts;
   const slides: Slide[] = [
-    { key: "kapak", label: "Kapak", node: <CoverSlide fan={fan} total={volumes.length} weekLabel={weekLabel} page={page(1)} /> },
-    ...featured.map((v, i) => ({
-      key: `cilt-${v.id}`, label: bookTitle(v),
-      node: <VolumeSlide v={v} others={ranked.filter((o) => o.id !== v.id)} page={page(i + 2)} />,
-    })),
-    { key: "liste", label: "Liste", node: <ListSlide volumes={listed} total={volumes.length} weekLabel={weekLabel} page={page(featured.length + 2)} /> },
-    { key: "cagri", label: "Çağrı", node: <CtaSlide page={page(total)} /> },
+    slide("kapak", "Kapak", coverTexts(volumes.length, weekLabel), (tx) => <CoverSlide fan={fan} tx={tx} page={page(1)} />),
+    ...featured.map((v, i) => {
+      const others = ranked.filter((o) => o.id !== v.id);
+      return slide(`cilt-${v.id}`, bookTitle(v), volumeTexts(v, others.length),
+        (tx) => <VolumeSlide v={v} others={others} tx={tx} page={page(i + 2)} />);
+    }),
+    slide("liste", "Liste", listTexts(listed.length, volumes.length, weekLabel),
+      (tx) => <ListSlide volumes={listed} tx={tx} page={page(featured.length + 2)} />),
+    slide("cagri", "Çağrı", ctaTexts(), (tx) => <CtaSlide tx={tx} page={page(total)} />),
   ];
 
   function toggle(id: number) {
@@ -90,7 +95,7 @@ export function InstagramStudio({ volumes, weekLabel, fileStem }: {
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)]">
-      <SlideCarousel slides={slides} fileStem={fileStem} />
+      <SlideCarousel slides={slides} fileStem={fileStem} texts={texts} />
 
       <div className="space-y-8">
         <CaptionEditor generated={generated} caption={caption} setCaption={setCaption} />

@@ -9,9 +9,11 @@
 
 import { useState } from "react";
 import type { InstagramLaunch, LaunchVolume } from "@/services/instagram";
-import { FeaturesSlide, LaunchCoverSlide, LaunchCtaSlide, count } from "./launchSlides";
-import { CaptionEditor, SlideCarousel, type Slide } from "./parts";
-import { CompareSlide, bookTitle, formatPrice } from "./slides";
+import {
+  FeaturesSlide, LaunchCoverSlide, LaunchCtaSlide, count, featuresTexts, launchCoverTexts, launchCtaTexts,
+} from "./launchSlides";
+import { CaptionEditor, SlideCarousel, useTextEdits, type Slide, type TextField } from "./parts";
+import { CompareSlide, bookTitle, formatPrice, type CompareText } from "./slides";
 
 const FAN_MAX = 5;
 
@@ -53,6 +55,8 @@ export function LaunchStudio({ data }: { data: InstagramLaunch }) {
   const { stats, examples } = data;
   const [exampleId, setExampleId] = useState(() => defaultExample(examples));
   const [caption, setCaption] = useState<string | null>(null);
+  const texts = useTextEdits();
+  const { slide } = texts;
   const example = examples.find((v) => v.id === exampleId);
   const generated = buildCaption(data, example);
 
@@ -63,21 +67,26 @@ export function LaunchStudio({ data }: { data: InstagramLaunch }) {
     .slice(0, FAN_MAX);
   const total = example ? 4 : 3;
   const page = (n: number) => `${n} / ${total}`;
+  const exampleTexts = (v: LaunchVolume): TextField<CompareText>[] => [
+    { id: "etiket", label: "Üst etiket", value: "AYNI CİLT, FARKLI FİYAT" },
+    { id: "baslik", label: "Cilt adı", value: bookTitle(v) },
+    { id: "alt", label: "Alt satır", value: `${v.publisher} · ${v.offers.length} mağazada` },
+    { id: "tablo", label: "Fiyat listesi başlığı", value: "Hangi mağazada kaç para?" },
+    { id: "not", label: "Alt not", value: `${count(stats.volumes)} cildin fiyatı sitede` },
+    { id: "link", label: "Link", value: "yomiba.net" },
+  ];
   const slides: Slide[] = [
-    { key: "kapak", label: "Kapak", node: <LaunchCoverSlide fan={fan} stats={stats} page={page(1)} /> },
-    ...(example ? [{
-      key: "ornek", label: bookTitle(example),
-      node: <CompareSlide v={example} others={others} page={page(2)} eyebrow="AYNI CİLT, FARKLI FİYAT"
-        meta={`${example.publisher} · ${example.offers.length} mağazada`}
-        footerNote={`${count(stats.volumes)} cildin fiyatı sitede`} link="yomiba.net" />,
-    }] : []),
-    { key: "neler-var", label: "Neler var", node: <FeaturesSlide stats={stats} page={page(total - 1)} /> },
-    { key: "cagri", label: "Çağrı", node: <LaunchCtaSlide page={page(total)} /> },
+    slide("kapak", "Kapak", launchCoverTexts(), (tx) => <LaunchCoverSlide fan={fan} stats={stats} tx={tx} page={page(1)} />),
+    // Keyed by volume: picking another example starts from its own texts.
+    ...(example ? [slide(`ornek-${example.id}`, bookTitle(example), exampleTexts(example),
+      (tx) => <CompareSlide v={example} others={others} tx={tx} page={page(2)} />)] : []),
+    slide("neler-var", "Neler var", featuresTexts(stats), (tx) => <FeaturesSlide tx={tx} page={page(total - 1)} />),
+    slide("cagri", "Çağrı", launchCtaTexts(), (tx) => <LaunchCtaSlide tx={tx} page={page(total)} />),
   ];
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)]">
-      <SlideCarousel slides={slides} fileStem="yomiba-acilis" />
+      <SlideCarousel slides={slides} fileStem="yomiba-acilis" texts={texts} />
 
       <div className="space-y-8">
         <CaptionEditor generated={generated} caption={caption} setCaption={setCaption} rows={18} />

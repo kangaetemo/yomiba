@@ -5,8 +5,9 @@
  * not follow the viewer's theme.
  */
 
-import type { CSSProperties, ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { InstagramVolume, LaunchVolume } from "@/services/instagram";
+import type { TextField } from "./parts";
 
 export const SLIDE_W = 1080;
 export const SLIDE_H = 1350;
@@ -39,10 +40,24 @@ const weekdayLabel = (iso: string) => {
   return `${day.charAt(0).toLocaleUpperCase("tr-TR")}${day.slice(1)} · ${dayLabel(iso)}`;
 };
 
+/** What a cover or a book title needs of a volume. */
+type Book = Pick<LaunchVolume, "series_title" | "number" | "covers_from" | "covers_to" | "cover_url">;
+
 /** "One Piece 105", "Dragon Ball 5 (9–10)". */
-export function bookTitle(v: LaunchVolume): string {
+export function bookTitle(v: Omit<Book, "cover_url">): string {
   const span = v.covers_from && v.covers_to ? ` (${v.covers_from}–${v.covers_to})` : "";
   return `${v.series_title} ${v.number}${span}`;
+}
+
+/** A multiline slide text: one line per line, the last one optionally in `last`'s color. */
+export function Lines({ text, lastColor }: { text: string; lastColor?: string }) {
+  const lines = text.split("\n");
+  return lines.map((line, i) => (
+    <Fragment key={i}>
+      {i ? <br /> : null}
+      {lastColor && i === lines.length - 1 && lines.length > 1 ? <span style={{ color: lastColor }}>{line}</span> : line}
+    </Fragment>
+  ));
 }
 
 export function Frame({ background, color, children }: { background: string; color: string; children: ReactNode }) {
@@ -71,7 +86,7 @@ export function Brand({ page, dark = false, sealOnAccent = false }: { page: stri
 
 /** A real cover, or the site's 読 placeholder when the volume has none yet. */
 export function CoverArt({ v, style, border = false, compact = false }: {
-  v: LaunchVolume; style: CSSProperties; border?: boolean; compact?: boolean;
+  v: Book; style: CSSProperties; border?: boolean; compact?: boolean;
 }) {
   const frame: CSSProperties = {
     borderRadius: 10, overflow: "hidden", boxSizing: "border-box", background: C.surface3,
@@ -107,9 +122,15 @@ export const FANS: Record<number, [number, number, number][]> = {
 };
 export const FAN_Z: Record<number, number[]> = { 1: [1], 2: [1, 2], 3: [1, 3, 2], 4: [1, 2, 3, 2], 5: [1, 2, 5, 3, 2] };
 
-export function CoverSlide({ fan, total, weekLabel, page }: {
-  fan: InstagramVolume[]; total: number; weekLabel: string; page: string;
-}) {
+export type CoverText = "etiket" | "baslik" | "kaydir";
+
+export const coverTexts = (total: number, weekLabel: string): TextField<CoverText>[] => [
+  { id: "etiket", label: "Üst etiket", value: `${weekLabel.toLocaleUpperCase("tr-TR")} · YAYIN TAKVİMİ` },
+  { id: "baslik", label: "Başlık (son satır renkli)", value: `Bu hafta\n${total} yeni cilt\nraflarda.`, multiline: true },
+  { id: "kaydir", label: "Kaydır düğmesi", value: "Kaydır, hepsini gör" },
+];
+
+export function CoverSlide({ fan, tx, page }: { fan: InstagramVolume[]; tx: Record<CoverText, string>; page: string }) {
   const spots = FANS[fan.length] ?? [];
   return (
     <Frame background={C.ink} color={C.paper}>
@@ -117,11 +138,13 @@ export function CoverSlide({ fan, total, weekLabel, page }: {
       <div aria-hidden style={{ position: "absolute", left: 72, top: 330, fontFamily: DISPLAY, fontSize: 360, fontWeight: 900, lineHeight: 1, color: "rgba(247,242,231,0.05)" }}>新刊</div>
       <div style={{ position: "absolute", left: 72, right: 72, top: 64 }}><Brand page={page} dark /></div>
       <div style={{ position: "absolute", left: 72, right: 72, top: 196, display: "flex", flexDirection: "column", gap: 22 }}>
-        <div style={{ alignSelf: "flex-start", background: C.accent, color: C.surface, fontSize: 24, fontWeight: 800, letterSpacing: 3, padding: "10px 18px", transform: "rotate(-1.5deg)" }}>
-          {weekLabel.toLocaleUpperCase("tr-TR")} · YAYIN TAKVİMİ
-        </div>
+        {tx.etiket ? (
+          <div style={{ alignSelf: "flex-start", background: C.accent, color: C.surface, fontSize: 24, fontWeight: 800, letterSpacing: 3, padding: "10px 18px", transform: "rotate(-1.5deg)" }}>
+            {tx.etiket}
+          </div>
+        ) : null}
         <h1 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 128, lineHeight: 0.92, fontWeight: 900, letterSpacing: -3 }}>
-          Bu hafta<br />{total} yeni cilt<br /><span style={{ color: C.accentSoft }}>raflarda.</span>
+          <Lines text={tx.baslik} lastColor={C.accentSoft} />
         </h1>
       </div>
       {fan.map((v, i) => {
@@ -134,7 +157,7 @@ export function CoverSlide({ fan, total, weekLabel, page }: {
         );
       })}
       <div style={{ position: "absolute", right: 72, bottom: 64, zIndex: 10, display: "flex", alignItems: "center", gap: 14, background: C.paper, color: C.ink, borderRadius: 999, padding: "16px 28px", fontSize: 26, fontWeight: 800 }}>
-        Kaydır, hepsini gör {SWIPE}
+        {tx.kaydir} {SWIPE}
       </div>
     </Frame>
   );
@@ -142,13 +165,11 @@ export function CoverSlide({ fan, total, weekLabel, page }: {
 
 const MAX_STORE_ROWS = 6;
 
-/** One volume's price at every store. The weekly post's defaults; the launch
- * post passes its own eyebrow, meta line and footer. */
-export function CompareSlide({
-  v, others, page, eyebrow = "BU HAFTA RAFLARDA", meta, footerNote, link = "yomiba.net/takvim",
-}: {
-  v: LaunchVolume; others: LaunchVolume[]; page: string;
-  eyebrow?: string; meta?: string; footerNote?: string; link?: string;
+export type CompareText = "etiket" | "baslik" | "alt" | "tablo" | "not" | "link";
+
+/** One volume's price at every store (the launch post's example). */
+export function CompareSlide({ v, others, tx, page }: {
+  v: LaunchVolume; others: LaunchVolume[]; tx: Record<CompareText, string>; page: string;
 }) {
   const offers = v.offers.length > MAX_STORE_ROWS ? v.offers.slice(0, MAX_STORE_ROWS - 1) : v.offers;
   const hidden = v.offers.length - offers.length;
@@ -164,11 +185,9 @@ export function CompareSlide({
             <CoverArt v={v} style={{ position: "relative", width: 340, height: 510, transform: "rotate(-3deg)", boxShadow: "0 20px 40px rgba(31,27,22,0.3)" }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>{eyebrow}</div>
-            <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: bookTitle(v).length > 18 ? 68 : 80, lineHeight: 0.95, fontWeight: 900, letterSpacing: -2 }}>{bookTitle(v)}</h2>
-            <div style={{ fontSize: 26, color: C.muted }}>
-              {meta ?? (v.release_date ? `${v.publisher} · ${dayLabel(v.release_date)}` : v.publisher)}
-            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>{tx.etiket}</div>
+            <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: tx.baslik.length > 18 ? 68 : 80, lineHeight: 0.95, fontWeight: 900, letterSpacing: -2 }}>{tx.baslik}</h2>
+            <div style={{ fontSize: 26, color: C.muted }}>{tx.alt}</div>
             <div style={{ marginTop: 12, background: C.ink, color: C.paper, borderRadius: 16, padding: "22px 26px", display: "flex", flexDirection: "column", gap: 4, transform: "rotate(1deg)" }}>
               <div style={{ fontSize: 22, fontWeight: 600, color: "rgba(247,242,231,0.7)" }}>
                 {spread !== null ? "Mağazalar arasındaki fark" : v.offers.length ? "Şu an tek mağazada" : "Fiyat"}
@@ -180,7 +199,7 @@ export function CompareSlide({
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ fontFamily: DISPLAY, fontSize: 36, fontWeight: 700 }}>Hangi mağazada kaç para?</div>
+          <div style={{ fontFamily: DISPLAY, fontSize: 36, fontWeight: 700 }}>{tx.tablo}</div>
           {offers.length === 0 ? (
             <div style={{ fontSize: 26, color: C.muted }}>Henüz hiçbir mağazada stokta değil. Satışa çıkınca sitede görünecek.</div>
           ) : offers.map((o, i) => (
@@ -201,11 +220,9 @@ export function CompareSlide({
             {others.slice(0, 7).map((o) => (
               <CoverArt key={o.id} v={o} compact style={{ width: 52, height: 78, borderRadius: 4, boxShadow: "0 3px 8px rgba(31,27,22,0.2)" }} />
             ))}
-            {(footerNote ?? others.length) ? (
-              <div style={{ fontSize: 24, fontWeight: 700, color: C.ink2, marginLeft: 8 }}>{footerNote ?? `+${others.length} cilt daha`}</div>
-            ) : null}
+            {tx.not ? <div style={{ fontSize: 24, fontWeight: 700, color: C.ink2, marginLeft: 8 }}>{tx.not}</div> : null}
           </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>{link}</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>{tx.link}</div>
         </div>
       </div>
     </Frame>
@@ -215,11 +232,23 @@ export function CompareSlide({
 const MONTH = new Intl.DateTimeFormat("tr-TR", { month: "long", timeZone: "UTC" });
 const WEEKDAY_ONLY = new Intl.DateTimeFormat("tr-TR", { weekday: "long", timeZone: "UTC" });
 
+export type VolumeText = "etiket" | "baslik" | "alt" | "not" | "link";
+
+export const volumeTexts = (v: InstagramVolume, others: number): TextField<VolumeText>[] => [
+  { id: "etiket", label: "Üst etiket", value: "BU HAFTA RAFLARDA" },
+  { id: "baslik", label: "Cilt adı", value: bookTitle(v) },
+  { id: "alt", label: "Alt satır", value: v.author ? `${v.author} · ${v.publisher}` : v.publisher },
+  { id: "not", label: "Alt not", value: others ? `+${others} cilt daha` : "" },
+  { id: "link", label: "Link", value: "yomiba.net/takvim" },
+];
+
 /** One featured volume of the week: big cover, release day and credits.
  * No prices: the weekly post should not read as an ad. */
-export function VolumeSlide({ v, others, page }: { v: InstagramVolume; others: InstagramVolume[]; page: string }) {
+export function VolumeSlide({ v, others, tx, page }: {
+  v: InstagramVolume; others: InstagramVolume[]; tx: Record<VolumeText, string>; page: string;
+}) {
   const date = isoDate(v.release_date);
-  const title = bookTitle(v);
+  const title = tx.baslik;
   return (
     <Frame background={C.paper} color={C.ink}>
       <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 40 }}>
@@ -230,7 +259,7 @@ export function VolumeSlide({ v, others, page }: { v: InstagramVolume; others: I
             <CoverArt v={v} style={{ position: "relative", width: 460, height: 690, transform: "rotate(-3deg)", boxShadow: "0 24px 48px rgba(31,27,22,0.32)" }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 36, minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>BU HAFTA RAFLARDA</div>
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>{tx.etiket}</div>
             <div style={{ width: 250, height: 250, borderRadius: "50%", background: C.accent, color: C.surface, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", transform: "rotate(-8deg)", boxShadow: `0 0 0 8px ${C.paper}, 0 0 0 12px ${C.accent}` }}>
               <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 2 }}>{WEEKDAY_ONLY.format(date).toLocaleUpperCase("tr-TR")}</div>
               <div style={{ fontFamily: DISPLAY, fontSize: 110, fontWeight: 900, lineHeight: 1 }}>{date.getUTCDate()}</div>
@@ -240,16 +269,16 @@ export function VolumeSlide({ v, others, page }: { v: InstagramVolume; others: I
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: title.length > 18 ? 76 : 96, lineHeight: 0.95, fontWeight: 900, letterSpacing: -2 }}>{title}</h2>
-          <div style={{ fontSize: 30, color: C.muted }}>{v.author ? `${v.author} · ${v.publisher}` : v.publisher}</div>
+          <div style={{ fontSize: 30, color: C.muted }}>{tx.alt}</div>
         </div>
         <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, borderTop: `2px solid ${C.line}`, paddingTop: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {others.slice(0, 7).map((o) => (
               <CoverArt key={o.id} v={o} compact style={{ width: 52, height: 78, borderRadius: 4, boxShadow: "0 3px 8px rgba(31,27,22,0.2)" }} />
             ))}
-            {others.length ? <div style={{ fontSize: 24, fontWeight: 700, color: C.ink2, marginLeft: 8 }}>+{others.length} cilt daha</div> : null}
+            {tx.not ? <div style={{ fontSize: 24, fontWeight: 700, color: C.ink2, marginLeft: 8 }}>{tx.not}</div> : null}
           </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>yomiba.net/takvim</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>{tx.link}</div>
         </div>
       </div>
     </Frame>
@@ -258,19 +287,24 @@ export function VolumeSlide({ v, others, page }: { v: InstagramVolume; others: I
 
 export const LIST_MAX = 8;
 
-export function ListSlide({ volumes, total, weekLabel, page }: {
-  volumes: InstagramVolume[]; total: number; weekLabel: string; page: string;
-}) {
+export type ListText = "etiket" | "baslik" | "not" | "link";
+
+export const listTexts = (shown: number, total: number, weekLabel: string): TextField<ListText>[] => [
+  { id: "etiket", label: "Üst etiket", value: `${weekLabel.toLocaleUpperCase("tr-TR")} · ${total} CİLT` },
+  { id: "baslik", label: "Başlık", value: total > shown ? "Haftanın listesi" : "Haftanın tam listesi" },
+  { id: "not", label: "Alt not", value: total > shown ? `+${total - shown} cilt daha takvimde` : "Haftanın tüm çıkışları takvimde" },
+  { id: "link", label: "Link", value: "yomiba.net/takvim" },
+];
+
+export function ListSlide({ volumes, tx, page }: { volumes: InstagramVolume[]; tx: Record<ListText, string>; page: string }) {
   return (
     <Frame background={C.paper} color={C.ink}>
       <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 36 }}>
         <Brand page={page} />
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>
-            {weekLabel.toLocaleUpperCase("tr-TR")} · {total} CİLT
-          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>{tx.etiket}</div>
           <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 80, lineHeight: 0.95, fontWeight: 900, letterSpacing: -2 }}>
-            {total > volumes.length ? "Haftanın listesi" : "Haftanın tam listesi"}
+            <Lines text={tx.baslik} />
           </h2>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "18px 24px" }}>
@@ -286,35 +320,45 @@ export function ListSlide({ volumes, total, weekLabel, page }: {
           ))}
         </div>
         <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: `2px solid ${C.line}`, paddingTop: 22 }}>
-          <div style={{ fontSize: 22, color: C.muted }}>
-            {total > volumes.length ? `+${total - volumes.length} cilt daha takvimde` : "Haftanın tüm çıkışları takvimde"}
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>yomiba.net/takvim</div>
+          <div style={{ fontSize: 22, color: C.muted }}>{tx.not}</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent }}>{tx.link}</div>
         </div>
       </div>
     </Frame>
   );
 }
 
-const STEPS = [
-  { n: "1", title: "Takvime bak", text: "Türkiye’de çıkan her cilt, gün gün" },
-  { n: "2", title: "Koleksiyonunu tut", text: "Elindeki ciltleri işaretle, serini takip et" },
-  { n: "3", title: "İstek listene ekle", text: "Almak istediklerin tek yerde" },
+export type CtaText = "baslik" | "adim1" | "adim1Metin" | "adim2" | "adim2Metin" | "adim3" | "adim3Metin"
+  | "linkUst" | "link" | "kaydet";
+
+export const ctaTexts = (baslik = "Yeni ciltleri\nkaçırma."): TextField<CtaText>[] => [
+  { id: "baslik", label: "Başlık", value: baslik, multiline: true },
+  { id: "adim1", label: "1. kutu başlığı", value: "Takvime bak" },
+  { id: "adim1Metin", label: "1. kutu metni", value: "Türkiye’de çıkan her cilt, gün gün" },
+  { id: "adim2", label: "2. kutu başlığı", value: "Koleksiyonunu tut" },
+  { id: "adim2Metin", label: "2. kutu metni", value: "Elindeki ciltleri işaretle, serini takip et" },
+  { id: "adim3", label: "3. kutu başlığı", value: "İstek listene ekle" },
+  { id: "adim3Metin", label: "3. kutu metni", value: "Almak istediklerin tek yerde" },
+  { id: "linkUst", label: "Link üstü", value: "Link profilde" },
+  { id: "link", label: "Link", value: "yomiba.net" },
+  { id: "kaydet", label: "Sağ alt düğme", value: "Kaydet, lazım olur" },
 ];
 
-export function CtaSlide({ page }: { page: string }) {
+export function CtaSlide({ tx, page }: { tx: Record<CtaText, string>; page: string }) {
+  const steps = ([1, 2, 3] as const).map((n) => ({ title: tx[`adim${n}`], text: tx[`adim${n}Metin`] }))
+    .filter((s) => s.title || s.text);
   return (
     <Frame background={C.accent} color={C.surface}>
       <div aria-hidden style={{ position: "absolute", left: "50%", top: "40%", width: 2400, height: 2400, marginLeft: -1200, marginTop: -1200, background: "repeating-conic-gradient(from 0deg, rgba(255,253,248,0.09) 0deg 2deg, transparent 2deg 9deg)" }} />
       <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 44 }}>
         <Brand page={page} dark sealOnAccent />
         <h2 style={{ margin: "40px 0 0", fontFamily: DISPLAY, fontSize: 116, lineHeight: 0.95, fontWeight: 900, letterSpacing: -3 }}>
-          Yeni ciltleri<br />kaçırma.
+          <Lines text={tx.baslik} />
         </h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          {STEPS.map((s) => (
-            <div key={s.n} style={{ display: "flex", alignItems: "center", gap: 26, background: C.surface, color: C.ink, borderRadius: 18, padding: "24px 30px", boxShadow: `8px 8px 0 ${C.ink}` }}>
-              <div style={{ width: 64, height: 64, flexShrink: 0, borderRadius: "50%", background: C.ink, color: C.surface, display: "grid", placeItems: "center", fontFamily: DISPLAY, fontSize: 34, fontWeight: 900 }}>{s.n}</div>
+          {steps.map((s, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 26, background: C.surface, color: C.ink, borderRadius: 18, padding: "24px 30px", boxShadow: `8px 8px 0 ${C.ink}` }}>
+              <div style={{ width: 64, height: 64, flexShrink: 0, borderRadius: "50%", background: C.ink, color: C.surface, display: "grid", placeItems: "center", fontFamily: DISPLAY, fontSize: 34, fontWeight: 900 }}>{i + 1}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ fontSize: 32, fontWeight: 800 }}>{s.title}</div>
                 <div style={{ fontSize: 24, color: C.muted }}>{s.text}</div>
@@ -324,12 +368,12 @@ export function CtaSlide({ page }: { page: string }) {
         </div>
         <div style={{ marginTop: "auto", display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontSize: 24, fontWeight: 600, color: "rgba(255,253,248,0.8)" }}>Link profilde</div>
-            <div style={{ fontFamily: DISPLAY, fontSize: 60, fontWeight: 900, lineHeight: 1 }}>yomiba.net</div>
+            <div style={{ fontSize: 24, fontWeight: 600, color: "rgba(255,253,248,0.8)" }}>{tx.linkUst}</div>
+            <div style={{ fontFamily: DISPLAY, fontSize: 60, fontWeight: 900, lineHeight: 1 }}>{tx.link}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, border: `3px solid ${C.surface}`, borderRadius: 999, padding: "14px 24px", fontSize: 24, fontWeight: 800 }}>
             <svg aria-hidden width="30" height="30" viewBox="0 0 24 24" fill="none" stroke={C.surface} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12v18l-6-4-6 4z" /></svg>
-            Kaydet, lazım olur
+            {tx.kaydet}
           </div>
         </div>
       </div>

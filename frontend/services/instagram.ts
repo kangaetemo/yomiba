@@ -46,3 +46,30 @@ export type InstagramLaunch = {
 export function getInstagramLaunch(): Promise<InstagramLaunch> {
   return getJson<InstagramLaunch>("/admin/instagram/launch");
 }
+
+/** A series whose first volume came out lately or is announced. No prices
+ * and no Japan/Turkey status: neither belongs in the post. */
+export type NewSeries = {
+  id: number;
+  slug: string;
+  title: string;
+  publisher: string;
+  author: string | null;
+  first_volume_id: number;
+  first_number: number;
+  cover_url: string | null;
+  /** The first volume's release date, YYYY-MM-DD. */
+  release_date: string;
+  upcoming: boolean;
+  released_volumes: number;
+  /** A store blurb of the series (the first volume's when it has one). */
+  description: string | null;
+  interest: number;
+};
+
+export type InstagramNewSeries = { today: string; generated_at: string; series: NewSeries[] };
+
+/** "Yeni seri" post candidates, newest first, admin only. */
+export function getInstagramNewSeries(): Promise<InstagramNewSeries> {
+  return getJson<InstagramNewSeries>("/admin/instagram/new-series");
+}

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
@@ -84,3 +85,34 @@ def test_launch_stats_and_price_spread_examples(client, db_session):
     assert body["examples"][0]["release_date"] is None
     client.cookies.clear()
     assert client.get("/admin/instagram/launch").status_code == 401
+
+
+def test_new_series_first_volumes_without_prices(client, db_session):
+    today = datetime.now(ZoneInfo("Europe/Istanbul")).date()
+    bkm = Store(code="bkm", name="BKM Kitap")
+    db_session.add(bkm)
+    dandadan = seed_catalog_series(db_session, "Dandadan", "Gerekli Şeyler", volumes=(1, 2))
+    dandadan.author = "Yukinobu Tatsu"
+    dandadan.jp_status = "ongoing"
+    kaiju = seed_catalog_series(db_session, "Kaiju No. 8", "Gerekli Şeyler", volumes=(1,))
+    berserk = seed_catalog_series(db_session, "Berserk", "Athica", volumes=(1, 2))
+    d1, d2 = _vol(db_session, dandadan, 1), _vol(db_session, dandadan, 2)
+    d1.release_date, d2.release_date = today - timedelta(days=10), today + timedelta(days=20)
+    d2.description = "  Okarun ile Momo'nun hikâyesi.  "
+    _vol(db_session, kaiju, 1).release_date = today + timedelta(days=14)  # announced
+    _vol(db_session, berserk, 1).release_date = today - timedelta(days=400)  # long running
+    _offer(db_session, d1, bkm, 15990)
+    db_session.commit()
+
+    body = client.get("/admin/instagram/new-series").json()
+
+    assert [s["title"] for s in body["series"]] == ["Kaiju No. 8", "Dandadan"]
+    kaiju8, dan = body["series"]
+    assert kaiju8["upcoming"] is True and kaiju8["released_volumes"] == 0
+    assert dan["upcoming"] is False and dan["released_volumes"] == 1
+    assert dan["release_date"] == (today - timedelta(days=10)).isoformat()
+    assert dan["author"] == "Yukinobu Tatsu" and dan["publisher"] == "Gerekli Şeyler"
+    assert dan["description"] == "Okarun ile Momo'nun hikâyesi." and kaiju8["description"] is None
+    assert not {"jp_status", "tr_status", "offers", "lowest_price"} & dan.keys()
+    client.cookies.clear()
+    assert client.get("/admin/instagram/new-series").status_code == 401
