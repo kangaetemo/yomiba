@@ -47,8 +47,8 @@ export const newSeriesTexts = (s: NewSeries): TextField<NewSeriesText>[] => [
   { id: "link", label: "Link", value: "yomiba.net" },
 ];
 
-export function NewSeriesSlide({ s, tx, palette: { ground, accent }, page }: {
-  s: NewSeries; tx: Record<NewSeriesText, string>; palette: Palette; page: string;
+export function NewSeriesSlide({ s, tx, palette: { ground, accent } }: {
+  s: NewSeries; tx: Record<NewSeriesText, string>; palette: Palette;
 }) {
   const longest = Math.max(...tx.baslik.split("\n").map((line) => line.length));
   const titleSize = longest > 22 ? 76 : longest > 14 ? 100 : 132;
@@ -61,7 +61,7 @@ export function NewSeriesSlide({ s, tx, palette: { ground, accent }, page }: {
       <div aria-hidden style={{ position: "absolute", right: 64, top: 170, display: "flex", flexDirection: "column", gap: 8, fontFamily: DISPLAY, fontSize: 72, fontWeight: 900, lineHeight: 1, color: "rgba(255,253,248,0.2)" }}>
         {[..."新連載"].map((ch) => <span key={ch}>{ch}</span>)}
       </div>
-      <div style={{ position: "absolute", left: 72, right: 72, top: 64 }}><Brand page={page} dark /></div>
+      <div style={{ position: "absolute", left: 72, right: 72, top: 64 }}><Brand /></div>
       <CoverArt v={cover} border style={{
         position: "absolute", left: 350, top: 190, width: 380, height: 570, borderRadius: 12,
         transform: "rotate(-3deg)", boxShadow: "0 30px 70px rgba(0,0,0,0.5)",

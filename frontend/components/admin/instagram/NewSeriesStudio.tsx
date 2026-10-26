@@ -84,8 +84,8 @@ export function NewSeriesStudio({ series }: { series: NewSeries[] }) {
   const slides: Slide[] = [
     // Keyed by series: each series keeps its own edits.
     texts.slide(`seri-${picked.id}`, picked.title, newSeriesTexts(picked),
-      (tx) => <NewSeriesSlide s={picked} tx={tx} palette={chosen.palette} page="1 / 2" />),
-    texts.slide("cagri", "Çağrı", ctaTexts("Yeni serileri\nkaçırma."), (tx) => <CtaSlide tx={tx} page="2 / 2" />),
+      (tx) => <NewSeriesSlide s={picked} tx={tx} palette={chosen.palette} />),
+    texts.slide("cagri", "Çağrı", ctaTexts("Yeni serileri\nkaçırma."), (tx) => <CtaSlide tx={tx} />),
   ];
 
   return (
