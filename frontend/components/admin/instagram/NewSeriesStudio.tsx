@@ -7,9 +7,10 @@
  * series status. Nothing is posted anywhere.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { NewSeries } from "@/services/instagram";
-import { GROUNDS, NewSeriesSlide, newSeriesTexts, shortBlurb } from "./newSeriesSlides";
+import { coverPalettes, type Palette } from "./coverColors";
+import { NewSeriesSlide, PALETTES, newSeriesTexts, shortBlurb } from "./newSeriesSlides";
 import { CaptionEditor, SlideCarousel, useTextEdits, type Slide } from "./parts";
 import { CtaSlide, ctaTexts, dayLabel } from "./slides";
 
@@ -48,10 +49,29 @@ function buildCaption(s: NewSeries): string {
 
 export function NewSeriesStudio({ series }: { series: NewSeries[] }) {
   const [pickedId, setPickedId] = useState(() => defaultPick(series));
-  const [ground, setGround] = useState<string>(GROUNDS[0].color);
+  const [paletteKey, setPaletteKey] = useState("kapak");
   const [caption, setCaption] = useState<string | null>(null);
   const texts = useTextEdits();
   const picked = series.find((s) => s.id === pickedId);
+
+  // Colors from the picked cover, worked out in the browser.
+  const coverUrl = picked?.cover_url ?? null;
+  const [fromCover, setFromCover] = useState<{ url: string; palettes: Awaited<ReturnType<typeof coverPalettes>> } | null>(null);
+  useEffect(() => {
+    if (!coverUrl) return;
+    let live = true;
+    coverPalettes(coverUrl).then((palettes) => { if (live) setFromCover({ url: coverUrl, palettes }); });
+    return () => { live = false; };
+  }, [coverUrl]);
+  const cover = fromCover?.url === coverUrl ? fromCover.palettes : null;
+  const choices: { key: string; label: string; palette: Palette }[] = [
+    ...(cover ? [
+      { key: "kapak", label: "Kapaktan, uyumlu", palette: cover.match },
+      { key: "kapak-zit", label: "Kapaktan, zıt", palette: cover.contrast },
+    ] : []),
+    ...PALETTES,
+  ];
+  const chosen = choices.find((c) => c.key === paletteKey) ?? choices[0];
 
   if (!picked) {
     return (
@@ -64,7 +84,7 @@ export function NewSeriesStudio({ series }: { series: NewSeries[] }) {
   const slides: Slide[] = [
     // Keyed by series: each series keeps its own edits.
     texts.slide(`seri-${picked.id}`, picked.title, newSeriesTexts(picked),
-      (tx) => <NewSeriesSlide s={picked} tx={tx} ground={ground} page="1 / 2" />),
+      (tx) => <NewSeriesSlide s={picked} tx={tx} palette={chosen.palette} page="1 / 2" />),
     texts.slide("cagri", "Çağrı", ctaTexts("Yeni serileri\nkaçırma."), (tx) => <CtaSlide tx={tx} page="2 / 2" />),
   ];
 
@@ -76,16 +96,22 @@ export function NewSeriesStudio({ series }: { series: NewSeries[] }) {
         <CaptionEditor generated={buildCaption(picked)} caption={caption} setCaption={setCaption} rows={16} />
 
         <section className="space-y-3">
-          <h2 className="font-semibold text-ink">Arka plan</h2>
+          <h2 className="font-semibold text-ink">Renkler <span className="font-normal text-muted">(arka plan ve rozet)</span></h2>
           <div className="flex flex-wrap gap-2">
-            {GROUNDS.map((g) => (
-              <label key={g.key} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink-2">
-                <input type="radio" name="ig-ground" checked={ground === g.color} onChange={() => setGround(g.color)} className="size-4 accent-accent" />
-                <span aria-hidden className="size-5 rounded-full" style={{ background: g.color }} />
-                {g.label}
+            {choices.map((c) => (
+              <label key={c.key} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink-2">
+                <input type="radio" name="ig-ground" checked={chosen.key === c.key} onChange={() => setPaletteKey(c.key)} className="size-4 accent-accent" />
+                <span aria-hidden className="flex">
+                  <span className="size-5 rounded-full" style={{ background: c.palette.ground }} />
+                  <span className="-ml-1.5 size-5 rounded-full ring-2 ring-surface" style={{ background: c.palette.accent }} />
+                </span>
+                {c.label}
               </label>
             ))}
           </div>
+          {coverUrl && !cover ? (
+            <p className="text-xs text-muted">{fromCover?.url === coverUrl ? "Bu kapaktan renk çıkarılamadı." : "Kapağın renkleri hesaplanıyor…"}</p>
+          ) : null}
         </section>
 
         <section className="space-y-3">

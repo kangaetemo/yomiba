@@ -6,15 +6,16 @@
  */
 
 import type { NewSeries } from "@/services/instagram";
+import type { Palette } from "./coverColors";
 import type { TextField } from "./parts";
 import { Brand, C, CoverArt, DISPLAY, Frame, Lines, dayLabel } from "./slides";
 
-/** Background choices for the slide, picked in the panel. */
-export const GROUNDS = [
-  { key: "indigo", label: "Lacivert", color: C.indigo },
-  { key: "ink", label: "Siyah", color: C.ink },
-  { key: "green", label: "Yeşil", color: "#4f6b5a" },
-] as const;
+/** Fixed background and stamp colors; the panel adds ones from the cover. */
+export const PALETTES: { key: string; label: string; palette: Palette }[] = [
+  { key: "indigo", label: "Lacivert", palette: { ground: C.indigo, accent: C.accent } },
+  { key: "ink", label: "Siyah", palette: { ground: C.ink, accent: C.accent } },
+  { key: "green", label: "Yeşil", palette: { ground: "#4f6b5a", accent: C.accent } },
+];
 
 const BLURB_MAX = 190;
 
@@ -46,8 +47,8 @@ export const newSeriesTexts = (s: NewSeries): TextField<NewSeriesText>[] => [
   { id: "link", label: "Link", value: "yomiba.net" },
 ];
 
-export function NewSeriesSlide({ s, tx, ground, page }: {
-  s: NewSeries; tx: Record<NewSeriesText, string>; ground: string; page: string;
+export function NewSeriesSlide({ s, tx, palette: { ground, accent }, page }: {
+  s: NewSeries; tx: Record<NewSeriesText, string>; palette: Palette; page: string;
 }) {
   const longest = Math.max(...tx.baslik.split("\n").map((line) => line.length));
   const titleSize = longest > 22 ? 76 : longest > 14 ? 100 : 132;
@@ -66,7 +67,7 @@ export function NewSeriesSlide({ s, tx, ground, page }: {
         transform: "rotate(-3deg)", boxShadow: "0 30px 70px rgba(0,0,0,0.5)",
       }} />
       {tx.rozetUst || tx.rozetAlt ? (
-        <div style={{ position: "absolute", left: 150, top: 230, width: 230, height: 230, borderRadius: "50%", background: C.accent, color: C.surface, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", transform: "rotate(-12deg)", boxShadow: `0 0 0 8px ${ground}, 0 0 0 12px ${C.accent}` }}>
+        <div style={{ position: "absolute", left: 150, top: 230, width: 230, height: 230, borderRadius: "50%", background: accent, color: C.surface, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", transform: "rotate(-12deg)", boxShadow: `0 0 0 8px ${ground}, 0 0 0 12px ${accent}` }}>
           <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 2 }}>{tx.rozetUst}</div>
           <div style={{ fontFamily: DISPLAY, fontSize: 50, fontWeight: 900, lineHeight: 1 }}>{tx.rozetAlt}</div>
         </div>
