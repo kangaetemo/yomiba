@@ -373,6 +373,21 @@ export interface CoverStatus {
   last: { volumes: number; downloads: number; stored: number; without_source: number; remaining: number; finished_at: string } | null;
 }
 
+/** GET /catalog/covers/missing: volumes without a self-hosted cover. */
+export interface MissingCover {
+  volume_id: number;
+  series: string;
+  series_slug: string;
+  volume_number: number;
+  release_date: string | null;
+  is_out: boolean;
+  kind: "no_source" | "queued" | "failed";
+  reason: string;
+  sources: { source: string; url: string }[];
+  checked_at: string | null;
+  next_try: string | null;
+}
+
 /** POST /catalog/isbn-fix: known wrong-volume ISBNs, previewed or applied. */
 export interface IsbnFixResult {
   mode: "dry-run" | "apply";

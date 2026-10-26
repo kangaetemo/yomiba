@@ -19,6 +19,7 @@ import {
   startCatalogAudit,
   getCatalogSyncStatus,
   getCoverStatus,
+  getMissingCovers,
   getForeignEditions,
   applyForeignEditions,
   scanForeignEditions,
@@ -40,6 +41,7 @@ import type {
   CatalogSyncStatus,
   CoverStatus,
   ForeignEditionStatus,
+  MissingCover,
   ImportCoverage,
   ImportRecord,
   ImportReport,
@@ -283,11 +285,83 @@ function ForeignEditionsBox() {
   );
 }
 
+const MISSING_KIND_LABEL: Record<MissingCover["kind"], string> = {
+  no_source: "Kaynak yok",
+  failed: "İndirilemedi",
+  queued: "Sırada",
+};
+
+/** Volumes without a self-hosted cover, grouped by why. */
+function MissingCoverList() {
+  const [items, setItems] = useState<MissingCover[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getMissingCovers()
+      .then((r) => alive && setItems(r.items))
+      .catch((e) => alive && setError(e instanceof Error ? e.message : "Liste alınamadı"));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (error) return <p className="text-bad">{error}</p>;
+  if (!items) return <p className="text-faint">Yükleniyor…</p>;
+  if (items.length === 0) return <p className="text-faint">Kapağı eksik cilt yok.</p>;
+  const kinds = (["failed", "no_source", "queued"] as const).filter((k) => items.some((i) => i.kind === k));
+  return (
+    <div className="space-y-3">
+      {kinds.map((kind) => {
+        const group = items.filter((i) => i.kind === kind);
+        return (
+          <div key={kind} className="space-y-1">
+            <p className="font-semibold text-ink">
+              {MISSING_KIND_LABEL[kind]} ({group.length})
+            </p>
+            <ul className="divide-y divide-line">
+              {group.map((i) => (
+                <li key={i.volume_id} className="space-y-0.5 py-1.5">
+                  <p>
+                    <a href={`/volume/${i.volume_id}`} target="_blank" rel="noreferrer" className="font-semibold text-ink hover:underline">
+                      {i.series} #{i.volume_number}
+                    </a>
+                    <span className="ml-1 text-faint">
+                      {i.release_date ? `· çıkış ${i.release_date}` : ""}
+                      {i.is_out ? "" : " · henüz çıkmadı"}
+                    </span>
+                  </p>
+                  <p className="text-muted">{i.reason}</p>
+                  {i.sources.length > 0 && (
+                    <p className="break-all text-faint">
+                      Kaynaklar:{" "}
+                      {i.sources.map((src, n) => (
+                        <span key={src.url}>
+                          {n > 0 && ", "}
+                          <a href={src.url} target="_blank" rel="noreferrer" className="hover:underline">
+                            {src.source}
+                          </a>
+                        </span>
+                      ))}
+                      {i.next_try && <> · tekrar deneme {formatDateTime(i.next_try)}</>}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Self-hosted covers: progress + "run a pass now". */
 function CoverBox() {
   const [status, setStatus] = useState<CoverStatus | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showMissing, setShowMissing] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -330,6 +404,15 @@ function CoverBox() {
         <p className="text-muted">
           Kapaklar kendi sunucumuzdan: {status ? `${status.stored} / ${status.total} cilt (%${pct})` : "…"}
           {status?.running && <span className="ml-1 text-accent">· indiriliyor…</span>}
+          {status && status.total > status.stored && (
+            <button
+              type="button"
+              onClick={() => setShowMissing((v) => !v)}
+              className="ml-2 font-semibold text-accent hover:underline"
+            >
+              {showMissing ? "Eksikleri gizle" : `Eksik ${status.total - status.stored} cildi göster`}
+            </button>
+          )}
         </p>
         <button
           type="button"
@@ -347,6 +430,7 @@ function CoverBox() {
           {status.last.without_source} ciltte kaynak yok, {status.last.remaining} bekliyor.
         </p>
       )}
+      {showMissing && <MissingCoverList />}
       {message && <p className="text-muted">{message}</p>}
     </div>
   );

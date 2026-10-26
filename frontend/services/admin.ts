@@ -31,6 +31,7 @@ import type {
   ImportRecord,
   ImportReport,
   CoverStatus,
+  MissingCover,
   ForeignEditionStatus,
   IsbnFixResult,
   MissingCoverage,
@@ -60,6 +61,10 @@ export function applyForeignEditions(): Promise<ForeignEditionStatus["result"]> 
 
 export function getCoverStatus(): Promise<CoverStatus> {
   return getJson<CoverStatus>("/catalog/covers");
+}
+
+export function getMissingCovers(): Promise<{ count: number; items: MissingCover[] }> {
+  return getJson<{ count: number; items: MissingCover[] }>("/catalog/covers/missing");
 }
 
 export function startCoverFetch(): Promise<{ status: string }> {

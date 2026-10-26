@@ -82,6 +82,9 @@ class Volume(Base):
     #: from, so that same image is not taken again as the "replacement".
     cover_provisional: Mapped[bool | None] = mapped_column(Boolean)
     cover_origin_url: Mapped[str | None] = mapped_column(String(1000))
+    #: Why the last cover pass stored nothing ("store:bkm: HTTP 404; …");
+    #: None once a cover is stored. Shown on the admin cover list.
+    cover_error: Mapped[str | None] = mapped_column(String(500))
     #: Back-cover text read from a store product page
     #: (services/volume_descriptions.py), the store code it came from, and
     #: when the stores were last tried.
