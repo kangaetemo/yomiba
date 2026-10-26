@@ -68,8 +68,10 @@ docker compose build --pull
 docker compose up -d --wait --wait-timeout 300
 for servis in backend frontend; do
   kimlik="$(docker compose ps -q "$servis")"
-  imaj="$(docker inspect --format '{{.Image}}' "$kimlik")"
-  etiket="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$imaj")"
+  # Etiketi konteynerin kendisinden oku: imaj aynı commit'ten yeniden
+  # yapılınca (haftalık deploy) compose konteyneri değiştirmez, ama imaj adı
+  # yeni yapıya geçtiği için konteynerin eski imaj kimliği artık bulunamaz.
+  etiket="$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$kimlik")"
   if [ "$etiket" != "$hedef" ]; then
     echo "HATA: $servis konteyneri ${etiket:-etiketsiz} imajıyla çalışıyor, beklenen ${hedef:0:7}"
     docker compose ps
