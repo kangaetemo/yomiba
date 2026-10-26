@@ -10,13 +10,19 @@
   Catalog counts for the cover, and the volumes whose price differs most
   between stores (three or more fresh in-stock offers, not all the same
   price) as candidates for the "same book, different price" example slide.
+* GET /admin/instagram/new-series: the "Yeni seri" post. Catalog series whose
+  first volume came out lately or is announced for the coming weeks, with
+  the first volume's cover, date and store blurb (the admin trims it). No
+  prices, and no Japan/Turkey series status (it would give away where the
+  catalog comes from).
 
 Read-only; nothing here triggers a scrape.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -27,7 +33,9 @@ from ..database import get_db
 from ..models import CatalogSeries, Publisher, Series, Store, StoreListing, Volume
 from ..services.catalog_service import fresh_listing_condition, public_volume_condition
 from ..utils import from_cents, utcnow
-from .home import _catalog_ids, _release_query, _serialize_releases, reader_interest
+from ..services import series_slugs
+from ..services.covers import cover_url
+from .home import _catalog_ids, _release_query, _serialize_releases, _series_covers, reader_interest
 
 router = APIRouter(tags=["instagram"], dependencies=[Depends(require_admin)])
 
@@ -36,6 +44,11 @@ MAX_DAYS = 31
 #: Example candidates for the launch post, and the offers each needs.
 LAUNCH_EXAMPLES = 15
 LAUNCH_MIN_OFFERS = 3
+#: "Yeni seri" candidates: first volume out at most this many days ago, or
+#: announced for at most this many days ahead.
+NEW_SERIES_PAST_DAYS = 90
+NEW_SERIES_AHEAD_DAYS = 60
+NEW_SERIES_LIMIT = 30
 
 
 def _offer_condition(session: Session):
@@ -123,3 +136,71 @@ def instagram_launch(session: Session = Depends(get_db)) -> dict:
     ).all()
     examples = _with_offers(session, _serialize_releases(session, rows))
     return {"generated_at": utcnow().isoformat(), "stats": stats, "examples": examples}
+
+
+@router.get("/admin/instagram/new-series")
+def instagram_new_series(session: Session = Depends(get_db)) -> dict:
+    today = datetime.now(ZoneInfo("Europe/Istanbul")).date()
+    real = (Volume.volume_number >= 0, public_volume_condition())
+    # Sub-series (Mangakol "~" slugs, e.g. a spin-off shelf) are not new series.
+    main_catalog = select(CatalogSeries.series_id).where(~CatalogSeries.mangakol_slug.contains("~"))
+    first = (
+        select(Volume.series_id, func.min(Volume.volume_number).label("first"))
+        .where(Volume.series_id.in_(main_catalog), *real)
+        .group_by(Volume.series_id)
+        .subquery()
+    )
+    rows = session.execute(
+        select(Volume, Series, Publisher.name)
+        .join(first, (first.c.series_id == Volume.series_id) & (first.c.first == Volume.volume_number))
+        .join(Series, Series.id == Volume.series_id)
+        .join(Publisher, Publisher.id == Series.publisher_id)
+        .where(first.c.first <= 1, *real,
+               Volume.release_date >= today - timedelta(days=NEW_SERIES_PAST_DAYS),
+               Volume.release_date <= today + timedelta(days=NEW_SERIES_AHEAD_DAYS))
+        .order_by(Volume.release_date.desc(), Volume.id.desc())
+    ).all()
+    seen: set[int] = set()
+    picked = []
+    for volume, series, publisher in rows:  # a series may list two "first" volumes
+        if series.id not in seen and len(picked) < NEW_SERIES_LIMIT:
+            seen.add(series.id)
+            picked.append((volume, series, publisher))
+    ids = [s.id for _, s, _ in picked]
+
+    # Any volume's blurb introduces the series; the first volume's comes first.
+    blurbs: dict[int, str] = {}
+    for series_id, text in session.execute(
+        select(Volume.series_id, Volume.description)
+        .where(Volume.series_id.in_(ids), Volume.description.isnot(None), *real)
+        .order_by(Volume.series_id, Volume.volume_number)
+    ):
+        if text and text.strip():
+            blurbs.setdefault(series_id, text.strip())
+    volume_counts = dict(session.execute(
+        select(Volume.series_id, func.count())
+        .where(Volume.series_id.in_(ids), *real, Volume.release_date <= today)
+        .group_by(Volume.series_id)
+    ).all())
+    fallback_covers = _series_covers(session, ids)
+    slugs = series_slugs.slugs_for(session, ids)
+    interest = reader_interest(session)
+    series = [
+        {
+            "id": s.id,
+            "slug": slugs[s.id],
+            "title": s.title,
+            "publisher": publisher,
+            "author": s.author,
+            "first_volume_id": v.id,
+            "first_number": v.volume_number,
+            "cover_url": cover_url(v.cover_key) or fallback_covers.get(s.id),
+            "release_date": v.release_date.isoformat(),
+            "upcoming": v.release_date > today,
+            "released_volumes": volume_counts.get(s.id, 0),
+            "description": blurbs.get(s.id),
+            "interest": round(interest.get(s.id, 0.0), 2),
+        }
+        for v, s, publisher in picked
+    ]
+    return {"today": today.isoformat(), "generated_at": utcnow().isoformat(), "series": series}

@@ -3,15 +3,17 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { InstagramStudio } from "@/components/admin/instagram/InstagramStudio";
 import { LaunchStudio } from "@/components/admin/instagram/LaunchStudio";
+import { NewSeriesStudio } from "@/components/admin/instagram/NewSeriesStudio";
 import { Segmented } from "@/components/Segmented";
 import { TIME_ZONE } from "@/lib/time";
 import { currentUser } from "@/services/auth";
-import { getInstagramLaunch, getInstagramReleases } from "@/services/instagram";
+import { getInstagramLaunch, getInstagramNewSeries, getInstagramReleases } from "@/services/instagram";
 
 export const metadata: Metadata = { title: "Instagram taslakları" };
 
 const KINDS = [
   { key: "hafta", label: "Haftanın çıkanları", href: "/admin/instagram" },
+  { key: "yeni-seri", label: "Yeni seri", href: "/admin/instagram?tur=yeni-seri" },
   { key: "acilis", label: "Site açılışı", href: "/admin/instagram?tur=acilis" },
 ];
 
@@ -55,7 +57,8 @@ export default async function InstagramPage({ searchParams }: {
   if (!user) redirect("/login?next=%2Fadmin%2Finstagram");
   if (user.role !== "ADMIN") redirect("/");
   const query = await searchParams;
-  const launch = one(query.tur) === "acilis";
+  const kind = KINDS.find((k) => k.key === one(query.tur))?.key ?? "hafta";
+  const launch = kind === "acilis";
   const header = (
     <header className="space-y-1">
       <p className="text-sm"><Link href="/admin" className="text-new hover:underline">← Admin</Link></p>
@@ -63,14 +66,17 @@ export default async function InstagramPage({ searchParams }: {
       <p className="text-sm text-muted">
         {launch
           ? "Sitenin açıldığını duyuran kaydırmalı post: katalogdaki gerçek sayılar ve mağazalar arasında fiyatı en çok değişen ciltlerden biriyle."
-          : "Haftanın çıkan ciltlerinden kaydırmalı post: sitedeki kapaklarla, fiyat olmadan."}
+          : kind === "yeni-seri"
+            ? "Türkiye'de yeni başlayan bir seriyi tanıtan post: ilk cildin kapağı ve kısa tanıtımıyla, fiyat olmadan."
+            : "Haftanın çıkan ciltlerinden kaydırmalı post: sitedeki kapaklarla, fiyat olmadan."}
+        {" "}Görsellerdeki yazıları önizlemenin altından değiştirebilirsin.
         {" "}Görselleri indirip açıklama metnini kopyalayarak Instagram&apos;da paylaşabilirsin; buradan hiçbir şey otomatik paylaşılmaz.
       </p>
     </header>
   );
   const kinds = (
     <Segmented label="Post türü" current="page" items={KINDS.map((k) => ({
-      key: k.key, href: k.href, active: (k.key === "acilis") === launch, children: k.label,
+      key: k.key, href: k.href, active: k.key === kind, children: k.label,
     }))} />
   );
   if (launch) {
@@ -80,6 +86,19 @@ export default async function InstagramPage({ searchParams }: {
         {header}
         {kinds}
         {data ? <LaunchStudio data={data} /> : (
+          <p className="rounded-xl border border-line bg-surface p-5 text-sm text-muted">Veriler yüklenemedi. Sayfayı yenilemeyi dene.</p>
+        )}
+      </div>
+    );
+  }
+
+  if (kind === "yeni-seri") {
+    const data = await getInstagramNewSeries().catch(() => null);
+    return (
+      <div className="space-y-6">
+        {header}
+        {kinds}
+        {data ? <NewSeriesStudio series={data.series} /> : (
           <p className="rounded-xl border border-line bg-surface p-5 text-sm text-muted">Veriler yüklenemedi. Sayfayı yenilemeyi dene.</p>
         )}
       </div>
