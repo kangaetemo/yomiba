@@ -31,7 +31,9 @@ export default async function HomePage() {
   // the search always render.
   const [feed, drops, user] = await Promise.all([
     getHomeFeed().catch((): HomeFeed | null => null),
-    getPriceDrops(DEAL_WINDOW_DAYS * 24, 6, { significant: true, sort: "percent" })
+    // Newest first: a big drop from days ago must not hold the shelf while
+    // fresh ones keep arriving.
+    getPriceDrops(DEAL_WINDOW_DAYS * 24, 6, { significant: true, sort: "recent" })
       .then((d) => d.drops)
       .catch((): PriceDrop[] | null => null),
     currentUserOrNull(),

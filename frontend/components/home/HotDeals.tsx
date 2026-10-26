@@ -19,7 +19,7 @@ export function HotDeals({ drops, windowDays }: { drops: PriceDrop[] | null; win
   return (
     <section id="indirimler" aria-labelledby="indirimler-title" className="scroll-mt-28 space-y-6">
       <SectionHeading id="indirimler-title" folio="02" eyebrow="Fiyat takibi" title="Fiyatı düşenler"
-        lead={`Son ${windowDays} günde, gözlediğimiz tipik en düşük satış fiyatının en az %20 altına inen ciltler.`}
+        lead={`Son ${windowDays} günde, gözlediğimiz tipik en düşük satış fiyatının en az %20 altına inen ciltler. En yeni indirimler önce.`}
         action={{ href: "/indirimler", label: "Tüm indirimler" }} />
       {selected.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line-strong bg-surface/70 p-6 text-sm text-muted">
