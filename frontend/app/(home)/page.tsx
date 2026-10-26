@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { openGraph } from "@/lib/site";
 import { HomeHero } from "@/components/home/HomeHero";
 import { HotDeals } from "@/components/home/HotDeals";
+import { HashScroll } from "@/components/SectionLink";
 import { HowItWorks } from "@/components/home/HowItWorks";
 import { NewSeries } from "@/components/home/NewSeries";
 import { NewVolumes } from "@/components/home/NewVolumes";
@@ -45,6 +46,7 @@ export default async function HomePage() {
       {feed && <NewSeries series={feed.new_series ?? []} />}
       {feed && <OneShots series={feed.one_shots ?? []} />}
       <HowItWorks signedIn={Boolean(user)} />
+      <HashScroll />
     </div>
   );
 }
