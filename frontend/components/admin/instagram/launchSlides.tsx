@@ -18,8 +18,8 @@ export const launchCoverTexts = (): TextField<LaunchCoverText>[] => [
   { id: "kaydir", label: "Kaydır düğmesi", value: "Kaydır, nasıl çalıştığını gör" },
 ];
 
-export function LaunchCoverSlide({ fan, stats, tx, page }: {
-  fan: LaunchVolume[]; stats: LaunchStats; tx: Record<LaunchCoverText, string>; page: string;
+export function LaunchCoverSlide({ fan, stats, tx }: {
+  fan: LaunchVolume[]; stats: LaunchStats; tx: Record<LaunchCoverText, string>;
 }) {
   const spots = FANS[fan.length] ?? [];
   const figures = [
@@ -31,7 +31,7 @@ export function LaunchCoverSlide({ fan, stats, tx, page }: {
     <Frame background={C.ink} color={C.paper}>
       <div aria-hidden style={{ position: "absolute", right: -120, top: -120, width: 620, height: 620, borderRadius: "50%", backgroundImage: "radial-gradient(circle, rgba(184,50,27,0.55) 3px, transparent 3.5px)", backgroundSize: "22px 22px" }} />
       <div aria-hidden style={{ position: "absolute", left: 60, top: 300, fontFamily: DISPLAY, fontSize: 360, fontWeight: 900, lineHeight: 1, color: "rgba(247,242,231,0.05)" }}>開店</div>
-      <div style={{ position: "absolute", left: 72, right: 72, top: 64 }}><Brand page={page} dark /></div>
+      <div style={{ position: "absolute", left: 72, right: 72, top: 64 }}><Brand /></div>
       <div style={{ position: "absolute", left: 72, right: 72, top: 180, display: "flex", flexDirection: "column", gap: 26 }}>
         {tx.etiket ? (
           <div style={{ alignSelf: "flex-start", background: C.accent, color: C.surface, fontSize: 24, fontWeight: 800, letterSpacing: 3, padding: "10px 18px", transform: "rotate(-1.5deg)" }}>
@@ -89,13 +89,13 @@ export const featuresTexts = (stats: LaunchStats): TextField<FeaturesText>[] => 
   { id: "link", label: "Link", value: "yomiba.net" },
 ];
 
-export function FeaturesSlide({ tx, page }: { tx: Record<FeaturesText, string>; page: string }) {
+export function FeaturesSlide({ tx }: { tx: Record<FeaturesText, string> }) {
   const features = FEATURES(0).map((f, i) => ({ mark: f.mark, title: tx[`ozellik${FEATURE_N[i]}`], text: tx[`ozellik${FEATURE_N[i]}Metin`] }))
     .filter((f) => f.title || f.text);
   return (
     <Frame background={C.paper} color={C.ink}>
       <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 36 }}>
-        <Brand page={page} />
+        <Brand />
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>{tx.etiket}</div>
           <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 80, lineHeight: 0.95, fontWeight: 900, letterSpacing: -2 }}>
@@ -142,13 +142,13 @@ export const launchCtaTexts = (): TextField<LaunchCtaText>[] => [
   { id: "kaydet", label: "Sağ alt düğme", value: "Kaydet, lazım olur" },
 ];
 
-export function LaunchCtaSlide({ tx, page }: { tx: Record<LaunchCtaText, string>; page: string }) {
+export function LaunchCtaSlide({ tx }: { tx: Record<LaunchCtaText, string> }) {
   const cards = ([1, 2, 3] as const).map((n) => [tx[`kutu${n}`], tx[`kutu${n}Metin`]]).filter(([t, x]) => t || x);
   return (
     <Frame background={C.accent} color={C.surface}>
       <div aria-hidden style={{ position: "absolute", left: "50%", top: "40%", width: 2400, height: 2400, marginLeft: -1200, marginTop: -1200, background: "repeating-conic-gradient(from 0deg, rgba(255,253,248,0.09) 0deg 2deg, transparent 2deg 9deg)" }} />
       <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 44 }}>
-        <Brand page={page} dark sealOnAccent />
+        <Brand sealOnAccent />
         <h2 style={{ margin: "40px 0 0", fontFamily: DISPLAY, fontSize: 124, lineHeight: 0.95, fontWeight: 900, letterSpacing: -3 }}>
           <Lines text={tx.baslik} />
         </h2>

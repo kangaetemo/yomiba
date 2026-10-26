@@ -68,7 +68,7 @@ export function Frame({ background, color, children }: { background: string; col
   );
 }
 
-export function Brand({ page, dark = false, sealOnAccent = false }: { page: string; dark?: boolean; sealOnAccent?: boolean }) {
+export function Brand({ sealOnAccent = false }: { sealOnAccent?: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -79,7 +79,6 @@ export function Brand({ page, dark = false, sealOnAccent = false }: { page: stri
         }}>読</div>
         <div style={{ fontFamily: DISPLAY, fontSize: 40, fontWeight: 500 }}>yomiba</div>
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, color: dark ? "rgba(255,253,248,0.7)" : C.faint }}>{page}</div>
     </div>
   );
 }
@@ -130,13 +129,13 @@ export const coverTexts = (total: number, weekLabel: string): TextField<CoverTex
   { id: "kaydir", label: "Kaydır düğmesi", value: "Kaydır, hepsini gör" },
 ];
 
-export function CoverSlide({ fan, tx, page }: { fan: InstagramVolume[]; tx: Record<CoverText, string>; page: string }) {
+export function CoverSlide({ fan, tx }: { fan: InstagramVolume[]; tx: Record<CoverText, string> }) {
   const spots = FANS[fan.length] ?? [];
   return (
     <Frame background={C.ink} color={C.paper}>
       <div aria-hidden style={{ position: "absolute", right: -120, top: -120, width: 620, height: 620, borderRadius: "50%", backgroundImage: "radial-gradient(circle, rgba(184,50,27,0.55) 3px, transparent 3.5px)", backgroundSize: "22px 22px" }} />
       <div aria-hidden style={{ position: "absolute", left: 72, top: 330, fontFamily: DISPLAY, fontSize: 360, fontWeight: 900, lineHeight: 1, color: "rgba(247,242,231,0.05)" }}>新刊</div>
-      <div style={{ position: "absolute", left: 72, right: 72, top: 64 }}><Brand page={page} dark /></div>
+      <div style={{ position: "absolute", left: 72, right: 72, top: 64 }}><Brand /></div>
       <div style={{ position: "absolute", left: 72, right: 72, top: 196, display: "flex", flexDirection: "column", gap: 22 }}>
         {tx.etiket ? (
           <div style={{ alignSelf: "flex-start", background: C.accent, color: C.surface, fontSize: 24, fontWeight: 800, letterSpacing: 3, padding: "10px 18px", transform: "rotate(-1.5deg)" }}>
@@ -168,8 +167,8 @@ const MAX_STORE_ROWS = 6;
 export type CompareText = "etiket" | "baslik" | "alt" | "tablo" | "not" | "link";
 
 /** One volume's price at every store (the launch post's example). */
-export function CompareSlide({ v, others, tx, page }: {
-  v: LaunchVolume; others: LaunchVolume[]; tx: Record<CompareText, string>; page: string;
+export function CompareSlide({ v, others, tx }: {
+  v: LaunchVolume; others: LaunchVolume[]; tx: Record<CompareText, string>;
 }) {
   const offers = v.offers.length > MAX_STORE_ROWS ? v.offers.slice(0, MAX_STORE_ROWS - 1) : v.offers;
   const hidden = v.offers.length - offers.length;
@@ -178,7 +177,7 @@ export function CompareSlide({ v, others, tx, page }: {
   return (
     <Frame background={C.paper} color={C.ink}>
       <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 40 }}>
-        <Brand page={page} />
+        <Brand />
         <div style={{ display: "flex", gap: 48, alignItems: "center" }}>
           <div style={{ position: "relative", flexShrink: 0 }}>
             <div aria-hidden style={{ position: "absolute", left: -36, top: -30, width: 260, height: 260, backgroundImage: "radial-gradient(circle, rgba(31,27,22,0.22) 3px, transparent 3.5px)", backgroundSize: "18px 18px" }} />
@@ -244,15 +243,15 @@ export const volumeTexts = (v: InstagramVolume, others: number): TextField<Volum
 
 /** One featured volume of the week: big cover, release day and credits.
  * No prices: the weekly post should not read as an ad. */
-export function VolumeSlide({ v, others, tx, page }: {
-  v: InstagramVolume; others: InstagramVolume[]; tx: Record<VolumeText, string>; page: string;
+export function VolumeSlide({ v, others, tx }: {
+  v: InstagramVolume; others: InstagramVolume[]; tx: Record<VolumeText, string>;
 }) {
   const date = isoDate(v.release_date);
   const title = tx.baslik;
   return (
     <Frame background={C.paper} color={C.ink}>
       <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 40 }}>
-        <Brand page={page} />
+        <Brand />
         <div style={{ display: "flex", gap: 56, alignItems: "center", height: 690 }}>
           <div style={{ position: "relative", flexShrink: 0 }}>
             <div aria-hidden style={{ position: "absolute", left: -40, top: -36, width: 300, height: 300, backgroundImage: "radial-gradient(circle, rgba(31,27,22,0.22) 3px, transparent 3.5px)", backgroundSize: "18px 18px" }} />
@@ -296,11 +295,11 @@ export const listTexts = (shown: number, total: number, weekLabel: string): Text
   { id: "link", label: "Link", value: "yomiba.net/takvim" },
 ];
 
-export function ListSlide({ volumes, tx, page }: { volumes: InstagramVolume[]; tx: Record<ListText, string>; page: string }) {
+export function ListSlide({ volumes, tx }: { volumes: InstagramVolume[]; tx: Record<ListText, string> }) {
   return (
     <Frame background={C.paper} color={C.ink}>
       <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 36 }}>
-        <Brand page={page} />
+        <Brand />
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: C.indigo }}>{tx.etiket}</div>
           <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 80, lineHeight: 0.95, fontWeight: 900, letterSpacing: -2 }}>
@@ -344,14 +343,14 @@ export const ctaTexts = (baslik = "Yeni ciltleri\nkaçırma."): TextField<CtaTex
   { id: "kaydet", label: "Sağ alt düğme", value: "Kaydet, lazım olur" },
 ];
 
-export function CtaSlide({ tx, page }: { tx: Record<CtaText, string>; page: string }) {
+export function CtaSlide({ tx }: { tx: Record<CtaText, string> }) {
   const steps = ([1, 2, 3] as const).map((n) => ({ title: tx[`adim${n}`], text: tx[`adim${n}Metin`] }))
     .filter((s) => s.title || s.text);
   return (
     <Frame background={C.accent} color={C.surface}>
       <div aria-hidden style={{ position: "absolute", left: "50%", top: "40%", width: 2400, height: 2400, marginLeft: -1200, marginTop: -1200, background: "repeating-conic-gradient(from 0deg, rgba(255,253,248,0.09) 0deg 2deg, transparent 2deg 9deg)" }} />
       <div style={{ position: "absolute", inset: "64px 72px", display: "flex", flexDirection: "column", gap: 44 }}>
-        <Brand page={page} dark sealOnAccent />
+        <Brand sealOnAccent />
         <h2 style={{ margin: "40px 0 0", fontFamily: DISPLAY, fontSize: 116, lineHeight: 0.95, fontWeight: 900, letterSpacing: -3 }}>
           <Lines text={tx.baslik} />
         </h2>

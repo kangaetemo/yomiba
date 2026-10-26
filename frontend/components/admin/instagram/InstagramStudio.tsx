@@ -64,19 +64,17 @@ export function InstagramStudio({ volumes, weekLabel, fileStem }: {
   const fan = [...featured, ...ranked.filter((v) => !featuredIds.includes(v.id))].slice(0, FAN_MAX);
   const listed = (volumes.length > LIST_MAX ? ranked.slice(0, LIST_MAX) : [...volumes])
     .sort((a, b) => a.release_date.localeCompare(b.release_date) || a.id - b.id);
-  const total = featured.length + 3;
-  const page = (n: number) => `${n} / ${total}`;
   const { slide } = texts;
   const slides: Slide[] = [
-    slide("kapak", "Kapak", coverTexts(volumes.length, weekLabel), (tx) => <CoverSlide fan={fan} tx={tx} page={page(1)} />),
-    ...featured.map((v, i) => {
+    slide("kapak", "Kapak", coverTexts(volumes.length, weekLabel), (tx) => <CoverSlide fan={fan} tx={tx} />),
+    ...featured.map((v) => {
       const others = ranked.filter((o) => o.id !== v.id);
       return slide(`cilt-${v.id}`, bookTitle(v), volumeTexts(v, others.length),
-        (tx) => <VolumeSlide v={v} others={others} tx={tx} page={page(i + 2)} />);
+        (tx) => <VolumeSlide v={v} others={others} tx={tx} />);
     }),
     slide("liste", "Liste", listTexts(listed.length, volumes.length, weekLabel),
-      (tx) => <ListSlide volumes={listed} tx={tx} page={page(featured.length + 2)} />),
-    slide("cagri", "Çağrı", ctaTexts(), (tx) => <CtaSlide tx={tx} page={page(total)} />),
+      (tx) => <ListSlide volumes={listed} tx={tx} />),
+    slide("cagri", "Çağrı", ctaTexts(), (tx) => <CtaSlide tx={tx} />),
   ];
 
   function toggle(id: number) {

@@ -65,8 +65,6 @@ export function LaunchStudio({ data }: { data: InstagramLaunch }) {
   const others = ranked.filter((v) => v.id !== exampleId);
   const fan = [...(example ? [example] : []), ...others.filter((v) => v.cover_url), ...others.filter((v) => !v.cover_url)]
     .slice(0, FAN_MAX);
-  const total = example ? 4 : 3;
-  const page = (n: number) => `${n} / ${total}`;
   const exampleTexts = (v: LaunchVolume): TextField<CompareText>[] => [
     { id: "etiket", label: "Üst etiket", value: "AYNI CİLT, FARKLI FİYAT" },
     { id: "baslik", label: "Cilt adı", value: bookTitle(v) },
@@ -76,12 +74,12 @@ export function LaunchStudio({ data }: { data: InstagramLaunch }) {
     { id: "link", label: "Link", value: "yomiba.net" },
   ];
   const slides: Slide[] = [
-    slide("kapak", "Kapak", launchCoverTexts(), (tx) => <LaunchCoverSlide fan={fan} stats={stats} tx={tx} page={page(1)} />),
+    slide("kapak", "Kapak", launchCoverTexts(), (tx) => <LaunchCoverSlide fan={fan} stats={stats} tx={tx} />),
     // Keyed by volume: picking another example starts from its own texts.
     ...(example ? [slide(`ornek-${example.id}`, bookTitle(example), exampleTexts(example),
-      (tx) => <CompareSlide v={example} others={others} tx={tx} page={page(2)} />)] : []),
-    slide("neler-var", "Neler var", featuresTexts(stats), (tx) => <FeaturesSlide tx={tx} page={page(total - 1)} />),
-    slide("cagri", "Çağrı", launchCtaTexts(), (tx) => <LaunchCtaSlide tx={tx} page={page(total)} />),
+      (tx) => <CompareSlide v={example} others={others} tx={tx} />)] : []),
+    slide("neler-var", "Neler var", featuresTexts(stats), (tx) => <FeaturesSlide tx={tx} />),
+    slide("cagri", "Çağrı", launchCtaTexts(), (tx) => <LaunchCtaSlide tx={tx} />),
   ];
 
   return (
