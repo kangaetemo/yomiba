@@ -264,6 +264,22 @@ class Settings:
     scraper_store_min_interval_seconds: float = float(
         os.getenv("SCRAPER_STORE_MIN_INTERVAL_SECONDS", "0.25")
     )
+    #: HTTP 429 (rate limited, no bot wall): the store asked us to slow
+    #: down, so it gets a longer wait than other transient errors (10s, 20s,
+    #: 40s unless Retry-After says otherwise, max 60s) and more attempts, and
+    #: the wait pauses the store for every concurrent import, not only the
+    #: request that got the 429. Kitapbulan's Shopify storefront answered
+    #: 429 three times in a row within ~3s on 2026-10-26.
+    scraper_rate_limit_backoff_seconds: float = float(
+        os.getenv("SCRAPER_RATE_LIMIT_BACKOFF_SECONDS", "10")
+    )
+    scraper_rate_limit_max_retries: int = int(os.getenv("SCRAPER_RATE_LIMIT_MAX_RETRIES", "3"))
+    #: Kitapbulan (Shopify) rate-limits bursts: one search costs a search
+    #: page per 24 products plus one product JSON per volume, so the store
+    #: gets a wider process-wide gap than SCRAPER_STORE_MIN_INTERVAL_SECONDS.
+    kitapbulan_min_request_interval_seconds: float = float(
+        os.getenv("KITAPBULAN_MIN_REQUEST_INTERVAL_SECONDS", "1.0")
+    )
 
 
 STAGING_DB_PATH = Path("/data/yomiba-staging.db")

@@ -34,6 +34,14 @@ def _reserve_store_slot(store_id: str, min_interval: float) -> float:
     return slot - now
 
 
+def _pause_store(store_id: str, seconds: float) -> None:
+    """Hold back every import's next request to ``store_id`` for ``seconds``
+    (a 429 is about the store's view of our host, not one request)."""
+    with _store_slots_lock:
+        until = time.monotonic() + seconds
+        _store_slots[store_id] = max(_store_slots.get(store_id, 0.0), until)
+
+
 @dataclass(frozen=True)
 class ListingCheck:
     """Stock (and price, when shown) read from one product page."""
@@ -107,6 +115,8 @@ class BaseScraper:
     #: :meth:`get`.
     _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
     _MAX_RETRY_DELAY = 30.0
+    #: Cap for one wait after HTTP 429, Retry-After included.
+    _MAX_RATE_LIMIT_DELAY = 60.0
 
     @staticmethod
     def _is_bot_wall(response: httpx.Response) -> bool:
@@ -127,12 +137,34 @@ class BaseScraper:
             wait = self._last_request_at + min_interval - time.monotonic()
             if wait > 0:
                 time.sleep(wait)
-        store_interval = self.settings.scraper_store_min_interval_seconds
+        store_interval = self._store_min_interval()
         if store_interval > 0:
-            wait = _reserve_store_slot(self.store_id or type(self).__name__, store_interval)
+            wait = _reserve_store_slot(self._store_key(), store_interval)
             if wait > 0:
                 time.sleep(wait)
         self._last_request_at = time.monotonic()
+
+    def _store_key(self) -> str:
+        return self.store_id or type(self).__name__
+
+    def _store_min_interval(self) -> float:
+        """Process-wide gap between two requests to this store; stores that
+        rate-limit bursts override it."""
+        return self.settings.scraper_store_min_interval_seconds
+
+    def _rate_limit_delay(self, attempt: int, retry_after: str | None) -> float:
+        """Wait after an HTTP 429: Retry-After when the store sends one,
+        otherwise SCRAPER_RATE_LIMIT_BACKOFF_SECONDS doubled per attempt;
+        never shorter than the ordinary backoff, never over 60s."""
+        base = self.settings.scraper_retry_backoff_seconds * (2 ** (attempt - 1))
+        delay = self.settings.scraper_rate_limit_backoff_seconds * (2 ** (attempt - 1))
+        if retry_after is not None:
+            try:
+                delay = float(retry_after)
+            except ValueError:
+                pass
+        delay = max(delay, base) * random.uniform(1.0, 1.25)
+        return min(delay, self._MAX_RATE_LIMIT_DELAY)
 
     def _sleep_backoff(self, attempt: int, retry_after: str | None = None) -> None:
         """Exponential backoff with jitter; honours ``Retry-After`` on 429.
@@ -156,7 +188,10 @@ class BaseScraper:
         """GET ``url`` with per-store rate limiting and bounded retries.
 
         Transient failures (transport errors, 429/5xx) are retried up to
-        ``scraper_max_retries`` times with exponential backoff + jitter.
+        ``scraper_max_retries`` times with exponential backoff + jitter;
+        HTTP 429 waits longer and gets up to ``scraper_rate_limit_max_retries``
+        retries (see :meth:`_rate_limit_delay`), pausing the store for every
+        concurrent import meanwhile.
         Bot walls and other non-transient responses are returned / raised
         immediately — never faked, never spun on.
 
@@ -164,7 +199,8 @@ class BaseScraper:
         retries (throttling happens at the top of the loop).
         """
         max_retries = max(0, self.settings.scraper_max_retries)
-        for attempt in range(1, max_retries + 2):
+        rate_limit_retries = max(max_retries, self.settings.scraper_rate_limit_max_retries)
+        for attempt in range(1, max(max_retries, rate_limit_retries) + 2):
             self._throttle()
             try:
                 response = self.client.get(url, **kwargs)
@@ -184,16 +220,25 @@ class BaseScraper:
             if response.status_code in self._RETRYABLE_STATUS:
                 if self._is_bot_wall(response):
                     return response  # fail fast; caller raises the block error
-                if attempt > max_retries:
+                rate_limited = response.status_code == 429
+                allowed = rate_limit_retries if rate_limited else max_retries
+                if attempt > allowed:
                     raise ScraperError(
                         f"{self.store_id}: HTTP {response.status_code} after "
                         f"{attempt} attempts for {url} (giving up)"
                     )
                 logger.warning(
                     "%s: HTTP %d for %s (attempt %d/%d); retrying",
-                    self.store_id, response.status_code, url, attempt, max_retries + 1,
+                    self.store_id, response.status_code, url, attempt, allowed + 1,
                 )
-                self._sleep_backoff(attempt, retry_after=response.headers.get("Retry-After"))
+                retry_after = response.headers.get("Retry-After")
+                if rate_limited:
+                    delay = self._rate_limit_delay(attempt, retry_after)
+                    _pause_store(self._store_key(), delay)
+                    if delay > 0:
+                        time.sleep(delay)
+                else:
+                    self._sleep_backoff(attempt, retry_after=retry_after)
                 continue
             return response
         # Unreachable: every loop path returns or raises.
