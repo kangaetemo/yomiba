@@ -22,6 +22,15 @@ and İblis Keser after the 17 Berserk volumes, "1000 sonuç"). Every query
 token of length >= 3 must appear in the title or the product is dropped,
 and paging stops after two pages without a relevant product.
 
+PRICE/STOCK SNAPSHOT: one product JSON per volume made Kitapbulan the
+slowest store of every series by far (2s request gap since the 429s of
+2026-10-26, shared by all import workers). The comics collection is read
+through ``/collections/<handle>/products.json`` (250 products a request:
+title, vendor, tags, variants[].price/available/sku) and kept for
+KITAPBULAN_CATALOG_TTL_MINUTES; search results and listing re-checks found
+in it cost no request. Products missing from it still get their
+``/products/<handle>.js``.
+
 Foreign editions (VIZ, Yen Press ...) are recognised by the ISBN in the
 handle and dropped before their product JSON is fetched: the catalog lists
 Turkish editions only, and a long series lists dozens of English volumes.
@@ -33,7 +42,9 @@ from __future__ import annotations
 
 import logging
 import re
-from decimal import Decimal
+import threading
+import time
+from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus, urljoin, urlsplit
 
 from bs4 import BeautifulSoup, SoupStrainer
@@ -61,6 +72,67 @@ _HANDLE_ISBN_RE = re.compile(r"-(97[89]\d{10})$")
 #: Stop paging after this many pages in a row without a product that passes
 #: the relevance guard: past the series the store only lists unrelated ones.
 _IRRELEVANT_PAGE_LIMIT = 2
+#: Shopify's page size cap for ``products.json``.
+_CATALOG_PAGE_SIZE = 250
+#: Safety bound on snapshot pages per collection (1156 products = 5 pages).
+_CATALOG_MAX_PAGES = 40
+#: After a failed snapshot read (429, cooldown, HTTP error) the scraper
+#: works without one for this long instead of retrying on every search.
+_CATALOG_RETRY_SECONDS = 600.0
+
+#: Process-wide snapshot shared by every scraper instance (both import
+#: workers): {handle: product in the ``/products/<handle>.js`` shape}.
+_catalog: dict[str, dict] = {}
+_catalog_loaded_at: float | None = None
+_catalog_retry_at: float = 0.0
+_catalog_lock = threading.Lock()
+
+
+def reset_catalog() -> None:
+    """Forget the snapshot (tests)."""
+    global _catalog, _catalog_loaded_at, _catalog_retry_at
+    with _catalog_lock:
+        _catalog = {}
+        _catalog_loaded_at = None
+        _catalog_retry_at = 0.0
+
+
+def _catalog_price(value) -> int | None:
+    """``products.json`` prices are decimal strings ("196.80"); the
+    product JSON uses kuruş integers."""
+    try:
+        return int((Decimal(str(value)) * 100).to_integral_value())
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _snapshot_product(product: dict) -> dict | None:
+    """One ``products.json`` entry in the ``/products/<handle>.js`` shape
+    the scraper already reads (price in kuruş, ``available``,
+    ``featured_image``, ``variants[0].barcode``)."""
+    handle = product.get("handle")
+    variants = [v for v in (product.get("variants") or []) if isinstance(v, dict)]
+    if not handle or not variants or "available" not in variants[0]:
+        return None
+    variant = variants[0]
+    price = _catalog_price(variant.get("price"))
+    if price is None:
+        return None
+    tags = product.get("tags")
+    if isinstance(tags, str):
+        tags = [tag.strip() for tag in tags.split(",") if tag.strip()]
+    images = product.get("images") or []
+    image = images[0].get("src") if images and isinstance(images[0], dict) else None
+    return {
+        "title": product.get("title"),
+        "handle": handle,
+        "vendor": product.get("vendor"),
+        "tags": tags or [],
+        "price": price,
+        "available": any(bool(v.get("available")) for v in variants),
+        "featured_image": image,
+        "variants": [{"price": price, "sku": variant.get("sku"), "barcode": variant.get("barcode")}],
+    }
 
 
 def product_handle(url: str) -> str | None:
@@ -94,6 +166,8 @@ class KitapbulanScraper(BaseScraper):
             "rejected": {},
             "accepted": 0,
             "stop_reason": None,
+            "snapshot_hits": 0,
+            "product_json_fetches": 0,
         }
 
         query_tokens = [
@@ -246,11 +320,16 @@ class KitapbulanScraper(BaseScraper):
             logger.debug("kitapbulan: skipping %s card: %r", reason, item["title"])
             return None, reason
 
-        try:
-            product = self._product_json(item["handle"])
-        except ScraperError:
-            logger.warning("kitapbulan: product JSON blocked/failed for %s", item["handle"])
-            return None, "detail_failed"
+        product = self._catalog_product(item["handle"])
+        if product is not None:
+            self.stats["snapshot_hits"] = self.stats.get("snapshot_hits", 0) + 1
+        else:
+            self.stats["product_json_fetches"] = self.stats.get("product_json_fetches", 0) + 1
+            try:
+                product = self._product_json(item["handle"])
+            except ScraperError:
+                logger.warning("kitapbulan: product JSON blocked/failed for %s", item["handle"])
+                return None, "detail_failed"
         if product is None:
             return None, "detail_failed"
 
@@ -288,6 +367,58 @@ class KitapbulanScraper(BaseScraper):
             relevance=1.0,
         )
 
+    # -- collection snapshot -----------------------------------------------------------
+    def _catalog_product(self, handle: str) -> dict | None:
+        """The snapshot's copy of ``handle``; None when the product is not
+        in the snapshot or there is no snapshot."""
+        return self._catalog().get(handle)
+
+    def _catalog(self) -> dict[str, dict]:
+        """The process-wide snapshot, read again once it is older than
+        KITAPBULAN_CATALOG_TTL_MINUTES. Concurrent imports wait for one
+        read instead of each starting their own. A failed read keeps the
+        previous snapshot (or none) for _CATALOG_RETRY_SECONDS."""
+        global _catalog, _catalog_loaded_at, _catalog_retry_at
+        ttl = self.settings.kitapbulan_catalog_ttl_minutes * 60
+        collections = self.settings.kitapbulan_catalog_collections
+        if ttl <= 0 or not collections:
+            return {}
+        with _catalog_lock:
+            now = time.monotonic()
+            fresh = _catalog_loaded_at is not None and now - _catalog_loaded_at < ttl
+            if fresh or now < _catalog_retry_at:
+                return _catalog
+            try:
+                products: dict[str, dict] = {}
+                for collection in collections:
+                    products.update(self._read_collection(collection))
+            except ScraperError as exc:
+                logger.warning("kitapbulan: catalog snapshot failed (%s); using product JSON", exc)
+                _catalog_retry_at = time.monotonic() + _CATALOG_RETRY_SECONDS
+                return _catalog
+            _catalog = products
+            _catalog_loaded_at = time.monotonic()
+            logger.info("kitapbulan: catalog snapshot of %d products from %s", len(products), ",".join(collections))
+            return _catalog
+
+    def _read_collection(self, collection: str) -> dict[str, dict]:
+        products: dict[str, dict] = {}
+        for page in range(1, _CATALOG_MAX_PAGES + 1):
+            data = self.get_json(
+                f"{self.base_url}/collections/{collection}/products.json"
+                f"?limit={_CATALOG_PAGE_SIZE}&page={page}"
+            )
+            items = data.get("products") if isinstance(data, dict) else None
+            if not isinstance(items, list):
+                raise ScraperError(f"kitapbulan: unexpected products.json for {collection} page {page}")
+            for item in items:
+                product = _snapshot_product(item) if isinstance(item, dict) else None
+                if product is not None:
+                    products[product["handle"]] = product
+            if len(items) < _CATALOG_PAGE_SIZE:
+                break
+        return products
+
     # -- product JSON ----------------------------------------------------------------
     def _product_json(self, handle: str) -> dict | None:
         """``/products/<handle>.js``; None when the product is gone (4xx).
@@ -309,10 +440,12 @@ class KitapbulanScraper(BaseScraper):
         handle = product_handle(url)
         if handle is None:
             return None
-        try:
-            product = self._product_json(handle)
-        except ScraperError:
-            return None
+        product = self._catalog_product(handle)
+        if product is None:
+            try:
+                product = self._product_json(handle)
+            except ScraperError:
+                return None
         if product is None or "available" not in product:
             return None
         variants = product.get("variants") or [{}]

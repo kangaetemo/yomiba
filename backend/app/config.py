@@ -92,6 +92,17 @@ class Settings:
     kitapsepeti_max_search_results: int = int(os.getenv("KITAPSEPETI_MAX_SEARCH_RESULTS", "60"))
     kitapbulan_max_search_pages: int = int(os.getenv("KITAPBULAN_MAX_SEARCH_PAGES", "40"))
     kitapbulan_max_search_results: int = int(os.getenv("KITAPBULAN_MAX_SEARCH_RESULTS", "240"))
+    #: Kitapbulan price/stock snapshot: the Shopify collections below are
+    #: read through ``/collections/<handle>/products.json`` (250 products a
+    #: request, ~5 requests for the comics collection) and kept this long, so
+    #: a search only fetches ``/products/<handle>.js`` for products missing
+    #: from the snapshot. 0 turns the snapshot off.
+    kitapbulan_catalog_ttl_minutes: float = float(os.getenv("KITAPBULAN_CATALOG_TTL_MINUTES", "60"))
+    kitapbulan_catalog_collections: tuple[str, ...] = tuple(
+        c.strip()
+        for c in os.getenv("KITAPBULAN_CATALOG_COLLECTIONS", "kitap-cizgi-roman").split(",")
+        if c.strip()
+    )
 
     # Gerekli Şeyler (WAW ``/arama/<q>?tp=N``), Cizman (single-page public
     # search form), Kitapsec (``/Arama/index.php`` microdata), Komikşeyler

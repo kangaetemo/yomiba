@@ -282,3 +282,92 @@ def test_check_listing_old_url_is_unknown(log):
 def test_product_handle():
     assert product_handle(f"https://kitapbulan.com/products/{BERSERK_8}?_pos=1") == BERSERK_8
     assert product_handle("https://www.kitapbulan.com/berserk-8") is None
+
+
+# -- collection snapshot -------------------------------------------------------------
+
+def _catalog_entry(handle: str, title: str, *, price: str = "221.20", available: bool = True) -> dict:
+    isbn = handle.rsplit("-", 1)[-1]
+    return {
+        "id": 1, "title": title, "handle": handle, "vendor": "Athica Yayınları",
+        "product_type": "Kitap", "tags": ["Athica Yayınları", "Türkçe", "Çizgi Roman"],
+        "variants": [{"id": 2, "price": price, "available": available, "sku": isbn}],
+        "images": [{"src": f"https://cdn.shopify.com/s/files/1/0817/files/{isbn}.jpg"}],
+    }
+
+
+def _catalog_handler(catalog_pages: list[list[dict]], inner, log: list[str]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/collections/kitap-cizgi-roman/products.json":
+            log.append(str(request.url))
+            page = int(request.url.params.get("page", "1"))
+            items = catalog_pages[page - 1] if page <= len(catalog_pages) else []
+            return httpx.Response(200, text=json.dumps({"products": items}))
+        return inner(request)
+    return handler
+
+
+@pytest.fixture()
+def snapshot():
+    from app.scrapers import kitapbulan
+    kitapbulan.reset_catalog()
+    yield
+    kitapbulan.reset_catalog()
+
+
+def test_snapshot_products_cost_no_product_json(snapshot, log):
+    catalog = [[_catalog_entry(BERSERK_8, "Berserk 8"),
+                _catalog_entry(BERSERK_CILT_6, "Berserk Cilt 6", price="280.00", available=False)]]
+    handler = _catalog_handler(catalog, _handler(BERSERK_PAGES, BERSERK_PRODUCTS, log), log)
+    scraper = make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0)
+    results = {r.title: r for r in scraper.search("Berserk")}
+
+    assert results["Berserk 8"].price == Decimal("221.20")
+    assert results["Berserk 8"].in_stock is True
+    assert results["Berserk 8"].isbn == "9786256187986"
+    assert results["Berserk 8"].language == "tr"
+    assert results["Berserk Cilt 6"].in_stock is False
+    assert results["Berserk Cilt 6"].price == Decimal("280.00")
+    assert not any(url.endswith(".js") for url in log)
+    assert scraper.stats["snapshot_hits"] == 2
+    assert scraper.stats["product_json_fetches"] == 0
+
+    # A second search (another import worker) reuses the snapshot.
+    log.clear()
+    second = make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0)
+    assert second.check_listing(f"https://kitapbulan.com/products/{BERSERK_CILT_6}").in_stock is False
+    assert log == []
+
+
+def test_snapshot_pages_until_short_page(snapshot, log):
+    full = [_catalog_entry(f"x-{i}-978625000{i:04d}", f"X {i}") for i in range(250)]
+    last = [_catalog_entry(BERSERK_8, "Berserk 8")]
+    handler = _catalog_handler([full, last], _handler([], BERSERK_PRODUCTS, log), log)
+    scraper = make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0)
+    assert scraper.check_listing(f"https://kitapbulan.com/products/{BERSERK_8}") is not None
+    assert len(log) == 2
+    assert not any(url.endswith(".js") for url in log)
+
+
+def test_product_missing_from_snapshot_uses_product_json(snapshot, log):
+    catalog = [[_catalog_entry(BERSERK_8, "Berserk 8")]]
+    handler = _catalog_handler(catalog, _handler(BERSERK_PAGES, BERSERK_PRODUCTS, log), log)
+    scraper = make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0)
+    results = {r.title: r for r in scraper.search("Berserk")}
+    assert set(results) == {"Berserk 8", "Berserk Cilt 6"}
+    assert [url for url in log if url.endswith(".js")] == [
+        f"https://kitapbulan.com/products/{BERSERK_CILT_6}.js"
+    ]
+
+
+def test_failed_snapshot_falls_back_and_is_not_retried_every_search(snapshot, log):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/products.json"):
+            log.append(str(request.url))
+            return httpx.Response(404, text="not found")
+        return _handler(BERSERK_PAGES, BERSERK_PRODUCTS, log)(request)
+
+    scraper = make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0)
+    assert len(scraper.search("Berserk")) == 2
+    assert make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0).search("Berserk")
+    assert sum(url.endswith("/products.json?limit=250&page=1") for url in log) == 1
