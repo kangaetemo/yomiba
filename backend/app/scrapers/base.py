@@ -23,6 +23,9 @@ logger = logging.getLogger("yomiba.scraper")
 #: instance of the process: concurrent imports take turns per store.
 _store_slots: dict[str, float] = {}
 _store_slots_lock = threading.Lock()
+#: store id -> monotonic time until which the store is not contacted at
+#: all (it kept answering 429 after every retry).
+_store_cooldowns: dict[str, float] = {}
 
 
 def _reserve_store_slot(store_id: str, min_interval: float) -> float:
@@ -198,6 +201,12 @@ class BaseScraper:
         The minimum request interval applies to every attempt, including
         retries (throttling happens at the top of the loop).
         """
+        cooldown_left = _store_cooldowns.get(self._store_key(), 0.0) - time.monotonic()
+        if cooldown_left > 0:
+            raise ScraperError(
+                f"{self.store_id}: rate limited (HTTP 429), not contacted for "
+                f"another {cooldown_left / 60:.0f} min; skipped {url}"
+            )
         max_retries = max(0, self.settings.scraper_max_retries)
         rate_limit_retries = max(max_retries, self.settings.scraper_rate_limit_max_retries)
         for attempt in range(1, max(max_retries, rate_limit_retries) + 2):
@@ -223,6 +232,15 @@ class BaseScraper:
                 rate_limited = response.status_code == 429
                 allowed = rate_limit_retries if rate_limited else max_retries
                 if attempt > allowed:
+                    if rate_limited and self.settings.scraper_rate_limit_cooldown_seconds > 0:
+                        with _store_slots_lock:
+                            _store_cooldowns[self._store_key()] = (
+                                time.monotonic() + self.settings.scraper_rate_limit_cooldown_seconds
+                            )
+                        logger.warning(
+                            "%s: still HTTP 429 after %d attempts; cooling down for %.0fs",
+                            self.store_id, attempt, self.settings.scraper_rate_limit_cooldown_seconds,
+                        )
                     raise ScraperError(
                         f"{self.store_id}: HTTP {response.status_code} after "
                         f"{attempt} attempts for {url} (giving up)"

@@ -274,11 +274,19 @@ class Settings:
         os.getenv("SCRAPER_RATE_LIMIT_BACKOFF_SECONDS", "10")
     )
     scraper_rate_limit_max_retries: int = int(os.getenv("SCRAPER_RATE_LIMIT_MAX_RETRIES", "3"))
+    #: A store that still answers 429 after every retry is left alone for
+    #: this long: its searches fail at once ("cooling down") instead of
+    #: sending more requests, which kept Kitapbulan's limit from ever
+    #: resetting (2026-10-26 evening: "HTTP 429 after 4 attempts" on and
+    #: off for hours). Its listings keep their last price meanwhile.
+    scraper_rate_limit_cooldown_seconds: float = float(
+        os.getenv("SCRAPER_RATE_LIMIT_COOLDOWN_SECONDS", "900")
+    )
     #: Kitapbulan (Shopify) rate-limits bursts: one search costs a search
     #: page per 24 products plus one product JSON per volume, so the store
     #: gets a wider process-wide gap than SCRAPER_STORE_MIN_INTERVAL_SECONDS.
     kitapbulan_min_request_interval_seconds: float = float(
-        os.getenv("KITAPBULAN_MIN_REQUEST_INTERVAL_SECONDS", "1.0")
+        os.getenv("KITAPBULAN_MIN_REQUEST_INTERVAL_SECONDS", "2.0")
     )
 
 
