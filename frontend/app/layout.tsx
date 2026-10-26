@@ -10,6 +10,7 @@ import { THEME_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
 import { LoginLink } from "@/components/LoginLink";
 import { SiteTracker } from "@/components/SiteTracker";
 import { NavigationProgress } from "@/components/NavigationProgress";
+import { SectionLink } from "@/components/SectionLink";
 import { DEFAULT_OG_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site";
 
 // Turkish needs latin-ext (ş, ğ, ı, İ).
@@ -58,10 +59,10 @@ function Logo() {
 }
 
 const SECTIONS = [
-  { href: "/#indirimler", label: "İndirimler" },
-  { href: "/#yeni", label: "Yeni çıkanlar" },
-  { href: "/#populer", label: "Popüler" },
-];
+  { href: "/#indirimler", label: "İndirimler", short: "İndirimler" },
+  { href: "/#yeni", label: "Yeni çıkanlar", short: "Yeni" },
+  { href: "/#populer", label: "Popüler", short: "Popüler" },
+] as const;
 
 /** Crawlable links to every list page, on every page. */
 const FOOTER_LINKS = [
@@ -98,10 +99,13 @@ export default async function RootLayout({
             <nav aria-label="Bölümler" className="hidden items-center gap-5 text-sm md:flex">
               <SearchDialogButton className={`${navLink} inline-flex items-center gap-1.5`} />
               {SECTIONS.map((s) => (
-                <Link key={s.href} href={s.href} className={navLink}>
+                <SectionLink key={s.href} href={s.href} className={navLink}>
                   {s.label}
-                </Link>
+                </SectionLink>
               ))}
+              <Link href="/one-shot" className={navLink}>
+                One shot
+              </Link>
               <Link href="/seriler" className={navLink}>
                 Tüm seriler
               </Link>
@@ -141,17 +145,22 @@ export default async function RootLayout({
           </div>
           {/* Small screens: the section links get their own quiet row. */}
           <nav aria-label="Bölümler" className="border-t border-line md:hidden">
-            <ul className="mx-auto flex max-w-6xl justify-between px-4 text-[0.95rem]">
+            <ul className="mx-auto flex max-w-6xl justify-between gap-3 overflow-x-auto px-4 text-[0.95rem]">
               <li>
                 <SearchDialogButton className="inline-flex min-h-11 items-center gap-1.5 px-1 text-ink-2 hover:text-accent" />
               </li>
               {SECTIONS.map((s) => (
                 <li key={s.href}>
-                  <Link href={s.href} className="inline-flex min-h-11 items-center px-1 text-ink-2 hover:text-accent">
-                    {s.label}
-                  </Link>
+                  <SectionLink href={s.href} className="inline-flex min-h-11 items-center px-1 whitespace-nowrap text-ink-2 hover:text-accent">
+                    {s.short}
+                  </SectionLink>
                 </li>
               ))}
+              <li>
+                <Link href="/one-shot" className="inline-flex min-h-11 items-center px-1 whitespace-nowrap text-ink-2 hover:text-accent">
+                  One shot
+                </Link>
+              </li>
             </ul>
           </nav>
         </header>
