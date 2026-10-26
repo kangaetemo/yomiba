@@ -155,6 +155,34 @@ def test_429_waits_longer_and_pauses_the_store(monkeypatch):
     scraper_base._store_slots.clear()
 
 
+def test_store_still_rate_limited_after_retries_cools_down():
+    """After the last 429 retry the store is not contacted for the cooldown:
+    later requests fail at once instead of keeping its limit from resetting."""
+    scraper_base._store_cooldowns.clear()
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(429)
+
+    scraper = make_scraper(handler, scraper_rate_limit_cooldown_seconds=900.0)
+    with pytest.raises(ScraperError, match="after 4 attempts"):
+        scraper.get("https://x.test/1")
+    assert calls["n"] == 4
+
+    other_import = make_scraper(handler, scraper_rate_limit_cooldown_seconds=900.0)
+    with pytest.raises(ScraperError, match="not contacted for another 15 min"):
+        other_import.get("https://x.test/2")
+    assert calls["n"] == 4  # no request during the cooldown
+
+    scraper_base._store_cooldowns["bkm"] = time.monotonic() - 1  # cooldown over
+    with pytest.raises(ScraperError, match="after 4 attempts"):
+        other_import.get("https://x.test/3")
+    assert calls["n"] == 8
+    scraper_base._store_cooldowns.clear()
+    scraper_base._store_slots.clear()
+
+
 def test_kitapbulan_has_a_wider_store_interval():
     from app.scrapers.kitapbulan import KitapbulanScraper
 
