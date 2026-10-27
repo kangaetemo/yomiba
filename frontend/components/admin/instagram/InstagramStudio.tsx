@@ -11,10 +11,12 @@
 import { useState } from "react";
 import type { InstagramVolume } from "@/services/instagram";
 import { CaptionEditor, SlideCarousel, useTextEdits, type Slide } from "./parts";
+import { promoTexts } from "./promo";
 import {
   CoverSlide, CtaSlide, LIST_MAX, ListSlide, VolumeSlide, bookTitle, coverTexts, ctaTexts, dayLabel, listTexts,
   volumeTexts,
 } from "./slides";
+import { CoverPromo } from "./VideoMaker";
 
 const MAX_FEATURED = 3;
 const FAN_MAX = 5;
@@ -97,6 +99,11 @@ export function InstagramStudio({ volumes, weekLabel, fileStem }: {
 
       <div className="space-y-8">
         <CaptionEditor generated={generated} caption={caption} setCaption={setCaption} />
+
+        <CoverPromo covers={ranked.map((v) => v.cover_url)} fileStem={fileStem} fields={promoTexts(
+          `${weekLabel.toLocaleUpperCase("tr-TR")} · YAYIN TAKVİMİ`, `Bu hafta\n${volumes.length} yeni cilt\nraflarda.`,
+          "Haftanın tüm çıkışları\ntakvimde.", "yomiba.net/takvim",
+        )} />
 
         <section className="space-y-3">
           <h2 className="font-semibold text-ink">

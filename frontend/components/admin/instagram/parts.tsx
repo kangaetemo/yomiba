@@ -2,13 +2,14 @@
 
 /**
  * The pieces every Instagram draft shares: the swipeable preview with PNG
- * download, the slide texts the admin can rewrite by hand, and the editable
+ * and Reels video download, the slide texts the admin can rewrite by hand, and the editable
  * caption with a copy button.
  */
 
 import { toBlob } from "html-to-image";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SLIDE_H, SLIDE_W } from "./slides";
+import { SlideReel } from "./VideoMaker";
 
 /** A text on a slide the admin may rewrite; `value` is the generated one.
  * In a multiline field each line of the text is a line on the slide. */
@@ -204,6 +205,7 @@ export function SlideCarousel({ slides, fileStem, texts }: { slides: Slide[]; fi
       </div>
       <p className="text-xs text-muted">Görseller 1080×1350 (Instagram 4:5). Tarayıcı birden çok dosya için izin isteyebilir.</p>
       <SlideTextEditor slide={slides[current]} texts={texts} />
+      <SlideReel slideNodes={() => slideNodes.current} count={slides.length} fileStem={fileStem} />
     </section>
   );
 }

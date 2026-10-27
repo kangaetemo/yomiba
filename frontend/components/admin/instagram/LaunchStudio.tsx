@@ -13,7 +13,9 @@ import {
   FeaturesSlide, LaunchCoverSlide, LaunchCtaSlide, count, featuresTexts, launchCoverTexts, launchCtaTexts,
 } from "./launchSlides";
 import { CaptionEditor, SlideCarousel, useTextEdits, type Slide, type TextField } from "./parts";
+import { promoTexts } from "./promo";
 import { CompareSlide, bookTitle, formatPrice, type CompareText } from "./slides";
+import { CoverPromo } from "./VideoMaker";
 
 const FAN_MAX = 5;
 
@@ -88,6 +90,11 @@ export function LaunchStudio({ data }: { data: InstagramLaunch }) {
 
       <div className="space-y-8">
         <CaptionEditor generated={generated} caption={caption} setCaption={setCaption} rows={18} />
+
+        <CoverPromo covers={ranked.map((v) => v.cover_url)} fileStem="yomiba-acilis" fields={promoTexts(
+          "MANGA FİYAT KARŞILAŞTIRMA", "yomiba.net\naçıldı.",
+          `${count(stats.stores)} mağazanın fiyatı\ntek sayfada.`, "yomiba.net",
+        )} />
 
         <section className="space-y-3">
           <h2 className="font-semibold text-ink">
