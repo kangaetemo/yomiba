@@ -37,7 +37,18 @@ const nextConfig: NextConfig = {
     // The site moved to the VPS (yomiba.net) on 2026-10-20. Vercel still
     // serves the old Railway-backed copy; send every request there so no
     // account or collection change lands in the retired database.
-    if (process.env.VERCEL !== "1") return [];
+    if (process.env.VERCEL !== "1") {
+      // Short Instagram bio link: the profile shows "yomiba.net/ig" instead
+      // of the long utm URL. Temporary (307) so the target can change.
+      return [
+        {
+          source: "/ig",
+          destination:
+            "/?utm_source=instagram&utm_medium=social&utm_campaign=bio",
+          permanent: false,
+        },
+      ];
+    }
     return [
       {
         source: "/:path*",
