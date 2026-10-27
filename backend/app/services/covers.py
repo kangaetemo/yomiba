@@ -53,7 +53,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings, get_settings
-from ..models import CatalogSeries, Store, StoreListing, Volume
+from ..models import CatalogSeries, Series, Store, StoreListing, Volume
 from ..utils import utcnow
 
 logger = logging.getLogger("yomiba.covers")
@@ -190,6 +190,8 @@ def http_download(settings: Settings | None = None) -> Download:
     last_hit: dict[str, float] = {}
 
     def download(url: str) -> bytes | None:
+        """The image bytes, or None; ``download.last_error`` then says why."""
+        download.last_error = None
         host = urlparse(url).netloc
         spacing = 0.6 if _is_mangakol(url) else 0.3  # gentler on the catalog source
         wait = last_hit.get(host, 0.0) + spacing - time.monotonic()
@@ -198,16 +200,22 @@ def http_download(settings: Settings | None = None) -> Download:
         last_hit[host] = time.monotonic()
         try:
             response = client.get(url)
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            download.last_error = f"bağlantı hatası ({type(exc).__name__})"
             return None
         if response.status_code != 200:
+            download.last_error = f"HTTP {response.status_code}"
             return None
-        if not response.headers.get("content-type", "").startswith("image/"):
+        content_type = response.headers.get("content-type", "")
+        if not content_type.startswith("image/"):
+            download.last_error = f"resim değil ({content_type.split(';')[0] or 'türü yok'})"
             return None
         if len(response.content) > MAX_IMAGE_BYTES:
+            download.last_error = "resim çok büyük"
             return None
         return response.content
 
+    download.last_error = None
     return download
 
 
@@ -391,6 +399,7 @@ class CoverFetcher:
                 sources = [s for s in sources if s[2] != volume.cover_origin_url]
             if not sources:
                 report.without_source += 1
+            errors: list[str] = []
             for tag, url, origin in sources:
                 if report.downloads >= budget:
                     break
@@ -398,9 +407,13 @@ class CoverFetcher:
                 raw = self.download(url)
                 webp = to_cover_webp(raw) if raw else None
                 if webp is None:
+                    why = (getattr(self.download, "last_error", None) or "indirilemedi") if not raw \
+                        else "kapağa benzemiyor (boyut ya da en/boy oranı)"
+                    errors.append(f"{tag}: {why}")
                     continue
                 key = f"v/{volume.id}-{hashlib.sha256(webp).hexdigest()[:12]}.webp"
                 if key == volume.cover_key:
+                    errors.append(f"{tag}: aynı resim")
                     continue  # the same picture under another address
                 self.store.save(key, webp, "image/webp")
                 volume.cover_key, volume.cover_source, volume.cover_origin_url = key, tag, origin
@@ -408,12 +421,72 @@ class CoverFetcher:
                 volume.cover_provisional = (not volume_is_out(volume)) if replacing else is_provisional(volume, tag)
                 report.stored += 1
                 report.replaced += replacing
+                errors = []
                 break
+            if volume.cover_key is None:
+                volume.cover_error = ("; ".join(errors) if errors else "kaynak yok")[:500]
+            else:
+                volume.cover_error = None
             volume.cover_checked_at = utcnow()
             self.session.commit()
         report.remaining = self.session.scalar(select(func.count()).select_from(self._pending().subquery())) or 0
         logger.info("covers: %s", report)
         return report
+
+
+def missing_covers(session: Session, settings: Settings | None = None) -> list[dict]:
+    """Admin: catalog volumes without a self-hosted cover and why, from
+    what the last pass recorded (``cover_error``) and the sources the
+    volume has now."""
+    settings = settings or get_settings()
+    fetcher = CoverFetcher(session, store=get_cover_store(settings), download=lambda url: None,
+                           settings=settings)
+    rows = session.execute(
+        select(Volume, Series.title, Series.slug)
+        .join(Series, Series.id == Volume.series_id)
+        .where(
+            Volume.volume_number >= 0,
+            Volume.series_id.in_(select(CatalogSeries.series_id)),
+            Volume.cover_key.is_(None),
+        )
+        .order_by(Series.title, Volume.volume_number)
+    ).all()
+    now = utcnow()
+    out = []
+    for volume, title, slug in rows:
+        sources = fetcher._sources(volume)
+        is_out = volume_is_out(volume)
+        checked = volume.cover_checked_at
+        if checked is not None and checked.tzinfo is None:
+            checked = checked.replace(tzinfo=now.tzinfo)
+        if not sources:
+            if is_mangakol_url(volume.cover_url) and not settings.cover_allow_mangakol:
+                reason = "Yalnızca Mangakol'da resim var, Mangakol kapalı (COVER_ALLOW_MANGAKOL)"
+            elif not is_out:
+                reason = ("Henüz çıkmadı ve Mangakol'da resmi yok; mağaza resimleri "
+                          "çıkış öncesi kullanılmıyor (yabancı baskı olabilir)")
+            else:
+                reason = "Hiçbir kaynakta resim yok (Mangakol'da da mağazalarda da)"
+            kind = "no_source"
+        elif checked is None:
+            reason, kind = "Henüz denenmedi, sıradaki turda indirilecek", "queued"
+        else:
+            reason = f"İndirilemedi: {volume.cover_error or 'neden kaydedilmemiş (eski tur)'}"
+            kind = "failed"
+        out.append({
+            "volume_id": volume.id,
+            "series": title,
+            "series_slug": slug,
+            "volume_number": volume.volume_number,
+            "release_date": volume.release_date.isoformat() if volume.release_date else None,
+            "is_out": is_out,
+            "kind": kind,
+            "reason": reason,
+            "sources": [{"source": tag, "url": url} for tag, url, _ in sources],
+            "checked_at": checked.isoformat() if checked else None,
+            "next_try": (checked + RETRY_AFTER).isoformat() if checked else None,
+        })
+    return out
 
 
 # -- background worker -------------------------------------------------------------------------------

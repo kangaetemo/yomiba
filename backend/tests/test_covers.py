@@ -426,3 +426,36 @@ def test_kept_store_cover_is_not_dropped(db_session, store):
     fetcher, _ = _fetcher(db_session, store, {BKM_IMG: _image()})
     fetcher.run(budget=10)
     assert fetcher.run(budget=10).dropped == 0 and vol.cover_source == "store:bkm"
+
+
+def test_failure_reason_is_recorded_and_listed(client, db_session, store):
+    vol = _volume_with_offers(db_session, {"bkm": BKM_IMG}, catalog_cover=None)
+    fetcher, _ = _fetcher(db_session, store, {BKM_IMG: _image(1200, 400)})  # a banner
+    fetcher.run(budget=10)
+    assert vol.cover_key is None and vol.cover_error == "store:bkm: kapağa benzemiyor (boyut ya da en/boy oranı)"
+
+    body = client.get("/catalog/covers/missing").json()
+    assert body["count"] == 1
+    item = body["items"][0]
+    assert (item["volume_id"], item["kind"], item["series"]) == (vol.id, "failed", "Berserk")
+    assert "kapağa benzemiyor" in item["reason"] and item["sources"][0]["url"] == BKM_IMG
+
+    fetcher, _ = _fetcher(db_session, store, {BKM_IMG: _image()})
+    vol.cover_checked_at = utcnow() - timedelta(days=8)
+    db_session.commit()
+    fetcher.run(budget=10)
+    assert vol.cover_key and vol.cover_error is None
+    assert client.get("/catalog/covers/missing").json()["count"] == 0
+
+
+def test_missing_list_explains_volumes_without_sources(client, db_session, store):
+    vol = _volume_with_offers(db_session, {}, catalog_cover=None)
+    other = seed_catalog_series(db_session, "Nana", "Gerekli Şeyler", volumes=(1,))
+    queued = db_session.scalar(select(Volume).where(Volume.series_id == other.id))
+    queued.cover_url = MANGAKOL
+    vol.cover_checked_at = utcnow()
+    db_session.commit()
+
+    items = {i["volume_id"]: i for i in client.get("/catalog/covers/missing").json()["items"]}
+    assert items[vol.id]["kind"] == "no_source" and "Hiçbir kaynakta" in items[vol.id]["reason"]
+    assert items[queued.id]["kind"] == "queued"

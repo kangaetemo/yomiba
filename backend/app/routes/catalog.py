@@ -334,6 +334,15 @@ def cover_status(request: Request, session: Session = Depends(get_db)) -> dict:
     }
 
 
+@router.get("/catalog/covers/missing")
+def missing_covers(session: Session = Depends(get_db)) -> dict:
+    """Admin: volumes without a self-hosted cover, each with the reason."""
+    from ..services.covers import missing_covers as list_missing
+
+    items = list_missing(session)
+    return {"count": len(items), "items": items}
+
+
 @router.post("/catalog/covers/fetch", status_code=202)
 def start_cover_fetch(request: Request) -> dict:
     """Admin: run a cover pass now instead of waiting for the next one."""
