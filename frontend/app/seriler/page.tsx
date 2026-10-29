@@ -11,12 +11,12 @@ import type { SeriesIndexItem } from "@/types";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Tüm manga serileri (A–Z)",
+  title: "Tüm manga serileri (A-Z)",
   description:
     "Türkiye'de yayımlanan bütün manga serileri alfabetik sırayla: yayınevi, cilt sayısı ve kitapçılardaki en düşük fiyat.",
   alternates: { canonical: "/seriler" },
   openGraph: openGraph({
-    title: "Tüm manga serileri (A–Z)",
+    title: "Tüm manga serileri (A-Z)",
     description: "Türkiye'de yayımlanan bütün manga serileri, yayınevleri ve en düşük fiyatlarıyla.",
     url: "/seriler",
   }),
@@ -43,7 +43,7 @@ export default async function SeriesIndexPage() {
         title="Tüm seriler"
         lead={
           all
-            ? `Türkiye'de yayımlanan ${all.length} manga serisi, alfabetik sırayla. Fiyat, kitapçılarda stokta olan en ucuz cilt.`
+            ? `Türkiye'de yayımlanan ${all.length} manga serisi, alfabetik sırayla. Gösterilen fiyat, stokta olan en ucuz cildin fiyatı.`
             : undefined
         }
       />

@@ -18,7 +18,7 @@ export default function ErrorPage({
       </p>
       <h1 className="text-2xl font-bold text-ink">Bir şeyler ters gitti</h1>
       <p className="text-sm text-muted">
-        Sunucuya şu anda ulaşılamıyor olabilir. Birazdan tekrar deneyin.
+        Sunucuya şu an ulaşılamıyor olabilir. Biraz sonra tekrar dene.
         {error.digest && (
           <span className="mt-1 block text-xs text-faint">Hata kodu: {error.digest}</span>
         )}

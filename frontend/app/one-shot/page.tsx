@@ -78,7 +78,7 @@ export default async function OneShotPage({
         level={1}
         eyebrow="Tek ciltlik hikâyeler"
         title="One shot"
-        lead="Tek ciltte başlayıp biten hikâyeler: Japonya'da da Türkiye'de de tamamlanmış, tek cildi olan seriler."
+        lead="Japonya'da da Türkiye'de de tek ciltte tamamlanmış seriler."
       />
       <SortBar sorts={SORTS} active={active.key} stockOnly={stockOnly} hrefFor={hrefFor} />
       {shots === null ? (

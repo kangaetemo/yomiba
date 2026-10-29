@@ -324,7 +324,7 @@ export default async function VolumePage({ params }: VolumePageProps) {
               <div>
                 <p className="font-display text-xl text-ink">Şu an hiçbir mağazada stokta yok</p>
                 <p className="mt-1 text-sm text-muted">
-                  Hedef fiyatını kaydet; stoğa girip fiyatı düştüğünde görebilirsin.
+                  Hedef fiyat koyarsan stoğa girip o fiyata indiğinde e-postayla haber veririz.
                 </p>
               </div>
               <a href="#alarm-title" className="inline-flex min-h-11 items-center gap-1 font-semibold text-ink-2 hover:text-accent">
@@ -386,8 +386,8 @@ export default async function VolumePage({ params }: VolumePageProps) {
               </p>
             ) : buyable.length === 0 && unavailable.length === 0 && missingStores.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-line-strong bg-surface/70 p-6 text-sm text-muted">
-                Bu cildi şu an stokta satan bir mağaza yok. Fiyatlar düzenli olarak kontrol edilir;
-                stoğa giren ilk teklif burada görünür.
+                Bu cildi şu an stokta satan mağaza yok. Fiyatları düzenli kontrol ediyoruz; bir mağaza
+                stoğa aldığında burada görünür.
               </p>
             ) : (
               <>

@@ -8,7 +8,7 @@ export default function NotFound() {
       </p>
       <h1 className="text-2xl font-bold text-ink">Sayfa bulunamadı</h1>
       <p className="text-sm text-muted">
-        Aradığınız sayfa yok (ya da henüz içe aktarılmamış olabilir).
+        Bu adreste bir sayfa yok. Bir seri arıyorsan ana sayfadaki aramayı dene.
       </p>
       <Link
         href="/"

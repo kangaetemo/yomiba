@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     template: "%s | Yomiba",
   },
   description:
-    "Manga fiyatlarını Türk kitapçıları (BKM Kitap, Gerekli Şeyler, Kitap Sepeti ve diğerleri) arasında karşılaştır, koleksiyonunu takip et, fiyat alarmı kur.",
+    "BKM Kitap, Gerekli Şeyler, Kitap Sepeti ve diğer kitapçılardaki manga fiyatlarını karşılaştır. Koleksiyonunu tut, istediğin cilde fiyat alarmı kur.",
   openGraph: { type: "website", siteName: SITE_NAME, locale: "tr_TR", images: [DEFAULT_OG_IMAGE] },
   twitter: { card: "summary" },
 };
@@ -173,8 +173,8 @@ export default async function RootLayout({
           <div className="mx-auto max-w-6xl space-y-3 px-4 py-10 sm:px-6">
             <Logo />
             <p className="max-w-sm text-sm text-muted">
-              Türkiye&apos;deki manga baskılarının fiyatını mağazalar arasında karşılaştırır,
-              koleksiyonunu ve istek listeni tek yerde tutar.
+              Türkiye&apos;de çıkan mangaların fiyatlarını kitapçılardan toplayıp yan yana koyar.
+              Koleksiyonunu ve istek listeni de burada tutabilirsin.
             </p>
             <nav aria-label="Site" className="pt-2">
               <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm">

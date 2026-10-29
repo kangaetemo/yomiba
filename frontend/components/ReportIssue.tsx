@@ -54,7 +54,7 @@ export function ReportIssue({ path, stores = [] }: { path: string; stores?: stri
   if (sent) {
     return (
       <p role="status" className="text-sm text-ok">
-        Teşekkürler! Bildirimin bize ulaştı; kontrol edip düzelteceğiz.
+        Teşekkürler, bildirimin bize ulaştı. Bakıp gerekiyorsa düzelteceğiz.
       </p>
     );
   }

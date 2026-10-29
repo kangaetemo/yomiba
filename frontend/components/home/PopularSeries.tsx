@@ -18,7 +18,7 @@ export function PopularSeries({ series }: { series: Series[] }) {
         eyebrow="Keşfet"
         title="Popüler seriler"
         action={{ href: "/seriler", label: "Tüm seriler" }}
-        lead="Kitapçıların çok satan listelerinde öne çıkan, yeni cildi gelen ve okurların takip ettiği seriler. Hepsi şu an stokta."
+        lead="Kitapçıların çok satanlar listesine giren, yeni cildi çıkan ya da okurların takip ettiği seriler. Hepsinin şu an stokta cildi var."
       />
       <SeriesGrid series={series} />
     </section>
@@ -41,7 +41,7 @@ export function OneShots({ series }: { series: Series[] }) {
         eyebrow="Tek ciltlik hikâyeler"
         title="One shot"
         action={{ href: "/one-shot", label: "Tümünü göster" }}
-        lead="Tek ciltte başlayıp biten hikâyeler: Japonya'da da Türkiye'de de tamamlanmış, tek cildi olan seriler."
+        lead="Japonya'da da Türkiye'de de tek ciltte tamamlanmış seriler."
       />
       <SeriesGrid series={shelf} />
     </section>
