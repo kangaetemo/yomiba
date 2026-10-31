@@ -236,6 +236,18 @@ class Settings:
     # listing not seen for this long while the SAME store's other listings
     # were refreshed is shown as "stock unknown" (never as in stock).
     listing_stale_hours: float = float(os.getenv("LISTING_STALE_HOURS", "48"))
+    # Stores whose prices may not be kept or shown for longer than this
+    # (Amazon's associate terms: pricing content at most 24 hours old).
+    # "store:hours" pairs, comma-separated; such a listing is hidden once it
+    # is older and is deleted from the DB with its history (see
+    # price_retention). "" turns the rule off.
+    store_price_max_age_hours: tuple[tuple[str, float], ...] = tuple(
+        (code.strip().lower(), float(hours))
+        for code, _, hours in (
+            part.partition(":") for part in os.getenv("STORE_PRICE_MAX_AGE_HOURS", "amazon:24").split(",")
+        )
+        if code.strip() and hours.strip()
+    )
     # After a (re)start the first cycle is derived from persisted freshness
     # (catch-up when stale) but never sooner than this settle delay.
     price_refresh_startup_delay_minutes: float = float(

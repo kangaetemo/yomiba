@@ -26,6 +26,15 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 ## Son günlerde yapılanlar
 
+### 31 Ekim: Amazon fiyatları en fazla 24 saat
+
+- **Sebep:** Amazon Influencer başvurusu "fiyatlandırma içeriğimizi 24 saatten fazla saklıyorsunuz" gerekçesiyle reddedildi (örnek sayfa /series/tek-yumruk/cilt-14; o sayfada Amazon görünmüyordu).
+- **Bulgu:** Amazon sunucuda taranmıyor (`DISABLED_STORES`), ama eski Amazon ilanları veritabanında duruyordu. Mağaza bütünüyle durduğu için bayatlık kuralı onları hiç bayat saymıyordu; bazı ciltlerde haftalar önceki Amazon fiyatı "stokta" görünebiliyordu.
+- **Kural** (`STORE_PRICE_MAX_AGE_HOURS=amazon:24`):
+  - 24 saatten eski Amazon ilanı hiçbir yerde görünmüyor (cilt ve seri sayfası, arama, ana sayfa, listeler, fiyat alarmı, fiyatı düşenler, grafik).
+  - Fiyat yenileme zamanlayıcısı saatte bir 24 saatten eski Amazon fiyat geçmişini, değişiklik kayıtlarını ve ilanları siliyor (`services/price_retention.py`).
+- **Not:** Amazon'u taramak da ortaklık sözleşmesine aykırı; Amazon kapalı kalmalı. Amazon fiyatı gösterilecekse ileride yalnızca resmi API (PA-API) ile olur.
+
 ### 21 Ekim: hatalı bilgi bildirme (kod, PR bekliyor)
 
 - **Ziyaretçi tarafı:** Seri ve cilt sayfalarının altında "Hatalı bilgi mi gördün? Bildir" bağlantısı. Form: konu (fiyat, stok, yanlış eşleşme, cilt bilgisi, diğer), cilt sayfasında isteğe bağlı mağaza ve 10–1000 karakterlik açıklama. Sayfa adresi otomatik ekleniyor. Giriş gerekmiyor. Kod `frontend/components/ReportIssue.tsx`, `POST /api/hata-bildir`.
