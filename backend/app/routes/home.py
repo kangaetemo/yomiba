@@ -51,6 +51,7 @@ from ..services import series_slugs
 from ..services.catalog_service import (
     fresh_listing_condition,
     only_volume_numbers,
+    price_age_condition,
     public_volume_condition,
 )
 from ..services.covers import cover_url
@@ -230,7 +231,7 @@ def _compute_home(session: Session, *, popular: int, one_shot: int, new: int,
         "stores": session.scalar(
             select(func.count(func.distinct(StoreListing.store_id)))) or 0,
         "offers": session.scalar(
-            select(func.count(StoreListing.id)).where(StoreListing.price.isnot(None))) or 0,
+            select(func.count(StoreListing.id)).where(StoreListing.price.isnot(None), price_age_condition())) or 0,
     }
     result = {"popular_series": popular_series, "one_shots": one_shots,
               "new_volumes": new_volumes, "new_series": new_series_cards, "stats": stats}
@@ -243,7 +244,7 @@ def _release_query():
     price_sub = (
         select(StoreListing.volume_id, func.min(StoreListing.price).label("min_price"),
                func.count(StoreListing.id).label("stores"))
-        .where(StoreListing.in_stock.is_(True), StoreListing.price.isnot(None))
+        .where(StoreListing.in_stock.is_(True), StoreListing.price.isnot(None), price_age_condition())
         .group_by(StoreListing.volume_id)
         .subquery()
     )
@@ -345,7 +346,7 @@ def _new_series(session: Session, limit: int) -> list[dict]:
             select(Volume.series_id, func.count(StoreListing.id), func.min(StoreListing.price))
             .join(StoreListing, StoreListing.volume_id == Volume.id)
             .where(Volume.series_id.in_(ids), real, StoreListing.in_stock.is_(True),
-                   StoreListing.price.isnot(None))
+                   StoreListing.price.isnot(None), price_age_condition())
             .group_by(Volume.series_id)
         )
     }
@@ -401,7 +402,7 @@ def _one_shots(session: Session, interest: dict[int, float], limit: int) -> list
             select(Volume.series_id, func.count(StoreListing.id), func.min(StoreListing.price))
             .join(StoreListing, StoreListing.volume_id == Volume.id)
             .where(Volume.series_id.in_(ids), real, StoreListing.in_stock.is_(True),
-                   StoreListing.price.isnot(None))
+                   StoreListing.price.isnot(None), price_age_condition())
             .group_by(Volume.series_id)
         )
     }

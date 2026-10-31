@@ -22,6 +22,7 @@ from ..config import get_settings
 from ..models import CatalogSeries, PriceHistory, Series, Store, StoreListing, Volume
 from ..utils import from_cents, utcnow
 from . import series_slugs
+from .catalog_service import price_expired
 from .covers import cover_url
 from .swr_cache import SwrCache
 
@@ -172,7 +173,8 @@ def _compute(session: Session, *, volume_id: int | None, hours, now):
     deals = []
     for entries in grouped.values():
         buyable = [r for r in entries if r[0].in_stock and r[0].price is not None
-                   and r[0].price > 0 and aware(r[0].last_checked) >= freshness]
+                   and r[0].price > 0 and aware(r[0].last_checked) >= freshness
+                   and not price_expired(r[0], now)]
         if not buyable:
             continue
         buyable.sort(key=lambda r: (r[0].price, r[3].name, r[0].id))

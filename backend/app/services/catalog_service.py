@@ -18,6 +18,7 @@ from ..config import get_settings
 from ..models import CatalogSeries, PriceHistory, Series, Store, StoreListing, Volume
 from ..normalization import normalize_text
 from ..normalization.volume import UNNUMBERED_VOLUME
+from ..utils import utcnow
 from .covers import cover_url
 
 
@@ -309,6 +310,7 @@ def get_series(session: Session, series_id: int) -> SeriesDetail | None:
             .options(selectinload(StoreListing.store))
             .where(StoreListing.volume_id.in_([v.id for v in volumes]))
         ).all()
+        listings = [l for l in listings if not price_expired(l)]
         stale_ids = stale_listing_ids(session, listings)
         listings_by_volume: dict[int, list[StoreListing]] = {}
         for listing in listings:
@@ -329,16 +331,63 @@ def _aware(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=timezone.utc)
 
 
+def price_max_age() -> dict[str, timedelta]:
+    """store code -> how long its prices may be kept and shown
+    (``STORE_PRICE_MAX_AGE_HOURS``; Amazon: 24 hours)."""
+    return {code: timedelta(hours=hours) for code, hours in get_settings().store_price_max_age_hours}
+
+
+def price_expired(listing: StoreListing, now: datetime | None = None) -> bool:
+    """The listing's store keeps prices for a limited time only and this
+    one was checked longer ago: it is not shown anywhere, and
+    ``price_retention`` deletes it."""
+    limit = price_max_age().get(listing.store.code if listing.store else "")
+    if limit is None:
+        return False
+    checked = _aware(listing.last_checked)
+    return checked is None or checked < (now or utcnow()) - limit
+
+
+def price_age_condition():
+    """SQL counterpart of :func:`price_expired`: keeps listings whose price
+    may still be shown. Needs no session (no grouped query)."""
+    limits = price_max_age()
+    if not limits:
+        return true()
+    now = utcnow()
+    limited = select(Store.id).where(Store.code.in_(list(limits)))
+    return or_(
+        StoreListing.store_id.not_in(limited),
+        *(and_(StoreListing.store_id.in_(select(Store.id).where(Store.code == code)),
+               StoreListing.last_checked >= now - limit) for code, limit in limits.items()),
+    )
+
+
 def _trusted_since(session: Session, store_ids: set[int] | None = None) -> dict[int, datetime]:
     """store id -> oldest ``last_checked`` whose stock flag is still trusted:
-    the store's newest ``last_checked`` minus ``listing_stale_hours``. The
-    single freshness rule behind :func:`stale_listing_ids` and
+    the store's newest ``last_checked`` minus ``listing_stale_hours``, and
+    never older than the store's price age limit (see :func:`price_max_age`).
+    The single freshness rule behind :func:`stale_listing_ids` and
     :func:`fresh_listing_condition`."""
-    query = select(StoreListing.store_id, func.max(StoreListing.last_checked)).group_by(StoreListing.store_id)
+    query = (
+        select(StoreListing.store_id, Store.code, func.max(StoreListing.last_checked))
+        .join(Store, Store.id == StoreListing.store_id)
+        .group_by(StoreListing.store_id, Store.code)
+    )
     if store_ids is not None:
         query = query.where(StoreListing.store_id.in_(store_ids))
     window = timedelta(hours=get_settings().listing_stale_hours)
-    return {sid: _aware(latest) - window for sid, latest in session.execute(query).all() if latest is not None}
+    limits = price_max_age()
+    now = utcnow()
+    since: dict[int, datetime] = {}
+    for sid, code, latest in session.execute(query).all():
+        if latest is None:
+            continue
+        cutoff = _aware(latest) - window
+        if code in limits:
+            cutoff = max(cutoff, now - limits[code])
+        since[sid] = cutoff
+    return since
 
 
 def stale_listing_ids(session: Session, listings: list[StoreListing]) -> frozenset[int]:
@@ -349,7 +398,8 @@ def stale_listing_ids(session: Session, listings: list[StoreListing]) -> frozens
     the store is still being scraped, but this product was not seen (stores
     such as Kitapsepeti drop sold-out products from search). Comparing
     against the store's own newest check means a store that is blocked or
-    down as a whole never turns its listings stale.
+    down as a whole never turns its listings stale, except a store with a
+    price age limit (Amazon), whose old listings are always stale.
     """
     if not listings:
         return frozenset()
@@ -430,6 +480,8 @@ def get_volume(session: Session, volume_id: int) -> VolumeDetail | None:
         .order_by(nulls_last, StoreListing.price, StoreListing.in_stock.desc(),
                   Store.name, StoreListing.id)
     ).all()
+    # Not even admins see an expired price: it may not be kept at all.
+    listings = [l for l in listings if not price_expired(l)]
     return VolumeDetail(
         volume=volume, listings=listings, stale_ids=stale_listing_ids(session, listings)
     )
@@ -442,9 +494,9 @@ def get_price_history(session: Session, volume_id: int) -> PriceHistoryDetail | 
     if is_legacy_phantom(session, volume):
         return PriceHistoryDetail(volume=volume, entries=[])
 
-    listings = session.scalars(
+    listings = [l for l in session.scalars(
         select(StoreListing).where(StoreListing.volume_id == volume_id)
-    ).all()
+    ).all() if not price_expired(l)]
     if not listings:
         return PriceHistoryDetail(volume=volume, entries=[])
 
@@ -456,8 +508,13 @@ def get_price_history(session: Session, volume_id: int) -> PriceHistoryDetail | 
         .order_by(PriceHistory.listing_id, PriceHistory.checked_at, PriceHistory.id)
     ).all()
 
+    limits = price_max_age()
+    now = utcnow()
+    oldest = {l.id: now - limits[l.store.code] for l in listings if l.store and l.store.code in limits}
     by_listing: dict[int, list[PriceHistory]] = {}
     for point in history:
+        if point.listing_id in oldest and _aware(point.checked_at) < oldest[point.listing_id]:
+            continue  # an Amazon price past its age limit is not shown
         by_listing.setdefault(point.listing_id, []).append(point)
 
     entries = [

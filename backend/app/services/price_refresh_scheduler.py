@@ -18,10 +18,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from ..config import get_settings
 from ..models import CatalogSeries, ImportRecord, Series, StoreListing, Volume
 from ..utils import utcnow
-from . import listing_changes
+from . import listing_changes, price_retention
 from .background_import import BackgroundImportRunner, aware_datetime, normalized_query_key
 
 logger = logging.getLogger("yomiba.price_refresh")
+
+#: How often prices past their store's age limit are deleted (Amazon: kept
+#: at most 24 hours, so this hourly pass keeps them under 25).
+PRICE_PURGE_INTERVAL = timedelta(hours=1)
 
 
 class PriceRefreshScheduler:
@@ -66,6 +70,7 @@ class PriceRefreshScheduler:
         #: Full-cycle due time saved while an unpriced-only cycle runs, so
         #: that partial cycle never postpones the regular refresh.
         self._saved_next: datetime | None = None
+        self._last_price_purge_at: datetime | None = None
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -135,8 +140,20 @@ class PriceRefreshScheduler:
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    def _purge_expired_prices(self) -> None:
+        now = utcnow()
+        if self._last_price_purge_at is not None and now - self._last_price_purge_at < PRICE_PURGE_INTERVAL:
+            return
+        self._last_price_purge_at = now
+        try:
+            with self._session_factory() as session:
+                price_retention.purge_expired_prices(session, now)
+        except Exception:  # noqa: BLE001 - must not block the price refresh
+            logger.exception("price refresh: could not delete expired store prices")
+
     def _loop(self) -> None:
         while not self._stop.wait(self._poll):
+            self._purge_expired_prices()
             try:
                 with self._lock:
                     due = self._cycle_started_at is not None or (
