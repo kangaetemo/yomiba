@@ -20,7 +20,7 @@ class SearchResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     # --- store identification -------------------------------------------------
-    #: Stable machine identifier of the store (e.g. "bkm", "amazon", "dr").
+    #: Stable machine identifier of the store (e.g. "bkm", "dr").
     store_id: str
     #: Human-readable store name (e.g. "BKM Kitap").
     store_name: str

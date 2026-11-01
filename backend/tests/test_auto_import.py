@@ -298,7 +298,7 @@ def test_scraper_failure_keeps_existing_data(sessions, runner_factory):
     runner = runner_factory(
         [
             RecordingScraper(store_id="bkm", fail="boom"),
-            RecordingScraper(store_id="amazon", fail="robot-checked (HTTP 503)"),
+            RecordingScraper(store_id="kitapsec", fail="robot-checked (HTTP 503)"),
             RecordingScraper(store_id="dr", fail="blocked (HTTP 403)"),
         ]
     )
@@ -348,7 +348,7 @@ def test_partial_scraper_success_retained(sessions, runner_factory):
                     make_result("bkm", "Frieren 2", "200"),
                 ],
             ),
-            RecordingScraper(store_id="amazon", fail="robot-checked (HTTP 503)"),
+            RecordingScraper(store_id="kitapsec", fail="robot-checked (HTTP 503)"),
         ]
     )
 
@@ -371,7 +371,7 @@ def test_partial_scraper_success_retained(sessions, runner_factory):
     session = sessions()
     try:
         outcome = search_service.search_with_auto_import(session, "frieren", runner)
-        # BKM data is retained in the DB despite Amazon failing.
+        # BKM data is retained in the DB despite Kitapseç failing.
         assert session.scalar(select(func.count(StoreListing.id))) == 2
     finally:
         session.close()

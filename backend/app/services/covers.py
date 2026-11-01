@@ -62,7 +62,7 @@ KEY_RE = re.compile(r"^v/\d+-[0-9a-f]{12}\.webp$")
 #: Store images tried first to last (sharpest / most reliable first).
 STORE_PRIORITY = (
     "bkm", "kitapsepeti", "gerekliseyler", "komikseyler", "kitapsec",
-    "edessa", "kitapbulan", "dr", "cizman", "amazon",
+    "edessa", "kitapbulan", "dr", "cizman",
 )
 MANGAKOL_HOSTS = ("mangakol.com",)
 #: A source that failed is tried again after this long.

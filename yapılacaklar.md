@@ -18,7 +18,7 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
     - haftalık imaj yenileme,
     - gece sunucu dışı yedek (DB + kapaklar),
     - erişilebilirlik takibi.
-  - **Önce:** Yeni sunucuda `backend/outbound_smoke.py` ile mağaza erişimini test et. Bazı mağazalar yurt dışı veri merkezi IP'lerini engelleyebilir; sorun çıkarsa Türkiye'de bir VPS düşün. 20 Ekim: 12/12 PASS; Railway'de engelli olan Amazon TR, D&R ve Cizman da açıldı.
+  - **Önce:** Yeni sunucuda `backend/outbound_smoke.py` ile mağaza erişimini test et. Bazı mağazalar yurt dışı veri merkezi IP'lerini engelleyebilir; sorun çıkarsa Türkiye'de bir VPS düşün. 20 Ekim: 12/12 PASS; Railway'de engelli olan D&R ve Cizman da açıldı.
   - **Sunucu kararı (19 Ekim):** Hephosting **TRX-8G**: 4 vCPU Xeon Platinum 8173M, 8 GB ECC, 60 GB NVMe, 1 Gbit/s, KVM, Bursa DGN veri merkezi, her gece ücretsiz yedek. 249 TL + KDV/ay (lansman fiyatı, yenilemede aynı). Aylık ödeme; gerekirse panelden üst pakete geçilir.
     - Karşılaştırılanlar: Hostopya VDS-5 (~288 TL, 2023, az yorum), Lunhost (saatlik ödeme), Netvay (2 kat pahalı, kesinti şikayetleri), Verunix (belirsiz eski donanım, "kaynak çalma" iddiası), Contabo VPS 4 (~5,50 €, yurt dışı IP).
   - **"Sağlayıcı kaybolursa" önlemleri:**
@@ -30,7 +30,7 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
   - **Kullanıcının yapacakları:** TRX-8G siparişi (Ubuntu 24.04, panel yok, KVM ve root/SSH teyidi), Cloudflare hesabı (DNS + R2) ya da Backblaze B2, Filminibul alan adının nerede kayıtlı olduğunu kontrol.
   - Ziyaretçi sayacı: `@vercel/analytics` yerine kendi sunucumuzda çalışan bir sayaç. 21 Ekim: Umami yerine kendi sayacımız yazıldı (aşağıdaki analiz sayfası maddesi).
 - [ ] **Railway ve Vercel'i sil (yaklaşık 3 Kasım).** Railway servisi 20 Ekim'de durduruldu (GitHub bağlantısı kesildi, aktif deploy kaldırıldı); volume donmuş kopya olarak duruyor. Sunucu dışı yedek R2'de. Vercel sürümü her isteği yomiba.net'e yönlendiriyor (`frontend/next.config.ts`, yalnızca `VERCEL=1` iken).
-- [ ] **Amazon TR, D&R ve Cizman'ı aç.** Türkiye IP'sinden ana sayfalar açılıyor; her birinde gerçek arama sonucu görülünce `.env` içinde `DISABLED_STORES` boşaltılacak. Edessa smoke testinde yok, aynı aramayla kontrol edilecek.
+- [ ] **D&R ve Cizman'ı aç.** Türkiye IP'sinden ana sayfalar açılıyor; her birinde gerçek arama sonucu görülünce `.env` içinde `DISABLED_STORES` boşaltılacak. Edessa smoke testinde yok, aynı aramayla kontrol edilecek.
 - [x] **Yomiba alan adı.** 20 Ekim: **yomiba.net** alındı (.com ve .app başkasındaydı). DNS Cloudflare'de olacak; VPS'te HTTPS ve alarm mailleri (Resend) bu alan adıyla.
 - [ ] **Admin analiz sayfası (`/admin/analiz`).** 21 Ekim: kod hazır, PR'da. Çerezsiz, kendi sunucumuzda: ziyaretçi, oturum, sayfa görüntüleme, sayfada kalma süresi, hemen çıkma, mağaza tıklamaları (mağaza, cilt ve seri bazında), aramalar ve sonuçsuz aramalar, trafik kaynakları ve kampanya etiketleri, cihaz/tarayıcı/ülke, gün-saat dağılımı; her ölçü önceki dönemle karşılaştırmalı. Vercel Analytics kaldırıldı.
   - Yayına çıkınca: birkaç gün sonra sayılar mantıklı mı bak; Cloudflare proxy kapalıysa ülke boş kalır.
@@ -45,12 +45,6 @@ Bu liste, birlikte değerlendirilecek geliştirme ve düzeltme taleplerini içer
   - [x] Cilt sayfasındaki mağaza linklerine `utm_source=yomiba&utm_medium=referral`, fiyat alarmı e-postasındakilere `utm_medium=email` eklendi.
   - Her mağazanın adresi parametreyle hâlâ açılıyor mu, kontrol edilecek.
   - SEO'ya doğrudan etkisi yok. Amaç, mağazaların Yomiba trafiğini kendi istatistiklerinde görmesi; ortaklık ya da komisyon görüşmesinde kanıt olur.
-- [ ] **Amazon ortaklık + Creators API.**
-  - PA-API 5 2026 baharında kapandı; yerine Creators API geldi. Erişim için Amazon Ortaklık hesabı ve satış eşiği gerekiyor (bildirilen: ~10 satış).
-  - Takip kodu (tag) gelince Amazon linklerine eklenecek, sayfaya zorunlu "Amazon Ortağı olarak uygun alışverişlerden kazanç elde ediyoruz" notu konacak.
-  - Eşik dolunca Amazon, API'den ISBN ile çekilecek ve scraper kapatılacak.
-  - Fiyat saklama ve gösterme kuralları sözleşmeden okunacak; Amazon'un fiyat geçmişinde tutulup tutulmayacağına bakılacak.
-  - Kullanıcı, eşik için iş arkadaşının kendi kartıyla gerçekten istediği ürünleri almasını planlıyor; iade yok, ödeme karşılığı yok, siparişler günlere yayılacak.
 - [ ] **19 Ekim çökmesinden sonra kontrol:** Railway loglarında `old backup removed` ve `pre-migration backup written` satırları; volume doluluğu düşmüş mü, site açık mı.
 - [ ] **Filminibul ↔ Yomiba çapraz yönlendirme.**
   - Filminibul'da mangadan uyarlanan film ve animelerin sayfasına "Mangası Yomiba'da: ₺X'den" kartı (TMDB "based on manga" anahtar kelimesi + Yomiba arama API'si).

@@ -80,7 +80,7 @@ def test_report_lists_search_misses_stale_and_suspect_listings(db_session):
     listing(vols[1], "https://bkmkitap.com/mavi-kutu-1", checked=NOW, seen=NOW)
     listing(vols[2], "https://bkmkitap.com/mavi-kutu-2", checked=NOW, seen=NOW - timedelta(days=5))
     listing(vols[3], "https://bkmkitap.com/mavi-kutu-3", checked=NOW - timedelta(days=4), seen=NOW - timedelta(days=4))
-    listing(vols[4], "https://www.primevideo.com/detail/X", checked=NOW, seen=NOW)
+    listing(vols[4], "https://www.videoornek.com/detail/X", checked=NOW, seen=NOW)
     db_session.add_all([
         StoreObservation(store_id=store.id, product_url="https://bkmkitap.com/mavi-kutu-1", title="Mavi Kutu 1. Sezon DVD",
                          publisher="Akılçelen Kitaplar", first_seen=NOW, last_seen=NOW),
@@ -94,7 +94,7 @@ def test_report_lists_search_misses_stale_and_suspect_listings(db_session):
     suspect = {r["volume_number"]: r["reasons"] for r in checks["suspect_listing"]["items"]}
     assert suspect[1] == ["başlıkta: dvd, sezon"]          # same publisher under another spelling: fine
     assert suspect[2] == ["yayınevi farklı (Kırmızı Kedi)"]
-    assert suspect[4] == ["başka siteye gidiyor (primevideo.com)"]
+    assert suspect[4] == ["başka siteye gidiyor (videoornek.com)"]
     assert 3 not in suspect
 
 
@@ -104,7 +104,7 @@ def test_a_product_on_another_site_is_refused(db_session):
     ImportService(db_session, scrapers=[Shop([_product("Mavi Kutu 1", url)])]).run_import("Mavi Kutu")
     assert db_session.scalar(select(StoreListing.volume_id)) == vols[1].id
     # Same store, now pointing off-site (and a separate off-site product).
-    moved = _product("Mavi Kutu 1", "https://www.primevideo.com/detail/X")
+    moved = _product("Mavi Kutu 1", "https://www.videoornek.com/detail/X")
     service = ImportService(db_session, scrapers=[Shop([moved])])
     service.run_import("Mavi Kutu")
     assert db_session.scalar(select(StoreListing.product_url)) == url  # the off-site product never attached

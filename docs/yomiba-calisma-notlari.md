@@ -65,7 +65,7 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
 
 - **Alan adı:** yomiba.net (.com ve .app başkasındaydı). DNS Cloudflare'de; `@` ve `www` A kaydı sunucuya, **DNS only**.
 - **Sunucu:** Hephosting TRX-8G, Ubuntu 24.04, Bursa (45.74.243.61). `deploy/kurulum.sh` ile Docker, ufw (22/80/443), unattended-upgrades (04:30 yeniden başlatma), fail2ban ve gece yedeği cron'u (03:30, son 7 yedek `/srv/yomiba/backups`) kuruldu.
-- **Mağaza erişimi:** `outbound_smoke.py` 12/12 PASS. Railway'de engelli Amazon TR, D&R ve Cizman Türkiye IP'sinden açılıyor; gerçek aramayla doğrulanana kadar `DISABLED_STORES` aynı kaldı.
+- **Mağaza erişimi:** `outbound_smoke.py` 12/12 PASS. Railway'de engelli D&R ve Cizman Türkiye IP'sinden açılıyor; gerçek aramayla doğrulanana kadar `DISABLED_STORES` aynı kaldı.
 - **Veri taşıma:** `deploy/railway-tasima.sh`. Railway volume'unda yalnızca 171 MB boş yer vardı (DB 56 MB + kapaklar 142 MB), bu yüzden yedek ve arşiv konteynerin `/tmp`'sinde hazırlanıp `railway ssh` üzerinden base64 ile çekildi, sha256 ile doğrulandı. DB sunucuda `yomiba.db` adını aldı; `catalog-state.json` yan dosyası da taşındı.
 - **Caddy:** Sunucuda Filminibul taşıması için host'ta bir Caddy zaten 80/443'ü kullanıyordu. Yomiba'nın kendi Caddy'si `caddy` profiline alındı; frontend `127.0.0.1:3001`'de dinliyor, host Caddyfile `deploy/yomiba.caddy`'yi import ediyor. Filminibul 3000'de.
 - **Vercel:** `next.config.ts` Vercel'de (`VERCEL=1`) her isteği kalıcı olarak `https://yomiba.net`'e yönlendiriyor; eski siteye yazılan değişiklik kaybolmasın diye.
@@ -133,18 +133,6 @@ Bu dosya ve [yapılacaklar.md](../yapılacaklar.md) GitHub'da tutulur; birden fa
   - Seriyi zaten bulan sorgularda (ör. Berserk) ek istek atılmıyor.
 - **Doğrulama:** Canlı BKM'den 5 cilt geldi (2. cilt 161 TL, stokta). Gerçek sonuçlarla yapılan içe aktarma denemesinde beşi de doğru cilde bağlandı. Yeni test eklendi; tüm testler geçti.
 - **Not:** Seri adı sıradan kelimelerden oluşan başka seriler de bu yüzden BKM'de eksik kalmış olabilir. Bir sonraki fiyat turunda kendiliğinden düzelecekler.
-
-### 19 Ekim: Amazon'dan gelen Prime Video dizisi
-
-- **Bulgu:** "İtiraf" 1. cildinde bir Amazon bağlantısı vardı ve diziye gidiyordu. Amazon'da "İtiraf" araması kitap yerine Prime Video'daki "İtiraf - 1. Sezon" dizisini (2022) döndürüyor; `/dp/<ASIN>` sayfası primevideo.com'a yönleniyor.
-  - Başlık seri adıyla birebir aynı, seri de tek ciltlik olduğu için dizi başlıkla 1. cilde bağlanmıştı.
-  - ISBN, yayınevi ve fiyat olmaması onu durdurmuyordu.
-- **Düzeltme** (`scrapers/amazon.py`):
-  - Arama sayfasında "Prime Video" etiketi taşıyan ya da `/gp/video/` bağlantılı ürünler atlanıyor; sayaçta `not_a_book` olarak görünüyor.
-  - Ürün sayfası Amazon dışına yönleniyorsa ürün tamamen bırakılıyor (`_NotABook`).
-  - Kindle bu listede yok, çünkü basılı kitapların yanında da Kindle sürümü yazabiliyor.
-- **Etkisi:** Aynı şey anime dizileri olan başka serilerde de olabilirdi (ör. "… 1. Sezon"). Bu tür ilanlar artık yenilenmiyor ve 48 saat içinde bayatlayıp gizleniyor. Admin, cilt sayfasındaki kaldır düğmesiyle hemen de silebilir.
-- **Doğrulama:** Canlı Amazon araması artık boş dönüyor. Yeni test, yönlendirme kontrolü kapatılınca düşüyor. Tüm testler geçti.
 
 ### 18 Ekim: üyelik kontrolü, Google ile giriş, hesap sayfası
 
@@ -466,7 +454,6 @@ Ayrıntılar `docs/veri-kaynaklari-arastirmasi-2026-10-01.md` dosyasında.
 
 - **Erişim testi:** Admin paneline "Mağaza erişim testi" eklendi (`3730b8d`). Railway'den yapılan ilk testte:
   - Kitapyurdu **403**: sunucuya kapalı.
-  - Amazon 200 döndü (tekrar test edilmeli).
   - D&R 404 döndü: erişim var, arama adresi değişmiş.
   - idefix ve küçük mağazalar açık.
 - **Yeni mağazalar:**

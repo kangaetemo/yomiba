@@ -34,7 +34,6 @@ olarak kaydedildi. Tüm sonuçlar 2026-09-10 itibarıyla geçerlidir.
 | pttkitap.com | 💀 **ölü** | SERVFAIL |
 | idefix.com.tr | 💀 ölü | TLS hatası, site kapalı |
 | marmaracizgi | ℹ️ **site değil** | Yayınevi; ürünleri komikseyler.com.tr + edessa gibi store'larda satılıyor |
-| amazon.com.tr | 🔴 503 (biliniyor) | P24.5: Creators API → 10 nitelikli satış şartı |
 | dr.com.tr | 🔴 403 (biliniyor) | P24.5: API yok, partnership gerekir |
 | bkmkitap.com | ✅ (mevcut) | baseline doğrulaması: arama 200, 4 berserk hit |
 
@@ -154,19 +153,18 @@ ISBN görünür (ör. "9786256327153 Frieren Cilt 02").
 
 ## 🏢 Resmi API Rotası (yalnızca ticari kayıtla — şu an kapsam dışı)
 - **Kitsort (kitsort.com.tr) — yeni, en umut verici ortaklık adayı:** aktif kitap fiyat
-  karşılaştırma platformu; 50+ store'dan fiyat yayınlıyor (**Kitapyurdu, D&R, Amazon,
+  karşılaştırma platformu; 50+ store'dan fiyat yayınlıyor (**Kitapyurdu, D&R,
   Hepsiburada, BKM, n11, Trendyol** dahil). AMA: SPA — sonuçlar server-side YOK
   (`/isbn/9786256335424` → 17KB shell; fiyatlar `api.kitsort.com.tr` özel API'sinden
   client-side yükleniyor; API kökü 530; endpoint keşfi = private-endpoint reverse
   engineering → kuralımız dışı). **Meşru yol: veri/API ortaklığı talebi**
   (destek: support@kitsort.com.tr — JSON-LD'de kamuya açık). Tek anlaşma ile
-  kitapyurdu + D&R + Amazon birlikte gelebilir.
+  kitapyurdu + D&R birlikte gelebilir.
 - **Kitapyurdu doğrudan veri akışı:** Türkiye'nin en büyük kitap perakendecilerinden;
   aggregator'lara ürün feed'i veriyor olabilir → doğrudan data-sharing/affiliate görüşmesi.
 - **kitabinabak.com** (eski fiyat karşılaştırma sitesi): 💀 bağlantı zaman aşımı (http+https) — ölü.
 - **Hepsiburada Developer API** — partner onboarding (şirket kaydı) gerekir.
 - **Trendyol / N11 marketplace API** — satıcı/partner anlaşması gerekir.
-- **Amazon Creators API** — 30 günde 10 nitelikli satış eşiği (P24.5'te araştırıldı).
 - Solo proje için pratik değil; P24.5 raporu geçerli.
 - Not: kitapyurdu OpenCart tabanlı (GitHub'daki eski scraper botları URL şemasını
   doğruluyor: `index.php?route=product/...`) — CF managed challenge **öncesi** scrape

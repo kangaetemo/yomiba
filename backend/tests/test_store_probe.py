@@ -58,8 +58,8 @@ def test_walls_are_reported_not_retried():
 
     challenge = lambda r: httpx.Response(200, text="<html><title>Just a moment...</title></html>")  # noqa: E731
     assert _probe(challenge).verdict == "engelli"
-    amazon = lambda r: httpx.Response(202, text="")  # noqa: E731
-    assert _probe(amazon).verdict == "engelli"
+    js_wall = lambda r: httpx.Response(202, text="")  # noqa: E731
+    assert _probe(js_wall).verdict == "engelli"
     waf = lambda r: httpx.Response(511, text="The requested URL was rejected.")  # noqa: E731
     assert _probe(waf).verdict == "engelli"
 

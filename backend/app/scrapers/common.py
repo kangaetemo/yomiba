@@ -63,13 +63,12 @@ FOREIGN_PUBLISHER_RE = re.compile(
 
 _BLOCK_STATUS = {403, 429, 503, 509, 999}
 
-#: Page-content markers seen on real bot-wall pages (Amazon, D&R, T-Soft).
+#: Page-content markers seen on real bot-wall pages (D&R, T-Soft).
 _BLOCK_MARKERS = (
     "captcha",
     "robot check",
     "otomatik robot",
     "izni olan kişilere",
-    "api-services-support@amazon",
     "automated access",
     "type the characters",
     "güvenlik doğrulaması",
@@ -102,7 +101,7 @@ def has_block_marker(html: str = "") -> bool:
 def looks_like_blocked_page(status_code: int, html: str = "") -> bool:
     """Heuristic: did the store return an anti-bot / robot page?
 
-    Store-level check (Amazon / D&R / T-Soft): the wall status codes alone
+    Store-level check (D&R / T-Soft): the wall status codes alone
     are treated as a wall. The transport layer uses a stricter rule
     (403 or content markers) so plain 5xx/429 stay retryable — see
     ``BaseScraper.get``.

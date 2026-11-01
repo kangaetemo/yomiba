@@ -17,9 +17,9 @@ doğrulandı.
 - **Yeni modül:** `app/scrapers/relevance.py`
   - `check_manga_relevance(title, publisher, isbn, category) -> RelevanceVerdict`
   - `filter_manga_results(results, stats=...)` — ortak uygulama fonksiyonu
-- **Tüm 9 scraper'ın `search()` metoduna** entegre edildi (import hattının
+- **Tüm 8 scraper'ın `search()` metoduna** entegre edildi (import hattının
   son halkası; mağaza-özel filter'ların ve koleksiyon/atıl filtrelerin SONRASI):
-  `bkm, amazon, dr, kitapsepeti, kitapbulan, gerekliseyler, cizman, kitapsec,
+  `bkm, dr, kitapsepeti, kitapbulan, gerekliseyler, cizman, kitapsec,
   komikseyler`. Düşülen ürünler `stats["rejected"]["non_manga"]` altında
   sayılır (mevcut diagnostik sözleşmesi ile aynı).
 - **ImportService ve catalog manifest mimarisine DOKUNULMADI.**
@@ -92,16 +92,16 @@ kitapsepeti) sonuç listeleri **yalnızca kitap** içerdi.
   guidebook/roman kitaplar kaldı.
 - `Berserk of Gluttony (Manga) Vol. 8`, `BERSERK TP VOL 01` vb. gerçek
   kitaplar **kaybolmadı** (Tur 1'de var olan her kitap Tur 2'de de var).
-- amazon (503) ve D&R (403) hâlâ bot-çita ile engelli — bilinen durum,
-  kapsam dışı (bypass reddedilmişti); bu iki mağazanın wiring'i fixture
+- D&R (403) hâlâ bot-çita ile engelli — bilinen durum,
+  kapsam dışı (bypass reddedilmişti); bu mağazanın wiring'i fixture
   testleriyle kanıtlandı.
 
 ## Değişen dosyalar
 
 - `app/scrapers/relevance.py` (YENİ)
-- `app/scrapers/{bkm,amazon,dr,kitapsepeti,kitapbulan,gerekliseyler,cizman,kitapsec,komikseyler}.py` (9× `search()` içine 1-2 satır entegrasyon)
+- `app/scrapers/{bkm,dr,kitapsepeti,kitapbulan,gerekliseyler,cizman,kitapsec,komikseyler}.py` (8× `search()` içine 1-2 satır entegrasyon)
 - `tests/test_merch_filter.py` (YENİ, 76 test)
-- 9 mağaza test dosyasına wiring testi eklendi
+- 8 mağaza test dosyasına wiring testi eklendi
 - `backend/verify_live_merch_filter.py` (YENİ, canlı doğrulama betiği —
   tests/ dışıdır çünkü ağa gerçek istek atar)
 

@@ -9,8 +9,8 @@ Includes the mandatory cross-store scenario:
 
     BKM:    Berserk 1  ISBN X  169 TRY
     D&R:    Berserk 1  ISBN X  260 TRY
-    Amazon: Berserk 1  ISBN X  163.54 TRY
-        -> one Volume with three listings, cheapest (Amazon) first.
+    Kitapseç: Berserk 1  ISBN X  163.54 TRY
+        -> one Volume with three listings, cheapest (Kitapseç) first.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from app.scrapers import SearchResult
 from app.scrapers.base import BaseScraper, ScraperError
 from app.services.import_service import ImportAction, ImportService
 
-STORE_NAMES = {"bkm": "BKM Kitap", "dr": "D&R", "amazon": "Amazon"}
+STORE_NAMES = {"bkm": "BKM Kitap", "dr": "D&R", "kitapsec": "Kitapseç"}
 
 
 def make_result(
@@ -119,7 +119,7 @@ def test_three_stores_same_isbn_merge_into_one_volume(import_service, db_session
         db_session,
         make_result("bkm", "Berserk 1", "169", isbn=isbn),
         make_result("dr", "Berserk 1", "260", isbn=isbn),
-        make_result("amazon", "Berserk 1", "163.54", isbn=isbn),
+        make_result("kitapsec", "Berserk 1", "163.54", isbn=isbn),
     )
 
     volumes = db_session.scalars(select(Volume)).all()
@@ -132,7 +132,7 @@ def test_three_stores_same_isbn_merge_into_one_volume(import_service, db_session
     ).all()
     assert len(listings) == 3
     prices = {l.store.code: l.price for l in listings}
-    assert prices == {"bkm": 16900, "dr": 26000, "amazon": 16354}
+    assert prices == {"bkm": 16900, "dr": 26000, "kitapsec": 16354}
 
     # First import created exactly one history point per listing.
     history = db_session.scalars(select(PriceHistory)).all()
@@ -155,7 +155,7 @@ def test_no_publisher_isbn_still_merges(import_service, db_session):
         import_service,
         db_session,
         make_result("bkm", "Berserk 1", "169", isbn=isbn, publisher="Athica Yayınları"),
-        make_result("amazon", "Berserk 1", "163.54", isbn=isbn),  # no publisher
+        make_result("kitapsec", "Berserk 1", "163.54", isbn=isbn),  # no publisher
     )
     assert db_session.scalar(select(func.count()).select_from(Volume)) == 1
     series = db_session.scalar(select(Series))
@@ -248,7 +248,7 @@ def test_no_publisher_ambiguous_is_skipped(import_service, db_session):
         make_result("bkm", "Berserk 1", "169", publisher="Athica Yayınları"),
         make_result("dr", "Berserk 1", "200", publisher="Dark Horse"),
         # Ambiguous: two catalog editions exist, no identifiers -> skip.
-        make_result("amazon", "Berserk 3", "180"),
+        make_result("kitapsec", "Berserk 3", "180"),
     )
     assert actions[2] is ImportAction.SKIPPED
     series = db_session.scalars(select(Series)).all()
