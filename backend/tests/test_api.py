@@ -26,7 +26,7 @@ def seeded(import_service, db_session, client):
         make_result("bkm", "Berserk 1", "169", isbn=ISBN, publisher="Athica Yayınları",
                     image="https://cdn.example.com/b1.jpg"),
         make_result("dr", "Berserk 1", "260", isbn=ISBN, publisher="Athica Yayınları"),
-        make_result("amazon", "Berserk 1", "163.54", isbn=ISBN, publisher="Athica Yayınları"),
+        make_result("kitapsec", "Berserk 1", "163.54", isbn=ISBN, publisher="Athica Yayınları"),
         make_result("bkm", "Berserk 2", "199", publisher="Athica Yayınları",
                     image="https://cdn.example.com/b2.jpg"),
         make_result("dr", "Berserk 2", "260"),
@@ -154,10 +154,10 @@ def test_series_detail(seeded):
     assert [v["number"] for v in data["volumes"]] == [1, 2]
 
     vol1 = data["volumes"][0]
-    assert vol1["best_price"] == 163.54  # Amazon is cheapest
+    assert vol1["best_price"] == 163.54  # Kitapseç is cheapest
     assert vol1["store_count"] == 3
     assert vol1["in_stock_count"] == 3
-    assert vol1["best_store"] == "Amazon"
+    assert vol1["best_store"] == "Kitapseç"
 
     # Search results carry the series' lowest in-stock price.
     hit = next(r for r in seeded.get("/search", params={"q": "Berserk"}).json()["results"]
@@ -203,8 +203,8 @@ def test_volume_stores_sorted_cheapest_first(seeded):
     assert data["cover_url"] is None  # never the store image URL (self-hosted only)
 
     stores = [(s["store"], s["price"]) for s in data["stores"]]
-    # Cheapest first: Amazon 163.54 < BKM 169 < D&R 260.
-    assert stores[0] == ("Amazon", 163.54)
+    # Cheapest first: Kitapseç 163.54 < BKM 169 < D&R 260.
+    assert stores[0] == ("Kitapseç", 163.54)
     assert stores[1] == ("BKM Kitap", 169.0)
     assert stores[2] == ("D&R", 260.0)
     assert all(s["stock"] is True for s in data["stores"])
@@ -239,13 +239,13 @@ def test_price_history_grouped_by_store(seeded):
     assert data["volume_id"] == vol_id
 
     by_store = {entry["store"]: entry for entry in data["listings"]}
-    assert set(by_store) == {"Amazon", "BKM Kitap", "D&R"}
+    assert set(by_store) == {"Kitapseç", "BKM Kitap", "D&R"}
 
     # BKM listing has two points (older 179.90 + current 169).
     bkm_points = [p["price"] for p in by_store["BKM Kitap"]["points"]]
     assert bkm_points == [179.90, 169.0]
     # Others have a single point.
-    assert [p["price"] for p in by_store["Amazon"]["points"]] == [163.54]
+    assert [p["price"] for p in by_store["Kitapseç"]["points"]] == [163.54]
     assert [p["price"] for p in by_store["D&R"]["points"]] == [260.0]
 
 

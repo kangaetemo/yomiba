@@ -36,7 +36,7 @@ from ..utils import utcnow
 logger = logging.getLogger("yomiba.foreign_editions")
 
 #: Stores whose catalogue mixes Turkish and imported (English, ...) books.
-FOREIGN_PRONE = ("kitapbulan", "amazon")
+FOREIGN_PRONE = ("kitapbulan",)
 MAX_PAGES = 400
 
 

@@ -101,4 +101,4 @@ satırı konsolide` — aynı katalog ikinci kez sıfır duplikat üretti.
 * Store import hâlâ katalog-dışı seri üretebilir (spec: ImportService
   değişmez); bunlar aramada görünmez (manifest tasarımı) ama DB'de birikir
   → ileride "katalog-dışı serileri periyodik sil" adayı.
-* Sonic kümesi dedup'ı, R6 SEO, E2E doğrulama, Amazon/English manga: parked.
+* Sonic kümesi dedup'ı, R6 SEO, E2E doğrulama, English manga: parked.

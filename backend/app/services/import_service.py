@@ -677,8 +677,8 @@ class ImportService:
         if not title or not result.product_url:
             self._reject("invalid_result")
             return self.last_reason
-        # A "product" elsewhere is not this store's book (Amazon's /dp/ of a
-        # show redirects to primevideo.com). Its old listing is dropped.
+        # A "product" elsewhere is not this store's book (a product page
+        # that redirects to another site). Its old listing is dropped.
         store_host = getattr(self, "_store_host", None)
         host = _site(result.product_url)
         if store_host and host and host != store_host and not host.endswith("." + store_host):

@@ -8,7 +8,6 @@ that is the extensibility guarantee the architecture promises.
 
 from __future__ import annotations
 
-from .amazon import AmazonScraper
 from .bkm import BkmScraper
 from .cizman import CizmanScraper
 from .dr import DrScraper
@@ -28,7 +27,6 @@ _SCRAPERS: dict[str, type[BaseScraper]] = {
     cls.store_id: cls
     for cls in (
         BkmScraper,
-        AmazonScraper,
         DrScraper,
         KitapsepetiScraper,
         KitapbulanScraper,

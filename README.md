@@ -10,9 +10,9 @@ Search a series → see its editions (publisher-specific) → see every volume �
 compare the same volume's price across stores → open the cheapest store.
 
 ```
-Amazon   Berserk 1   ₺163,54   ← cheapest (highlighted)
-BKM      Berserk 1   ₺169,00
-D&R      Berserk 1   ₺260,00
+Kitapseç  Berserk 1   ₺163,54   ← cheapest (highlighted)
+BKM       Berserk 1   ₺169,00
+D&R       Berserk 1   ₺260,00
 ```
 
 ---
@@ -92,7 +92,7 @@ python -m uvicorn app.main:app --reload               # Windows: py -m uvicorn a
 * Health: `GET /health`
 
 On startup the app creates tables (idempotent) and seeds the known stores
-(see `SEED_STORES` in `app/seed.py`; Amazon, D&R and Cizman are disabled by
+(see `SEED_STORES` in `app/seed.py`; D&R and Cizman are disabled by
 default via `DISABLED_STORES`). No fake prices are ever seeded.
 
 ### 2. Frontend
@@ -210,8 +210,7 @@ Scrapers **never touch the database**. They only:
    completion / empty page / repeated items / configured caps),
 2. parse results (BKM: deduplicated by product id within the search),
 3. filter junk (non-manga keywords, collections/boxes, BKM non-book
-   merchandise, — for Amazon also unrelated series that merely contain the
-   query word),
+   merchandise),
 4. resolve sponsored/redirect URLs to the canonical product page,
 5. optionally enrich with product-detail metadata (bounded by
    `SCRAPER_MAX_DETAIL_REQUESTS`),
@@ -236,10 +235,10 @@ whitespace/punctuation collapsing. Deliberately conservative:
 ### The mandatory scenario (covered by tests)
 
 ```
-BKM:    Berserk 1  ISBN X  169.00
-D&R:    Berserk 1  ISBN X  260.00
-Amazon: Berserk 1  ISBN X  163.54
-    ⇒ 1 Volume, 3 listings; volume page lists Amazon first.
+BKM:      Berserk 1  ISBN X  169.00
+D&R:      Berserk 1  ISBN X  260.00
+Kitapseç: Berserk 1  ISBN X  163.54
+    ⇒ 1 Volume, 3 listings; volume page lists Kitapseç first.
 ```
 
 See `tests/test_import_service.py::test_three_stores_same_isbn_merge_into_one_volume`
@@ -274,7 +273,7 @@ search(q) ──► catalog lookup (always first)
   would call, so the architecture is job-ready without extra infrastructure.
 * **Failure isolation** — a crashing job records `status="failed"` and keeps
   all existing catalog rows (imports only upsert; nothing is ever deleted).
-  Partial success (e.g. BKM ok, Amazon/D&R bot-walled) is recorded as
+  Partial success (e.g. BKM ok, D&R bot-walled) is recorded as
   `partial` and still refreshes freshness for the successful stores.
 * **API contract** — `/search` returns
   `{"results": [SeriesSummary…], "status": {state, detail, last_success_at}}`
@@ -293,7 +292,7 @@ Every scraper shares the same transport layer in `BaseScraper`:
   retried up to `SCRAPER_MAX_RETRIES` (default 2 → max 3 attempts) with
   exponential backoff + jitter (`SCRAPER_RETRY_BACKOFF_SECONDS`); `429`
   honours `Retry-After`. Bot walls (HTTP 403, or 429/5xx with wall markers
-  like “Robot Check”, “captcha”, Amazon’s automated-access page) **fail fast
+  like “Robot Check”, “captcha”, an automated-access page) **fail fast
   — never retried, never faked**: the store simply reports its error in the
   import report and keeps zero results.
 * **Per-store rate limit** — each scraper instance keeps a minimum gap of
@@ -334,7 +333,6 @@ Nothing else changes — ImportService, API and frontend are store-agnostic.
 | Komikşeyler (`komikseyler`) | Active | Public WooCommerce Store API (JSON) |
 | Edessa Kitabevi (`edessa`) | Active | ikas store without server-side search: product/collection sitemaps, series collection `__NEXT_DATA__` (price + stock), capped product-page JSON-LD |
 | Cizman (`cizman`) | Disabled | Implemented; Cloudflare 403 from the production host |
-| Amazon TR (`amazon`) | Disabled | Implemented; HTTP 503 robot check from datacenter IPs |
 | D&R (`dr`) | Disabled | Implemented; HTTP 403 on every URL |
 
 Listings a store stops returning keep their last stock flag; one not seen for
@@ -385,9 +383,6 @@ Frontend: `cd frontend && npm run build` (type-checks + compiles).
 * **Bot walls fail fast in the transport layer** (403 or wall markers in the
   body) while plain 5xx/429 are retried — retrying a wall is pointless and
   rude, retrying a transient 503 is usually worth it.
-* **Amazon filters unrelated series** containing the query word (e.g.
-  “Berserk of Gluttony” for query “Berserk”) per spec; searching that title
-  explicitly imports it normally.
 * **Deluxe/box titles are skipped** as separate editions/collections until
   edition modelling exists (future feature).
 * **SQLite via SQLAlchemy** — swap `DATABASE_URL` for PostgreSQL without

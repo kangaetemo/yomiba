@@ -19,7 +19,6 @@ logger = logging.getLogger("yomiba.seed")
 
 #: (code, display name) — codes must match the scrapers' ``store_id``.
 SEED_STORES: tuple[tuple[str, str], ...] = (
-    ("amazon", "Amazon"),
     ("bkm", "BKM Kitap"),
     ("dr", "D&R"),
     ("kitapsepeti", "Kitap Sepeti"),

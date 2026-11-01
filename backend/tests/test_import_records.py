@@ -43,7 +43,7 @@ def test_records_most_recent_first_and_fields(client, db_session):
         db_session, "kizil", status="failed",
         last_attempt_at=now - timedelta(minutes=5),
         last_success_at=None, stores_ok=0, stores_failed=2,
-        error="amazon: blocked",
+        error="cizman: blocked",
     )
     db_session.commit()
 
@@ -55,7 +55,7 @@ def test_records_most_recent_first_and_fields(client, db_session):
     failed = body[1]
     assert failed["status"] == "failed"
     assert failed["last_success_at"] is None
-    assert "amazon" in failed["error"]
+    assert "cizman" in failed["error"]
 
 
 def test_records_limit_and_never_attempted_sink(client, db_session):

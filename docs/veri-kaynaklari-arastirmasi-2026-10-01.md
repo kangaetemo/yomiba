@@ -1,6 +1,6 @@
 # Yeni veri kaynakları araştırması (1 Ekim 2026)
 
-Önceki araştırmalar: `new-store-candidates.md` (10 Eylül, mağazalar) ve `store-access-research.md` (Amazon / D&R). Bu belge onları güncelliyor ve iki yeni alan ekliyor: fiyat karşılaştırma siteleri ve seri bilgisi (metadata) kaynakları.
+Önceki araştırmalar: `new-store-candidates.md` (10 Eylül, mağazalar) ve `store-access-research.md` (D&R). Bu belge onları güncelliyor ve iki yeni alan ekliyor: fiyat karşılaştırma siteleri ve seri bilgisi (metadata) kaynakları.
 
 ## Nasıl test edildi
 
@@ -19,7 +19,6 @@ Asıl karar bu tabloya göre verilir. Ev ve ofis ağındaki sonuçlar sunucuyu t
   - **Kitapyurdu:** arama ve ürün sayfası 403 (duvar). Buradan açılıyor ama sunucuya kapalı; ortaklık dışında yol yok.
   - Cizman (hâlâ 403), Trendyol, n11, Hepsiburada.
 - **Sürprizler:**
-  - **Amazon TR:** sunucudan 200 döndü ve 24 cilt görüldü. Geçmişte arada bir açılıp çoğunlukla 503 veriyordu. Açmadan önce birkaç gün tekrar test edilmeli. Amazon'un kullanım koşulları otomatik erişimi yasaklıyor; `store-access-research.md` dosyasına bakın.
   - **D&R:** 403 değil **404** döndü (196 KB'lık normal bir sayfa). Yani sunucu D&R'a ulaşıyor ama arama adresi değişmiş. Doğru adres bulunursa D&R doğrudan da kullanılabilir. Fiyatları zaten idefix'te var.
 
 ## 1. Fiyat kaynakları: yeni ve erişilebilir
@@ -39,7 +38,6 @@ Asıl karar bu tabloya göre verilir. Ev ve ofis ağındaki sonuçlar sunucuyu t
 
 | Kaynak | Durum |
 |---|---|
-| Amazon TR | Boş 202 yanıtı (JavaScript duvarı). Resmi API yolu hâlâ "30 günde 10 satış" şartına bağlı. |
 | D&R | Her adres 403. Fiyatları idefix üzerinden alınabilir. |
 | Hepsiburada, Cimri | 403 |
 | Trendyol, n11 | Ana sayfa açılıyor, arama 403 |

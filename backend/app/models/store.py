@@ -1,6 +1,6 @@
 """Store model.
 
-A Store is a shop whose listings we track (Amazon, BKM Kitap, D&R, ...).
+A Store is a shop whose listings we track (BKM Kitap, D&R, Kitap Sepeti, ...).
 Stores are seeded on startup.
 
 ``code`` is a stable, scraper-defined identifier (e.g. "bkm") used for

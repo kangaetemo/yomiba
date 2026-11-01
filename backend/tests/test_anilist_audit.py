@@ -228,7 +228,7 @@ def test_jjk_zero_preserved_in_plan_and_import(db_session, import_service):
     no_isbn = make_result("dr", "Jujutsu Kaisen Cilt 0", "110", publisher="Gerekli Şeyler")
     assert import_service.import_result(no_isbn) == ImportAction.CREATED
     assert db_session.scalar(select(func.count()).select_from(Volume)) == 2
-    unnumbered = make_result("amazon", "Jujutsu Kaisen", "100", publisher="Gerekli Şeyler")
+    unnumbered = make_result("kitapsec", "Jujutsu Kaisen", "100", publisher="Gerekli Şeyler")
     assert import_service.import_result(unnumbered) == ImportAction.SKIPPED
 
 

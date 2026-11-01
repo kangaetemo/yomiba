@@ -59,7 +59,7 @@ def test_init_db_builds_full_schema_on_fresh_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0033_cover_error"
+        ).fetchone()[0] == "0034_drop_retired_store"
     finally:
         conn.close()
 
@@ -84,7 +84,7 @@ def test_init_db_migrates_unstamped_legacy_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0033_cover_error"
+        ).fetchone()[0] == "0034_drop_retired_store"
     finally:
         conn.close()
 
@@ -99,7 +99,7 @@ def test_init_db_is_noop_when_already_at_head(alembic_url):
     try:
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchall() == [("0033_cover_error",)]
+        ).fetchall() == [("0034_drop_retired_store",)]
     finally:
         conn.close()
 
@@ -147,7 +147,7 @@ def test_auth_downgrade_refuses_to_discard_user_data(alembic_url):
         command.downgrade(config, "0004_catalog_exclusion")
     with sqlite3.connect(alembic_url) as conn:
         # 0023 refuses before any downgrade; neither evidence nor user data are removed.
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0033_cover_error",)
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0034_drop_retired_store",)
         assert conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'users'").fetchone() == (1,)
 
 
@@ -164,3 +164,69 @@ def test_readiness_rejects_broken_catalog_reference(alembic_url):
             check_database_ready(runtime_engine)
     finally:
         runtime_engine.dispose()
+
+
+def test_retired_store_and_its_rows_are_removed(alembic_url):
+    """0034: the retired store's listings, history, clicks, import errors and
+    covers go; other stores and the volumes themselves stay."""
+    from alembic import command
+    from alembic.config import Config
+    from pathlib import Path
+    from sqlalchemy.orm import Session
+    from app import database
+    from app.models import AnalyticsEvent, ImportRecord, PriceHistory, Store, StoreListing
+    from tests.test_import_service import seed_catalog_series
+
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
+    command.upgrade(config, "0033_cover_error")
+    engine = database.build_engine(f"sqlite:///{alembic_url}")
+    gone_key, shared_key = "v/1-aaaaaaaaaaaa.webp", "v/2-bbbbbbbbbbbb.webp"
+    covers = alembic_url.parent / "covers" / "v"
+    covers.mkdir(parents=True)
+    for key in (gone_key, shared_key):
+        (alembic_url.parent / "covers" / key).write_bytes(b"x")
+    try:
+        with Session(engine) as session:
+            old, bkm = Store(code="amazon", name="Amazon"), Store(code="bkm", name="BKM Kitap")
+            session.add_all([old, bkm])
+            series = seed_catalog_series(session, "Eski Magaza", "Eski Yayin", volumes=(1, 2, 3))
+            v1, v2, v3 = sorted(series.volumes, key=lambda v: v.volume_number)
+            v1.cover_key, v1.cover_source = gone_key, "store:amazon"
+            v2.cover_key, v2.cover_source, v2.cover_url = shared_key, "store:amazon", "https://m.media-amazon.com/x.jpg"
+            v3.cover_key, v3.cover_source = shared_key, "catalog"
+            session.flush()
+            for store, price in ((old, 9000), (bkm, 15000)):
+                listing = StoreListing(volume_id=v1.id, store_id=store.id, product_url=f"https://x/{store.code}", price=price)
+                session.add(listing)
+                session.flush()
+                session.add(PriceHistory(listing_id=listing.id, price=price))
+            session.add(AnalyticsEvent(day="2026-10-01", hour=1, kind="outbound", visitor="v", session="s",
+                                       store_id=old.id, target_url="https://www.amazon.com.tr/dp/X"))
+            session.add(ImportRecord(normalized_query="eski magaza", status="partial",
+                                     error="amazon: blocked | dr: 403", reasons={"amazon": {"x": 1}, "bkm": {"y": 2}}))
+            session.commit()
+
+        command.upgrade(config, "head")
+
+        with Session(engine) as session:
+            assert session.query(Store.code).all() == [("bkm",)]
+            assert [l.price for l in session.query(StoreListing)] == [15000]
+            assert [p.price for p in session.query(PriceHistory)] == [15000]
+            assert session.query(AnalyticsEvent).count() == 0
+            record = session.query(ImportRecord).one()
+            assert (record.error, record.reasons) == ("dr: 403", {"bkm": {"y": 2}})
+            vols = {v.volume_number: v for v in series_volumes(session)}
+            assert (vols[1].cover_key, vols[1].cover_source) == (None, None)
+            assert (vols[2].cover_key, vols[2].cover_url) == (None, None)
+            assert vols[3].cover_key == shared_key
+        assert not (alembic_url.parent / "covers" / gone_key).exists()
+        assert (alembic_url.parent / "covers" / shared_key).exists()  # v3 still uses it
+    finally:
+        engine.dispose()
+
+
+def series_volumes(session):
+    from app.models import Volume
+
+    return session.query(Volume).all()

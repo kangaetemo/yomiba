@@ -15,7 +15,6 @@ TARGETS = {
     "BKM": "https://www.bkmkitap.com/",
     "BKM search API host": "https://bkm-best.wawlabs.com/",
     "BKM fallback CDN host": "https://cdn.bkmkitap.com/",
-    "Amazon TR": "https://www.amazon.com.tr/",
     "D&R": "https://www.dr.com.tr/",
     "Kitap Sepeti": "https://www.kitapsepeti.com/",
     "Kitapbulan": "https://www.kitapbulan.com/",

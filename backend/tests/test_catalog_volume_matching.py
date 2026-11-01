@@ -59,7 +59,7 @@ def test_isbn_priority_and_conflict(db_session, import_service):
     db_session.commit()
     exact = make_result("dr", "Incorrect title 2", "120", isbn=first.isbn, publisher="Publisher B")
     assert import_service.import_result(exact) == ImportAction.CREATED
-    conflict = make_result("amazon", "Elveda Eri", "90", isbn="9786051234567")
+    conflict = make_result("kitapsec", "Elveda Eri", "90", isbn="9786051234567")
     assert import_service.import_result(conflict) == ImportAction.SKIPPED
     assert import_service.last_reason == "isbn_conflict"
 

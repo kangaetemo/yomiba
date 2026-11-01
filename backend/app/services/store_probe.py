@@ -85,7 +85,6 @@ CANDIDATES: tuple[Candidate, ...] = (
     # -- disabled stores ----------------------------------------------------------
     Candidate("cizman", "Cizman", "kapalı", "https://www.cizman.com/berserk-19",
               isbn="9786258858068", note="Cloudflare 403 yüzünden kapatıldı; arama POST, ürün sayfası test edilir"),
-    Candidate("amazon", "Amazon TR", "kapalı", "https://www.amazon.com.tr/s?k=berserk"),
     Candidate("dr", "D&R", "kapalı", "https://www.dr.com.tr/arama?q=berserk"),
     # -- new candidates (docs/veri-kaynaklari-arastirmasi-2026-10-01.md) ----------------
     Candidate("kitapyurdu", "Kitapyurdu", "aday",
@@ -165,7 +164,7 @@ def _fetch(client: httpx.Client, url: str, method: str = "GET", json: dict | Non
         response.status_code in _WALL_STATUS
         or has_block_marker(text)
         or bool(_EXTRA_WALL.search(text[:20000]))
-        # Amazon's JavaScript wall: an empty 202.
+        # A JavaScript wall: an empty 202.
         or (response.status_code == 202 and len(text.strip()) < 3000)
     )
     return fetch, text

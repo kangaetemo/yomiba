@@ -38,7 +38,7 @@ from app.services.import_service import ImportAction, ImportService
 from tests.helpers import RecordingScraper
 from tests.test_import_service import seed_catalog_series
 
-STORE_NAMES = {"bkm": "BKM Kitap", "dr": "D&R", "amazon": "Amazon"}
+STORE_NAMES = {"bkm": "BKM Kitap", "dr": "D&R", "kitapsec": "Kitapseç"}
 
 
 def make_result(
@@ -99,7 +99,7 @@ def test_a_run_level_three_stores_same_isbn_one_volume(db_session):
         scrapers=[
             RecordingScraper("bkm", STORE_NAMES["bkm"], [make_result("bkm", "Berserk 1", "169", isbn=isbn)]),
             RecordingScraper("dr", STORE_NAMES["dr"], [make_result("dr", "Berserk 1", "260", isbn=isbn)]),
-            RecordingScraper("amazon", STORE_NAMES["amazon"], [make_result("amazon", "Berserk 1", "163.54", isbn=isbn)]),
+            RecordingScraper("kitapsec", STORE_NAMES["kitapsec"], [make_result("kitapsec", "Berserk 1", "163.54", isbn=isbn)]),
         ],
     )
     report = service.run_import("berserk")
@@ -123,7 +123,7 @@ def test_a_run_level_three_stores_same_isbn_one_volume(db_session):
             select(StoreListing).where(StoreListing.volume_id == volume.id)
         )
     }
-    assert prices == {"bkm": 16900, "dr": 26000, "amazon": 16354}
+    assert prices == {"bkm": 16900, "dr": 26000, "kitapsec": 16354}
 
 
 def test_a_isbn_wins_over_publisher_claim(import_service, db_session):
@@ -385,7 +385,7 @@ def test_c_no_publisher_ambiguous_never_guesses(import_service, db_session):
         db_session,
         make_result("bkm", "Berserk 1", "169", publisher="Athica Yayınları"),
         make_result("dr", "Berserk 1", "200", publisher="Dark Horse"),
-        make_result("amazon", "Berserk 3", "180"),  # ambiguous: two editions exist
+        make_result("kitapsec", "Berserk 3", "180"),  # ambiguous: two editions exist
     )
     assert actions[2] is ImportAction.SKIPPED
     series = db_session.scalars(select(Series)).all()
@@ -532,7 +532,7 @@ def test_f_second_run_updates_only_no_new_rows(db_session):
     before = counts(db_session)
     assert before == {"publishers": 1, "series": 1, "volumes": 1, "listings": 0, "history": 0}
 
-    first = _service_with(db_session, {"bkm": ["Berserk 1"], "dr": ["Berserk 1"], "amazon": ["Berserk 1"]}, {})
+    first = _service_with(db_session, {"bkm": ["Berserk 1"], "dr": ["Berserk 1"], "kitapsec": ["Berserk 1"]}, {})
     report1 = first.run_import("berserk")
     assert report1.total_created == 3
     assert report1.total_updated == 0
@@ -540,7 +540,7 @@ def test_f_second_run_updates_only_no_new_rows(db_session):
     assert after_first == {"publishers": 1, "series": 1, "volumes": 1, "listings": 3, "history": 3}
 
     # Same data again, with one store's price changed.
-    second = _service_with(db_session, {"bkm": ["Berserk 1"], "dr": ["Berserk 1"], "amazon": ["Berserk 1"]}, {"dr": "250"})
+    second = _service_with(db_session, {"bkm": ["Berserk 1"], "dr": ["Berserk 1"], "kitapsec": ["Berserk 1"]}, {"dr": "250"})
     report2 = second.run_import("berserk")
     assert report2.total_created == 0
     assert report2.total_updated == 3

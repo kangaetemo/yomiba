@@ -53,7 +53,7 @@ docker compose run --rm --no-deps -e APP_ENV=development backend python outbound
 ```
 
 `BLOCKED` çıkmayan mağazalar `DISABLED_STORES` listesinden çıkarılabilir
-(Railway'de Amazon, D&R ve Cizman engelliydi).
+(Railway'de D&R ve Cizman engelliydi).
 
 ## 4. DB ve kapakları Railway'den taşı
 

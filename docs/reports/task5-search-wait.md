@@ -246,7 +246,7 @@ rollback, zero-loss checksum.
 ## 11. Isletme notu — hızlandırma (2026-09-14 12:25)
 
 * Warmup 4 paralelde ~1 iş/dk gidiyordu (7 canlı store + detail enrichment
-  + 2 kalıcı bloklu store: D&R 403, Amazon 503). `IMPORT_MAX_CONCURRENT_JOBS=8`
+  + kalıcı bloklu store: D&R 403). `IMPORT_MAX_CONCURRENT_JOBS=8`
   ile **~8-9 iş/dk** (86/461 @ 12:25, tahmini bitiş ~13:15).
 * 8 paralel yazar için `build_engine`'e SQLite `connect_args["timeout"]=30`
   eklendi (varsayılan 5 sn; test motoruyla aynı değer) — "database is locked"

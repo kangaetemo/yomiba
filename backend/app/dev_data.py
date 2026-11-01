@@ -84,7 +84,7 @@ def main() -> int:
                     publisher="Athica Yayınları", image="https://example.invalid/demo/b1.jpg"),
             _result("dr", "D&R", "Berserk 1", Decimal("260"), isbn=DEMO_ISBN_1,
                     publisher="Athica Yayınları"),
-            _result("amazon", "Amazon", "Berserk 1", Decimal("163.54"), isbn=DEMO_ISBN_1,
+            _result("kitapsec", "Kitapseç", "Berserk 1", Decimal("163.54"), isbn=DEMO_ISBN_1,
                     publisher="Athica Yayınları"),
             # Volume 2: two stores.
             _result("bkm", "BKM Kitap", "Berserk 2", Decimal("220"),
@@ -92,7 +92,7 @@ def main() -> int:
             _result("dr", "D&R", "Berserk 2", Decimal("235"),
                     publisher="Athica Yayınları"),
             # Volume 3: one store, out of stock.
-            _result("amazon", "Amazon", "Berserk 3", Decimal("189"),
+            _result("kitapsec", "Kitapseç", "Berserk 3", Decimal("189"),
                     publisher="Athica Yayınları", in_stock=False,
                     image="https://example.invalid/demo/b3.jpg"),
         ]
@@ -100,7 +100,7 @@ def main() -> int:
             service.import_result(result)
             session.commit()
 
-        # A little price history for the Amazon volume-1 listing so the
+        # A little price history for the Kitapseç volume-1 listing so the
         # history endpoint has something interesting to show.
         berserk = (
             session.query(Series).filter(Series.normalized_title == "berserk").first()
@@ -112,12 +112,12 @@ def main() -> int:
             if berserk
             else None
         )
-        amazon = session.query(Store).filter(Store.code == "amazon").first()
+        kitapsec = session.query(Store).filter(Store.code == "kitapsec").first()
         listing = (
             session.query(StoreListing)
             .filter(
                 StoreListing.volume_id == volume1.id,
-                StoreListing.store_id == amazon.id,
+                StoreListing.store_id == kitapsec.id,
             )
             .first()
             if volume1
