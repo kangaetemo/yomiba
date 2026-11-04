@@ -683,16 +683,26 @@ class BackgroundImportRunner:
 
     @staticmethod
     def _check_price_alerts(session: Session, query: str) -> None:
-        """Fire this series' price alerts and send queued mails. Best effort:
-        a mail problem never fails the price refresh."""
+        """Record this series' stock changes (restocks, stock alerts,
+        wishlist mails), fire its price alerts and send queued mails. Best
+        effort: a mail problem never fails the price refresh."""
+        from . import restocks
         from .mailer import send_pending
         from .price_alert_checker import check_alerts
 
         try:
             series_ids = _catalog_series_ids(session, query)
             if series_ids:
-                ids = session.scalars(select(Volume.id).where(Volume.series_id.in_(series_ids)))
-                fired = check_alerts(session, list(ids))
+                ids = list(session.scalars(select(Volume.id).where(Volume.series_id.in_(series_ids))))
+                try:
+                    stock = restocks.process(session, ids)
+                    if any(stock.values()):
+                        logger.info("background import for %r: %d back in stock, %d stock alert(s), %d mail(s)",
+                                    query, stock["restocked"], stock["alerts"], stock["mails"])
+                except Exception:  # noqa: BLE001 - price alerts still run
+                    logger.exception("restock check for %r failed", query)
+                    session.rollback()
+                fired = check_alerts(session, ids)
                 if fired["fired"]:
                     logger.info("background import for %r: %d price alert(s) fired", query, fired["fired"])
             send_pending(session)

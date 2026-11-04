@@ -13,10 +13,12 @@ import type {
   PriceAlertState,
   PriceDropsFeed,
   PriceHistory,
+  RestocksFeed,
   SearchResponse,
   SeriesDetail,
   SeriesIndexItem,
   SitemapFeed,
+  StockAlertState,
   VolumeDetail,
   WishlistState,
 } from "@/types";
@@ -115,6 +117,26 @@ export function removeFromWishlist(volumeId: number): Promise<WishlistState> {
 // ---------------------------------------------------------------------------
 // Price alerts (stored condition only; no notifications in this phase)
 // ---------------------------------------------------------------------------
+/** "Tekrar stokta": volumes in stock again after selling out, newest first. */
+export function getRestocks(days = 7, limit = 12, offset = 0): Promise<RestocksFeed> {
+  const query = new URLSearchParams({ days: String(days), limit: String(limit), offset: String(offset) });
+  return getJson<RestocksFeed>(`/restocks?${query}`);
+}
+
+/** "Stoğa girince haber ver" for one volume. */
+export function getStockAlert(volumeId: number): Promise<StockAlertState> {
+  return getJson<StockAlertState>(`/volume/${volumeId}/stock-alert`);
+}
+
+/** Set the alert, or set a fired one again. */
+export function setStockAlert(volumeId: number): Promise<StockAlertState> {
+  return putJson<StockAlertState>(`/volume/${volumeId}/stock-alert`, {});
+}
+
+export function deleteStockAlert(volumeId: number): Promise<StockAlertState> {
+  return deleteJson<StockAlertState>(`/volume/${volumeId}/stock-alert`);
+}
+
 export function getPriceAlert(volumeId: number): Promise<PriceAlertState> {
   return getJson<PriceAlertState>(`/volume/${volumeId}/price-alert`);
 }

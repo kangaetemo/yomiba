@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import require_user
 from ..database import get_db
-from ..models import PriceAlert, Publisher, Series, StoreListing, User, UserVolumeCollection, Volume, WishlistItem
+from ..models import PriceAlert, Publisher, StockAlert, Series, StoreListing, User, UserVolumeCollection, Volume, WishlistItem
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..utils import from_cents
 from ..services import series_slugs
@@ -53,6 +53,11 @@ class MyPriceAlertOut(MyVolumeOut):
     threshold_price: int
     is_active: bool
     updated_at: datetime
+
+
+class MyStockAlertOut(MyVolumeOut):
+    created_at: datetime
+    triggered_at: datetime | None = None
 
 
 def _volume_fields(session: Session, volume_ids: list[int]) -> dict[int, dict]:
@@ -127,5 +132,14 @@ def my_price_alerts(session: Session = Depends(get_db), user: User = Depends(req
     fields = _volume_fields(session, [r.volume_id for r in rows])
     items = [MyPriceAlertOut(**fields[r.volume_id], threshold_price=r.threshold_price,
                              is_active=r.is_active, updated_at=r.updated_at)
+             for r in rows if r.volume_id in fields]
+    return sorted(items, key=_sort_key)
+
+
+@router.get("/stock-alerts", response_model=list[MyStockAlertOut])
+def my_stock_alerts(session: Session = Depends(get_db), user: User = Depends(require_user)):
+    rows = session.scalars(select(StockAlert).where(StockAlert.user_id == user.id)).all()
+    fields = _volume_fields(session, [r.volume_id for r in rows])
+    items = [MyStockAlertOut(**fields[r.volume_id], created_at=r.created_at, triggered_at=r.triggered_at)
              for r in rows if r.volume_id in fields]
     return sorted(items, key=_sort_key)

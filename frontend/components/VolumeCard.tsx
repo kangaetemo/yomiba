@@ -9,7 +9,7 @@ import type { CollectionStatus, SeriesVolume } from "@/types";
 import { PriceBadge } from "@/components/PriceBadge";
 import { volumePath } from "@/lib/paths";
 import { volumeLabel } from "@/lib/volumeLabel";
-import { StockBadge, storeSummary, volumeStock } from "@/components/volumeStock";
+import { StockBadge, isRestocked, storeSummary, volumeStock } from "@/components/volumeStock";
 
 const STATUS_CHIP: Record<CollectionStatus, string> = {
   owned: "bg-ok-soft text-ok",
@@ -44,6 +44,11 @@ export function VolumeCard({ volume, seriesSlug }: { volume: SeriesVolume; serie
           {volume.wishlisted && (
             <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[0.68rem] font-semibold text-accent">
               İstek listesinde
+            </span>
+          )}
+          {isRestocked(volume) && (
+            <span className="shrink-0 rounded-full bg-ok-soft px-2 py-0.5 text-[0.68rem] font-semibold text-ok">
+              Tekrar stokta
             </span>
           )}
         </p>

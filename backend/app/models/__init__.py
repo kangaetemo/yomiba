@@ -16,6 +16,8 @@ from .listing_change import ListingChange
 from .import_record import ImportRecord
 from .wishlist_item import WishlistItem
 from .price_alert import PriceAlert
+from .stock_alert import StockAlert
+from .restock_event import RestockEvent
 from .catalog_series import CatalogSeries
 from .catalog_exclusion import CatalogExclusion
 from .user import User, UserSession
@@ -41,6 +43,8 @@ __all__ = [
     "ImportRecord",
     "WishlistItem",
     "PriceAlert",
+    "StockAlert",
+    "RestockEvent",
     "CatalogSeries",
     "CatalogExclusion",
     "User",

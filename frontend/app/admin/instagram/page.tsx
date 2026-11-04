@@ -4,16 +4,18 @@ import { redirect } from "next/navigation";
 import { InstagramStudio } from "@/components/admin/instagram/InstagramStudio";
 import { LaunchStudio } from "@/components/admin/instagram/LaunchStudio";
 import { NewSeriesStudio } from "@/components/admin/instagram/NewSeriesStudio";
+import { RestockStudio } from "@/components/admin/instagram/RestockStudio";
 import { Segmented } from "@/components/Segmented";
 import { TIME_ZONE } from "@/lib/time";
 import { currentUser } from "@/services/auth";
-import { getInstagramLaunch, getInstagramNewSeries, getInstagramReleases } from "@/services/instagram";
+import { getInstagramLaunch, getInstagramNewSeries, getInstagramReleases, getInstagramRestocks } from "@/services/instagram";
 
 export const metadata: Metadata = { title: "Instagram taslakları" };
 
 const KINDS = [
   { key: "hafta", label: "Haftanın çıkanları", href: "/admin/instagram" },
   { key: "yeni-seri", label: "Yeni seri", href: "/admin/instagram?tur=yeni-seri" },
+  { key: "tekrar-stokta", label: "Tekrar stokta", href: "/admin/instagram?tur=tekrar-stokta" },
   { key: "acilis", label: "Site açılışı", href: "/admin/instagram?tur=acilis" },
 ];
 
@@ -23,6 +25,8 @@ const WEEKS = [
   { key: "0", label: "Bu hafta" },
   { key: "1", label: "Gelecek hafta" },
 ];
+
+const RESTOCK_WINDOWS = [7, 14, 30];
 
 const DAY_MONTH = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", timeZone: "UTC" });
 const DAY = new Intl.DateTimeFormat("tr-TR", { day: "numeric", timeZone: "UTC" });
@@ -68,7 +72,9 @@ export default async function InstagramPage({ searchParams }: {
           ? "Sitenin açıldığını duyuran kaydırmalı post: katalogdaki gerçek sayılar ve mağazalar arasında fiyatı en çok değişen ciltlerden biriyle."
           : kind === "yeni-seri"
             ? "Türkiye'de yeni başlayan bir seriyi tanıtan post: ilk cildin kapağı ve kısa tanıtımıyla, fiyat olmadan."
-            : "Haftanın çıkan ciltlerinden kaydırmalı post: sitedeki kapaklarla, fiyat olmadan."}
+            : kind === "tekrar-stokta"
+              ? "Tükendikten sonra yeniden stoğa giren ciltlerden kaydırmalı post: ne kadar süre yok olduklarıyla, fiyat ve mağaza adı olmadan."
+              : "Haftanın çıkan ciltlerinden kaydırmalı post: sitedeki kapaklarla, fiyat olmadan."}
         {" "}Görsellerdeki yazıları önizlemenin altından değiştirebilirsin.
         {" "}Görselleri indirip açıklama metnini kopyalayarak Instagram&apos;da paylaşabilirsin; buradan hiçbir şey otomatik paylaşılmaz.
       </p>
@@ -99,6 +105,30 @@ export default async function InstagramPage({ searchParams }: {
         {header}
         {kinds}
         {data ? <NewSeriesStudio series={data.series} /> : (
+          <p className="rounded-xl border border-line bg-surface p-5 text-sm text-muted">Veriler yüklenemedi. Sayfayı yenilemeyi dene.</p>
+        )}
+      </div>
+    );
+  }
+
+  if (kind === "tekrar-stokta") {
+    const days = RESTOCK_WINDOWS.find((d) => String(d) === one(query.gun)) ?? 7;
+    const data = await getInstagramRestocks(days).catch(() => null);
+    const period = `Son ${days} günde`;
+    return (
+      <div className="space-y-6">
+        {header}
+        {kinds}
+        <Segmented label="Dönem" current="page" items={RESTOCK_WINDOWS.map((d) => ({
+          key: String(d), href: `/admin/instagram?tur=tekrar-stokta&gun=${d}`, active: d === days, children: `Son ${d} gün`,
+        }))} />
+        <h2 className="font-semibold text-ink">
+          Tekrar stoğa girenler · {period.toLocaleLowerCase("tr-TR")}
+          {data ? <span className="ml-2 font-normal text-muted">{data.volumes.length} cilt</span> : null}
+        </h2>
+        {data ? (
+          <RestockStudio key={days} volumes={data.volumes} period={period} fileStem={`yomiba-tekrar-stokta-${data.generated_at.slice(0, 10)}`} />
+        ) : (
           <p className="rounded-xl border border-line bg-surface p-5 text-sm text-muted">Veriler yüklenemedi. Sayfayı yenilemeyi dene.</p>
         )}
       </div>

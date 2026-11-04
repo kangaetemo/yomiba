@@ -20,7 +20,7 @@ export function NewSeries({ series }: { series: Series[] }) {
     <section id="yeni-seriler" aria-labelledby="yeni-seriler-title" className="scroll-mt-28 space-y-6">
       <SectionHeading
         id="yeni-seriler-title"
-        folio="04"
+        folio="05"
         eyebrow="İlk cilt raflarda"
         title="Yeni başlayan seriler"
         lead="Türkiye'de yayımlanmaya yeni başlayan seriler, ilk cildin çıkış tarihine göre."

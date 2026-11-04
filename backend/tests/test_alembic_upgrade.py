@@ -59,7 +59,7 @@ def test_init_db_builds_full_schema_on_fresh_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0034_drop_retired_store"
+        ).fetchone()[0] == "0035_restocks"
     finally:
         conn.close()
 
@@ -84,7 +84,7 @@ def test_init_db_migrates_unstamped_legacy_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0034_drop_retired_store"
+        ).fetchone()[0] == "0035_restocks"
     finally:
         conn.close()
 
@@ -99,7 +99,7 @@ def test_init_db_is_noop_when_already_at_head(alembic_url):
     try:
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchall() == [("0034_drop_retired_store",)]
+        ).fetchall() == [("0035_restocks",)]
     finally:
         conn.close()
 
@@ -147,7 +147,7 @@ def test_auth_downgrade_refuses_to_discard_user_data(alembic_url):
         command.downgrade(config, "0004_catalog_exclusion")
     with sqlite3.connect(alembic_url) as conn:
         # 0023 refuses before any downgrade; neither evidence nor user data are removed.
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0034_drop_retired_store",)
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0035_restocks",)
         assert conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'users'").fetchone() == (1,)
 
 
@@ -180,6 +180,12 @@ def test_retired_store_and_its_rows_are_removed(alembic_url):
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
     command.upgrade(config, "0033_cover_error")
+    # The ORM below writes every current volume column; give the 0033 table
+    # the ones later migrations add for the seeding only.
+    later = ("last_in_stock_at", "stock_checked_at")
+    with sqlite3.connect(alembic_url) as conn:
+        for column in later:
+            conn.execute(f"ALTER TABLE volumes ADD COLUMN {column} DATETIME")
     engine = database.build_engine(f"sqlite:///{alembic_url}")
     gone_key, shared_key = "v/1-aaaaaaaaaaaa.webp", "v/2-bbbbbbbbbbbb.webp"
     covers = alembic_url.parent / "covers" / "v"
@@ -206,6 +212,10 @@ def test_retired_store_and_its_rows_are_removed(alembic_url):
             session.add(ImportRecord(normalized_query="eski magaza", status="partial",
                                      error="amazon: blocked | dr: 403", reasons={"amazon": {"x": 1}, "bkm": {"y": 2}}))
             session.commit()
+        engine.dispose()
+        with sqlite3.connect(alembic_url) as conn:
+            for column in later:
+                conn.execute(f"ALTER TABLE volumes DROP COLUMN {column}")
 
         command.upgrade(config, "head")
 
@@ -220,6 +230,9 @@ def test_retired_store_and_its_rows_are_removed(alembic_url):
             assert (vols[1].cover_key, vols[1].cover_source) == (None, None)
             assert (vols[2].cover_key, vols[2].cover_url) == (None, None)
             assert vols[3].cover_key == shared_key
+            # 0035: the last in-stock price point is the last time it was in stock.
+            assert vols[1].last_in_stock_at is not None
+            assert (vols[2].last_in_stock_at, vols[1].stock_checked_at) == (None, None)
         assert not (alembic_url.parent / "covers" / gone_key).exists()
         assert (alembic_url.parent / "covers" / shared_key).exists()  # v3 still uses it
     finally:

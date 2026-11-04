@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * AccountSettings: the /hesap page's forms — display name, sign-in methods,
+ * AccountSettings: the /hesap page's forms — display name, e-mail
+ * notifications, sign-in methods,
  * password (change, or set one on a Google-only account), signing out other
  * devices, and deleting the account. Every change goes through the API and
  * the page refreshes from the server's answer.
@@ -14,6 +15,7 @@ import {
   deleteAccount,
   logoutOthers,
   sendVerification,
+  setRestockMail,
   updateProfile,
   type CurrentUser,
 } from "@/services/auth";
@@ -60,6 +62,8 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
   const devices = useAction();
   const removal = useAction();
   const verification = useAction();
+  const notifications = useAction();
+  const [restockMail, setRestockMailState] = useState(user.restock_mail !== false);
   const [showPassword, setShowPassword] = useState(false);
 
   return (
@@ -88,6 +92,39 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
         </form>
         <Note status={profile.status} />
       </section>
+
+      {user.restock_mail !== undefined && (
+        <section aria-labelledby="bildirim" className={card}>
+          <h2 id="bildirim" className="text-lg font-semibold text-ink">E-posta bildirimleri</h2>
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-ink-2">
+            <input
+              type="checkbox"
+              checked={restockMail}
+              disabled={notifications.busy}
+              onChange={(e) => {
+                const next = e.target.checked;
+                void notifications.run(async () => {
+                  const saved = await setRestockMail(next);
+                  setRestockMailState(saved.restock_mail !== false);
+                  return next ? "Açıldı." : "Kapatıldı.";
+                });
+              }}
+              className="mt-0.5 size-5 shrink-0 accent-accent"
+            />
+            <span>
+              <span className="block font-semibold text-ink">İstek listemdeki ciltler tekrar stoğa girince haber ver</span>
+              <span className="block text-muted">
+                Tükenip en az bir hafta hiçbir mağazada bulunmayan bir cilt yeniden satışa çıkınca e-posta atarız. Elindeki ciltler için yazmayız.
+                {!user.email_verified && " Bu e-postalar için önce adresini doğrulaman gerekiyor."}
+              </span>
+            </span>
+          </label>
+          <p className="text-xs text-muted">
+            Cilt sayfasındaki stok alarmları ve fiyat alarmları bu ayardan etkilenmez.
+          </p>
+          <Note status={notifications.status} />
+        </section>
+      )}
 
       <section aria-labelledby="giris" className={card}>
         <h2 id="giris" className="text-lg font-semibold text-ink">Giriş yöntemleri</h2>
@@ -217,7 +254,7 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
           <div className="space-y-1">
             <h2 id="sil" className="text-lg font-semibold text-bad">Hesabı sil</h2>
             <p className="text-sm text-ink-2">
-              Koleksiyonun, istek listen, fiyat alarmların ve oturumların kalıcı olarak silinir. Bu işlem geri alınamaz.
+              Koleksiyonun, istek listen, fiyat ve stok alarmların ve oturumların kalıcı olarak silinir. Bu işlem geri alınamaz.
             </p>
           </div>
           <form

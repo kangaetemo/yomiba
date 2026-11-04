@@ -95,6 +95,38 @@ export type PriceDeal = Pick<PriceDrop,
   "listing_id" | "old_price" | "new_price" | "saving" | "drop_pct" |
   "reference_kind" | "reference_days" | "noticeable" | "significant" | "changed_at">;
 
+/** A volume in stock again after no store had it for a week or more. */
+export interface Restock {
+  volume_id: number;
+  series_id: number;
+  series_slug: string;
+  series_title: string;
+  publisher: string;
+  author?: string | null;
+  volume_number: number;
+  covers_from: number | null;
+  covers_to: number | null;
+  cover_url: string | null;
+  release_date: string | null;
+  restocked_at: string;
+  /** Days no store had it; null when it was never seen in stock before. */
+  out_days: number | null;
+  /** Cheapest current offer. */
+  price: number;
+  store_name: string | null;
+  in_stock_count: number;
+}
+
+export interface RestocksFeed {
+  items: Restock[];
+  total: number;
+  offset: number;
+  limit: number;
+  window_days: number;
+  /** Shortest sold-out spell that counts (days). */
+  min_gap_days: number;
+}
+
 export interface PriceDropsFeed {
   drops: PriceDrop[];
   total: number;
@@ -167,6 +199,8 @@ export interface SeriesVolume {
   cover_url?: string | null;
   /** Local release date (YYYY-MM-DD); null when unknown. */
   release_date?: string | null;
+  /** Back in stock lately after selling out everywhere; null otherwise. */
+  restocked_at?: string | null;
 }
 
 /** Another edition of the same work ("Soichi" <-> "Soichi (Bez Cilt)"). */
@@ -265,6 +299,10 @@ export interface VolumeDetail {
   /** Admin only: when the series' prices were last refreshed. */
   last_refresh_at?: string | null;
   price_deal?: PriceDeal | null;
+  /** Back in stock lately after selling out everywhere; null otherwise. */
+  restocked_at?: string | null;
+  /** How long no store had it (days); null when never seen in stock before. */
+  restock_out_days?: number | null;
 }
 
 export interface WishlistState {
@@ -280,6 +318,18 @@ export interface PriceAlert {
   /** Paused alerts keep their threshold but are ignored. */
   is_active: boolean;
   updated_at: string;
+}
+
+export interface StockAlert {
+  id: number;
+  created_at: string;
+  /** When the "back in stock" mail went out; null while still waiting. */
+  triggered_at: string | null;
+}
+
+export interface StockAlertState {
+  volume_id: number;
+  alert: StockAlert | null;
 }
 
 export interface PriceAlertState {
@@ -533,6 +583,11 @@ export interface MyCollectionItem extends MyVolume {
 
 export interface MyWishlistItem extends MyVolume {
   added_at: string;
+}
+
+export interface MyStockAlert extends MyVolume {
+  created_at: string;
+  triggered_at: string | null;
 }
 
 export interface MyPriceAlert extends MyVolume {

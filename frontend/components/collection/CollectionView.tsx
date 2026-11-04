@@ -14,7 +14,7 @@ import { useMemo, useState } from "react";
 import { Badge, Cover, formatTL } from "@/components/ui";
 import { seriesPath, volumePath } from "@/lib/paths";
 import { volumeLabel } from "@/lib/volumeLabel";
-import type { MyCollectionItem, MyPriceAlert, MyVolume, MyWishlistItem } from "@/types";
+import type { MyCollectionItem, MyPriceAlert, MyStockAlert, MyVolume, MyWishlistItem } from "@/types";
 
 export type CollectionTab = "koleksiyon" | "istek" | "alarm";
 
@@ -349,7 +349,46 @@ type AlertSort = "closest" | "az";
 const target = (a: MyPriceAlert) => a.threshold_price / 100;
 const hit = (a: MyPriceAlert) => a.best_price !== null && a.best_price <= target(a);
 
-function AlertsTabPanel({ items }: { items: MyPriceAlert[] }) {
+/** "Stoğa girince haber ver" alarms: waiting ones first. */
+function StockAlertsSection({ items }: { items: MyStockAlert[] }) {
+  if (items.length === 0) return null;
+  const shown = [...items].sort((a, b) => Number(a.triggered_at !== null) - Number(b.triggered_at !== null)
+    || TR.compare(a.series_title, b.series_title) || byNumber(a, b));
+  return (
+    <section aria-labelledby="stok-alarmlari" className="space-y-3">
+      <h2 id="stok-alarmlari" className="text-base font-semibold text-ink">Stok alarmları</h2>
+      <ul className={grid}>
+        {shown.map((a) => (
+          <VolumeTile
+            key={a.volume_id}
+            item={a}
+            badge={a.triggered_at ? <Badge tone="stock">Haber verildi</Badge> : <Badge tone="alert">Stok bekleniyor</Badge>}
+            footer={<Price price={a.best_price} />}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function AlertsTabPanel({ items, stockAlerts }: { items: MyPriceAlert[]; stockAlerts: MyStockAlert[] }) {
+  if (items.length === 0 && stockAlerts.length === 0) {
+    return <Empty>Kurulu alarmın yok. Bir cildin sayfasından hedef fiyat koyabilir ya da stoğa girince haber alabilirsin.</Empty>;
+  }
+  return (
+    <div className="space-y-8">
+      <StockAlertsSection items={stockAlerts} />
+      {items.length > 0 && (
+        <section aria-labelledby="fiyat-alarmlari" className="space-y-3">
+          {stockAlerts.length > 0 && <h2 id="fiyat-alarmlari" className="text-base font-semibold text-ink">Fiyat alarmları</h2>}
+          <PriceAlertsPanel items={items} />
+        </section>
+      )}
+    </div>
+  );
+}
+
+function PriceAlertsPanel({ items }: { items: MyPriceAlert[] }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<AlertFilter>("all");
   const [sort, setSort] = useState<AlertSort>("closest");
@@ -400,8 +439,9 @@ function AlertsTabPanel({ items }: { items: MyPriceAlert[] }) {
 
 // -- page body ---------------------------------------------------------------------------
 
-export function CollectionView({ collection, wishlist, alerts, initialTab }: {
-  collection: MyCollectionItem[]; wishlist: MyWishlistItem[]; alerts: MyPriceAlert[]; initialTab: CollectionTab;
+export function CollectionView({ collection, wishlist, alerts, stockAlerts = [], initialTab }: {
+  collection: MyCollectionItem[]; wishlist: MyWishlistItem[]; alerts: MyPriceAlert[];
+  stockAlerts?: MyStockAlert[]; initialTab: CollectionTab;
 }) {
   const [tab, setTab] = useState<CollectionTab>(initialTab);
   const groups = useMemo(() => groupCollection(collection), [collection]);
@@ -424,7 +464,7 @@ export function CollectionView({ collection, wishlist, alerts, initialTab }: {
   const tabs: { value: CollectionTab; label: string; count: number }[] = [
     { value: "koleksiyon", label: "Koleksiyon", count: groups.length },
     { value: "istek", label: "İstek listesi", count: wishlist.length },
-    { value: "alarm", label: "Alarmlar", count: alerts.length },
+    { value: "alarm", label: "Alarmlar", count: alerts.length + stockAlerts.length },
   ];
 
   return (
@@ -462,7 +502,7 @@ export function CollectionView({ collection, wishlist, alerts, initialTab }: {
         <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`sekme-${tab}`}>
           {tab === "koleksiyon" && <CollectionTabPanel items={collection} />}
           {tab === "istek" && <WishlistTabPanel items={wishlist} />}
-          {tab === "alarm" && <AlertsTabPanel items={alerts} />}
+          {tab === "alarm" && <AlertsTabPanel items={alerts} stockAlerts={stockAlerts} />}
         </div>
       </div>
     </div>

@@ -73,3 +73,18 @@ export type InstagramNewSeries = { today: string; generated_at: string; series: 
 export function getInstagramNewSeries(): Promise<InstagramNewSeries> {
   return getJson<InstagramNewSeries>("/admin/instagram/new-series");
 }
+
+/** A volume back in stock after selling out everywhere ("Tekrar stokta"). */
+export type RestockVolume = Omit<InstagramVolume, "release_date"> & {
+  release_date: string | null;
+  restocked_at: string;
+  /** Days no store had it; null when it was never seen in stock before. */
+  out_days: number | null;
+};
+
+export type InstagramRestocks = { days: number; generated_at: string; volumes: RestockVolume[] };
+
+/** Volumes back in stock in the last `days` days and still in stock, admin only. */
+export function getInstagramRestocks(days: number): Promise<InstagramRestocks> {
+  return getJson<InstagramRestocks>(`/admin/instagram/restocks?days=${days}`);
+}
