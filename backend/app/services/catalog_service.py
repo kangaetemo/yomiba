@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, case, exists, func, not_, or_, select, true
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, aliased, selectinload
 
 from ..config import get_settings
 
@@ -21,13 +21,30 @@ from ..normalization.volume import UNNUMBERED_VOLUME
 from .covers import cover_url
 
 
+def preorder_listing_condition():
+    """A store sells the volume: a "Yakında" volume with a store listing is
+    on pre-order (Komik Şeyler's JoJo Limitli Baskı before release)."""
+    # Aliased so an outer query that joins StoreListing itself does not
+    # swallow the subquery's FROM through auto-correlation.
+    listing = aliased(StoreListing)
+    return exists(select(listing.id).where(listing.volume_id == Volume.id).correlate(Volume))
+
+
+def upcoming_volume_condition():
+    """An announced volume no store sells yet (the series page "Yakında"
+    list). A pre-order volume is listed with the released ones instead."""
+    return and_(Volume.catalog_present.is_(True), Volume.catalog_released.is_(False),
+                not_(preorder_listing_condition()))
+
+
 def public_volume_condition(*, include_announced: bool = True):
     """Hide confirmed source placeholders, while retaining dated announcements.
 
     Unknown legacy rows are not guessed from missing ISBN/price metadata.
-    They are verified on the next successful catalog sync.
+    They are verified on the next successful catalog sync. An announced
+    volume a store already sells (pre-order) is public like a released one.
     """
-    release = Volume.catalog_released.is_not(False)
+    release = or_(Volume.catalog_released.is_not(False), preorder_listing_condition())
     if include_announced:
         release = or_(release, Volume.release_date.isnot(None))
     return and_(Volume.catalog_present.is_not(False), release)
@@ -165,8 +182,7 @@ def only_volume_numbers(session: Session, series_ids: list[int]) -> dict[int, in
         numbers.setdefault(sid, []).append(number)
     upcoming = set(session.scalars(
         select(Volume.series_id).where(
-            Volume.series_id.in_(series_ids), Volume.catalog_present.is_(True),
-            Volume.catalog_released.is_(False),
+            Volume.series_id.in_(series_ids), upcoming_volume_condition(),
         )
     ))
     return {sid: nums[0] for sid, nums in numbers.items() if len(nums) == 1 and sid not in upcoming}
@@ -410,11 +426,22 @@ def _volume_stats(
     )
 
 
+def is_preorder(session: Session, volume: Volume) -> bool:
+    """Announced in the catalog ("Yakında") but already sold by a store."""
+    if volume.catalog_released is not False:
+        return False
+    return session.scalar(select(StoreListing.id).where(
+        StoreListing.volume_id == volume.id).limit(1)) is not None
+
+
 def get_volume(session: Session, volume_id: int) -> VolumeDetail | None:
     volume = session.get(Volume, volume_id)
     if volume is None or not _is_catalog_series(session, volume.series_id):
         return None
-    if volume.catalog_present is False or (volume.catalog_released is False and volume.release_date is None):
+    if volume.catalog_present is False or (
+        volume.catalog_released is False and volume.release_date is None
+        and not is_preorder(session, volume)
+    ):
         return None
     if is_legacy_phantom(session, volume):
         return VolumeDetail(volume=volume, listings=[], unverified=True)

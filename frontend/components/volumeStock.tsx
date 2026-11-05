@@ -26,8 +26,10 @@ export function isRestocked(v: SeriesVolume): boolean {
 }
 
 export function StockBadge({ volume, className = "" }: { volume: SeriesVolume; className?: string }) {
-  const { tone, label: plain } = STOCK_BADGE[volumeStock(volume)];
-  const label = isRestocked(volume) ? "Tekrar stokta" : plain;
+  const stock = volumeStock(volume);
+  const { tone, label: plain } =
+    volume.preorder && stock === "in_stock" ? { tone: "new" as BadgeTone, label: "Ön sipariş" } : STOCK_BADGE[stock];
+  const label = !volume.preorder && isRestocked(volume) ? "Tekrar stokta" : plain;
   return (
     <Badge tone={tone} dot className={className}>
       {label}
@@ -35,9 +37,10 @@ export function StockBadge({ volume, className = "" }: { volume: SeriesVolume; c
   );
 }
 
-/** "3 mağazada stokta" — stores without stock are not counted. */
+/** "3 mağazada stokta" (a pre-order: "ön siparişte"); stores without stock are not counted. */
 export function storeSummary(v: SeriesVolume): string {
-  return volumeStock(v) === "in_stock" ? `${v.in_stock_count} mağazada stokta` : "Şu an satan mağaza yok";
+  if (volumeStock(v) !== "in_stock") return "Şu an satan mağaza yok";
+  return v.preorder ? `${v.in_stock_count} mağazada ön siparişte` : `${v.in_stock_count} mağazada stokta`;
 }
 
 // -- icons ----------------------------------------------------------------------

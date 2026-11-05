@@ -10,7 +10,7 @@ from ..database import get_db
 from ..models import CatalogSeries, Volume
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..services import series_slugs
-from ..services.catalog_service import legacy_phantom_condition, public_volume_condition
+from ..services.catalog_service import legacy_phantom_condition, public_volume_condition, upcoming_volume_condition
 
 router = APIRouter(tags=["sitemap"])
 
@@ -37,8 +37,7 @@ def sitemap(session: Session = Depends(get_db)) -> dict:
             released[sid].append(n)
     upcoming = set(session.scalars(
         select(Volume.series_id).where(
-            Volume.series_id.in_(series_ids), Volume.catalog_present.is_(True),
-            Volume.catalog_released.is_(False),
+            Volume.series_id.in_(series_ids), upcoming_volume_condition(),
         )
     ))
     slugs = series_slugs.slugs_for(session, series_ids)

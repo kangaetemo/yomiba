@@ -199,6 +199,8 @@ export interface SeriesVolume {
   cover_url?: string | null;
   /** Local release date (YYYY-MM-DD); null when unknown. */
   release_date?: string | null;
+  /** Announced in the catalog but already sold by a store (pre-order). */
+  preorder?: boolean;
   /** Back in stock lately after selling out everywhere; null otherwise. */
   restocked_at?: string | null;
 }
@@ -289,6 +291,8 @@ export interface VolumeDetail {
   page_count?: number | null;
   /** Local release date (YYYY-MM-DD). */
   release_date?: string | null;
+  /** Announced in the catalog but already sold by a store (pre-order). */
+  preorder?: boolean;
   /** Original volumes of an omnibus book (2-in-1: 9–10). */
   covers_from?: number | null;
   covers_to?: number | null;

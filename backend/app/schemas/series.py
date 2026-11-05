@@ -31,6 +31,8 @@ class SeriesVolumeOut(BaseModel):
     cover_url: str | None = None
     #: Local release date from the catalog source; ``None`` when unknown.
     release_date: date | None = None
+    #: Announced ("Yakında") but already sold by a store: a pre-order.
+    preorder: bool = False
     #: Back in stock after selling out, within the badge window; else None.
     restocked_at: datetime | None = None
 

@@ -79,6 +79,8 @@ class VolumeOut(BaseModel):
     isbn: str | None = None
     page_count: int | None = None
     release_date: date | None = None
+    #: Announced ("Yakında") but already sold by a store: a pre-order.
+    preorder: bool = False
     #: Original volumes an omnibus book collects (2-in-1: 9-10), else None.
     covers_from: int | None = None
     covers_to: int | None = None
