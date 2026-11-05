@@ -75,7 +75,7 @@ export function PriceAlertForm({
   function saveThreshold() {
     const cents = toCents(input);
     if (cents === null) {
-      setError("Geçerli bir fiyat girin (ör. 150 veya 150,50).");
+      setError("Geçerli bir fiyat gir (ör. 150 veya 150,50).");
       return;
     }
     void call(() => setPriceAlert(volumeId, cents, null));

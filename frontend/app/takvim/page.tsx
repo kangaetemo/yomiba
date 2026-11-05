@@ -10,7 +10,7 @@ import type { NewVolume } from "@/types";
 
 export const dynamic = "force-dynamic";
 const DESCRIPTION =
-  "Türkiye'de yayımlanan manga ciltlerini çıkış tarihlerine göre takip et, önceki aylara göz at ve fiyatları karşılaştır.";
+  "Türkiye'de çıkan manga ciltleri, çıkış tarihine göre ay ay. Geçmiş aylara da bakabilir, kitapçı fiyatlarını karşılaştırabilirsin.";
 
 export async function generateMetadata({
   searchParams,
@@ -80,7 +80,7 @@ export default async function CalendarPage({
         <p className="eyebrow">Ay ay manga</p>
         <h1 className="text-3xl font-semibold text-ink sm:text-4xl">Yayın takvimi</h1>
         <p className="max-w-2xl text-sm text-muted sm:text-base">
-          Türkiye&apos;de çıkan ciltler, yayın tarihleriyle bir arada. Bir gün seç, o günün ciltlerine göz at.
+          Türkiye&apos;de çıkan ciltler, çıkış günlerine göre. Takvimden bir gün seçince o gün çıkanlar listelenir.
         </p>
       </header>
 

@@ -61,7 +61,7 @@ export function VolumeQuickActions({
     "grid size-9 place-items-center rounded-full border transition-colors disabled:opacity-50";
 
   return (
-    <div className="flex shrink-0 items-center gap-1" title={error ? "Kaydedilemedi, tekrar deneyin" : undefined}>
+    <div className="flex shrink-0 items-center gap-1" title={error ? "Kaydedilemedi, tekrar dene" : undefined}>
       <button
         type="button"
         onClick={toggleWishlist}

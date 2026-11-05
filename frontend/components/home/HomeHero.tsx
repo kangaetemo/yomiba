@@ -35,7 +35,7 @@ export async function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; sign
             .
           </h1>
           <p className="max-w-xl text-[1.05rem] leading-relaxed text-muted">
-            Aynı cildin fiyatını kitapçılarda yan yana gör, stokta olanı tek bakışta bul. Koleksiyonunu tut, istek listeni oluştur, fiyat düşünce haberin olsun.
+            Bir cildin hangi kitapçıda kaça satıldığını yan yana gör, stokta olanı hemen bul. Üye olursan koleksiyonunu ve istek listeni burada tutabilir, fiyat düşünce haber alabilirsin.
           </p>
 
           <SearchSection syncUrl />
@@ -46,7 +46,7 @@ export async function HomeHero({ feed, signedIn }: { feed: HomeFeed | null; sign
               className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-line-strong bg-surface px-4 font-semibold text-ink shadow-card transition-colors hover:border-ink/40"
             >
               <span aria-hidden className="size-2 rounded-full bg-accent" />
-              İndirimleri keşfet
+              İndirimlere bak
             </Link>
             <Link
               href={signedIn ? "/collection" : "/register"}

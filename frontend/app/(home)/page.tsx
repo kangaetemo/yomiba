@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: openGraph({
     title: "Yomiba - Manga fiyat karşılaştırma ve koleksiyon takibi",
-    description: "Manga fiyatlarını Türk kitapçıları arasında karşılaştır, koleksiyonunu takip et, fiyat alarmı kur.",
+    description: "Türk kitapçılarındaki manga fiyatlarını karşılaştır. Koleksiyonunu tut, istediğin cilde fiyat alarmı kur.",
     url: "/",
   }),
 };

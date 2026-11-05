@@ -399,8 +399,8 @@ export default async function VolumePage({ params }: VolumePageProps) {
               </p>
             ) : buyable.length === 0 && unavailable.length === 0 && missingStores.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-line-strong bg-surface/70 p-6 text-sm text-muted">
-                Bu cildi şu an stokta satan bir mağaza yok. Fiyatlar düzenli olarak kontrol edilir;
-                stoğa giren ilk teklif burada görünür.
+                Bu cildi şu an stokta satan mağaza yok. Fiyatları düzenli kontrol ediyoruz; bir mağaza
+                stoğa aldığında burada görünür.
               </p>
             ) : (
               <>

@@ -32,7 +32,7 @@ export default function GlobalError({
             Yomiba şu anda yanıt vermiyor
           </h1>
           <p style={{ color: "#6a6153", fontSize: "0.875rem" }}>
-            Kısa süreli bir sorun olabilir. Birazdan tekrar deneyin.
+            Kısa süreli bir sorun olabilir. Biraz sonra tekrar dene.
           </p>
           <button
             onClick={reset}

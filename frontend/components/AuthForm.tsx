@@ -53,8 +53,8 @@ export function AuthForm({ mode, next }: { mode: "login" | "register"; next?: st
         <h1 className="text-2xl font-semibold text-ink">{isLogin ? "Giriş yap" : "Hesap oluştur"}</h1>
         <p className="text-sm text-muted">
           {isLogin
-            ? "Koleksiyonun, istek listen ve fiyat alarmların seni bekliyor."
-            : "Koleksiyonunu tut, istek listeni oluştur, fiyat düşünce haberin olsun."}
+            ? "Tekrar hoş geldin."
+            : "Ücretsiz. Elindeki ciltleri işaretle, istediğin cilde fiyat alarmı kur."}
         </p>
       </div>
 
@@ -120,7 +120,7 @@ export function AuthForm({ mode, next }: { mode: "login" | "register"; next?: st
           disabled={busy}
           className="min-h-11 w-full rounded-lg bg-accent px-4 font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
         >
-          {busy ? "Bekleyin…" : isLogin ? "Giriş yap" : "Hesap oluştur"}
+          {busy ? "Gönderiliyor…" : isLogin ? "Giriş yap" : "Hesap oluştur"}
         </button>
       </form>
 
