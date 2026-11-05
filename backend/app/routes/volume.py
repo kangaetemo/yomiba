@@ -126,6 +126,7 @@ def _build_volume_out(
         isbn=volume.isbn,
         page_count=volume.page_count,
         release_date=volume.release_date,
+        preorder=catalog_service.is_preorder(session, volume),
         covers_from=volume.covers_from,
         covers_to=volume.covers_to,
         # The series blurb a store repeats on every volume is not this volume's own.

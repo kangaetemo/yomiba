@@ -48,6 +48,7 @@ def get_series_detail(
             wishlisted=volume.id in wishlisted,
             cover_url=cover_url(volume.cover_key),
             release_date=volume.release_date,
+            preorder=volume.catalog_released is False,
         )
         for volume in detail.volumes
     ]
@@ -57,8 +58,7 @@ def get_series_detail(
         id=v.id, number=None if v.volume_number == UNNUMBERED_VOLUME else v.volume_number,
         cover_url=cover_url(v.cover_key), release_date=v.release_date,
     ) for v in session.scalars(select(Volume).where(
-        Volume.series_id == detail.series.id, Volume.catalog_present.is_(True),
-        Volume.catalog_released.is_(False),
+        Volume.series_id == detail.series.id, catalog_service.upcoming_volume_condition(),
     ).order_by(Volume.volume_number))]
     sibling_ids = [s.id for s in siblings]
     intro = volume_descriptions.series_description(session, detail.series.id)

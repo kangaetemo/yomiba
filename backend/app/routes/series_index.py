@@ -46,8 +46,7 @@ def list_series(session: Session = Depends(get_db)) -> dict:
     only = catalog_service.only_volume_numbers(session, ids)
     upcoming = set(session.scalars(
         select(Volume.series_id).where(
-            Volume.series_id.in_(ids), Volume.catalog_present.is_(True),
-            Volume.catalog_released.is_(False),
+            Volume.series_id.in_(ids), catalog_service.upcoming_volume_condition(),
         )
     ))
     # First cover in volume order stands for the series.

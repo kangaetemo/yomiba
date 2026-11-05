@@ -114,7 +114,7 @@ function volumeStructuredData(detail: VolumeDetail, name: string, url: string, b
       lowPrice: best.toFixed(2),
       highPrice: Math.max(...offers).toFixed(2),
       offerCount: offers.length,
-      availability: "https://schema.org/InStock",
+      availability: detail.preorder ? "https://schema.org/PreOrder" : "https://schema.org/InStock",
     };
   }
   return book;
@@ -307,10 +307,11 @@ export default async function VolumePage({ params }: VolumePageProps) {
                   {detail.covers_to - detail.covers_from + 1} cilt bir arada · {detail.covers_from}–{detail.covers_to}
                 </Badge>
               )}
-              {isNew && <Badge tone="new">Yeni</Badge>}
+              {isNew && !detail.preorder && <Badge tone="new">Yeni</Badge>}
+              {detail.preorder && <Badge tone="new">Ön sipariş</Badge>}
               {!detail.unverified && inStock > 0 && (
                 <Badge tone="stock" dot>
-                  {inStock} mağazada stokta
+                  {inStock} mağazada {detail.preorder ? "ön siparişte" : "stokta"}
                 </Badge>
               )}
             </div>
