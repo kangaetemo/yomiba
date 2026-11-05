@@ -70,6 +70,7 @@ const FOOTER_LINKS = [
   { href: "/one-shot", label: "One shot" },
   { href: "/takvim", label: "Yayın takvimi" },
   { href: "/indirimler", label: "İndirimler" },
+  { href: "/tekrar-stokta", label: "Tekrar stokta" },
 ];
 
 export default async function RootLayout({

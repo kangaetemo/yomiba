@@ -7,7 +7,7 @@ import { getSeriesIndex, getSitemapEntries } from "@/services/catalog";
 // Built per request from the live catalog (the Docker build has no backend).
 export const dynamic = "force-dynamic";
 
-const STATIC_PAGES = ["/", "/seriler", "/takvim", "/indirimler", "/one-shot"];
+const STATIC_PAGES = ["/", "/seriler", "/takvim", "/indirimler", "/tekrar-stokta", "/one-shot"];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const urls = STATIC_PAGES.map((path) => `${SITE_URL}${path === "/" ? "" : path}`);

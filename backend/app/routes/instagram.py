@@ -15,6 +15,10 @@
   the first volume's cover, date and store blurb (the admin trims it). No
   prices, and no Japan/Turkey series status (it would give away where the
   catalog comes from).
+* GET /admin/instagram/restocks: the "Tekrar stokta" post. Volumes back in
+  stock after selling out everywhere (services/restocks.py) in the last
+  ``days`` days and still in stock, with how long they were gone. The post
+  itself shows no prices or store names (offers are for the admin's picker).
 
 Read-only; nothing here triggers a scrape.
 """
@@ -33,7 +37,7 @@ from ..database import get_db
 from ..models import CatalogSeries, Publisher, Series, Store, StoreListing, Volume
 from ..services.catalog_service import fresh_listing_condition, public_volume_condition
 from ..utils import from_cents, utcnow
-from ..services import series_slugs
+from ..services import restocks, series_slugs
 from ..services.covers import cover_url
 from .home import _catalog_ids, _release_query, _serialize_releases, _series_covers, reader_interest
 
@@ -204,3 +208,21 @@ def instagram_new_series(session: Session = Depends(get_db)) -> dict:
         for v, s, publisher in picked
     ]
     return {"today": today.isoformat(), "generated_at": utcnow().isoformat(), "series": series}
+
+
+@router.get("/admin/instagram/restocks")
+def instagram_restocks(
+    days: int = Query(default=7, ge=1, le=restocks.MAX_DAYS),
+    session: Session = Depends(get_db),
+) -> dict:
+    volumes = [
+        {
+            "id": item["volume_id"], "series_id": item["series_id"], "series_slug": item["series_slug"],
+            "series_title": item["series_title"], "publisher": item["publisher"], "author": item["author"],
+            "number": item["volume_number"], "covers_from": item["covers_from"], "covers_to": item["covers_to"],
+            "cover_url": item["cover_url"], "release_date": item["release_date"],
+            "restocked_at": item["restocked_at"], "out_days": item["out_days"],
+        }
+        for item in restocks.recent(session, days=days)
+    ]
+    return {"days": days, "generated_at": utcnow().isoformat(), "volumes": _with_offers(session, volumes)}

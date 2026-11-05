@@ -27,6 +27,9 @@ class User(Base):
     #: Google account that is authoritative for it). NULL: never proved, so
     #: whoever registered may not own the address.
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Mail when a wishlist volume is back in stock after selling out
+    #: (services/restocks.py). On by default; Hesabım turns it off.
+    restock_mail: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 

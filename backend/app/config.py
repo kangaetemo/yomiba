@@ -246,6 +246,10 @@ class Settings:
     )
     #: How long the admin "Fiyat değişiklikleri" log keeps its rows.
     listing_change_retention_days: int = int(os.getenv("LISTING_CHANGE_RETENTION_DAYS", "30"))
+    #: "Tekrar stokta": a volume counts as back in stock when no store had it
+    #: for at least this many days (services/restocks.py). Shorter gaps are
+    #: mostly stock flapping (a store hiding a product for a day).
+    restock_min_gap_days: int = int(os.getenv("RESTOCK_MIN_GAP_DAYS", "7"))
 
     # Scraper reliability: retries, backoff and politeness.
     # Transient failures (network errors, 429/5xx) are retried with

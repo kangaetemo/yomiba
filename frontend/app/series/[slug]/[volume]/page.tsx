@@ -9,6 +9,8 @@ import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { CollectionStatusPicker } from "@/components/CollectionStatusPicker";
 import { WishlistToggle } from "@/components/WishlistToggle";
 import { PriceAlertForm } from "@/components/PriceAlertForm";
+import { StockAlertButton } from "@/components/StockAlertButton";
+import { restockGap } from "@/components/home/Restocks";
 import { JsonLd, breadcrumbs } from "@/components/JsonLd";
 import { ReportIssue } from "@/components/ReportIssue";
 import { RemoveListingButton } from "@/components/admin/RemoveListingButton";
@@ -21,8 +23,8 @@ import { SITE_URL, metaDescription, openGraph, pageTitle } from "@/lib/site";
 import { publisherPath } from "@/lib/seriesIndex";
 import { searchVolumeLabel } from "@/lib/volumeLabel";
 import { currentUserOrNull } from "@/services/auth";
-import { getPriceAlert, getPriceHistory, getSeries, getVolume, getWishlist } from "@/services/catalog";
-import type { PriceAlert, PriceHistory, SeriesDetail, VolumeDetail, VolumeStore, WishlistState } from "@/types";
+import { getPriceAlert, getPriceHistory, getSeries, getStockAlert, getVolume, getWishlist } from "@/services/catalog";
+import type { PriceAlert, PriceHistory, SeriesDetail, StockAlertState, VolumeDetail, VolumeStore, WishlistState } from "@/types";
 import { LoginLink } from "@/components/LoginLink";
 
 export const dynamic = "force-dynamic";
@@ -181,10 +183,12 @@ export default async function VolumePage({ params }: VolumePageProps) {
 
   const user = await userRequest;
   const series: SeriesDetail = seriesDetail;
-  const [history, wishlist, alertState] = await Promise.all([
+  const soldOut = !detail.unverified && cheapest(detail.stores) === null;
+  const [history, wishlist, alertState, stockAlertState] = await Promise.all([
     historyRequest,
     user ? getWishlist(numId).catch((): WishlistState | null => null) : null,
     user ? getPriceAlert(numId).catch((): { alert: PriceAlert | null } | null => null) : null,
+    user && soldOut ? getStockAlert(numId).catch((): StockAlertState | null => null) : null,
   ]);
 
   const lowestHistory = history?.lowest ?? [];
@@ -313,6 +317,11 @@ export default async function VolumePage({ params }: VolumePageProps) {
                   {inStock} mağazada stokta
                 </Badge>
               )}
+              {!detail.unverified && inStock > 0 && detail.restocked_at && (
+                <Link href="/tekrar-stokta" className="rounded-full focus-visible:outline-2 focus-visible:outline-accent">
+                  <Badge tone="new">Tekrar stokta · {restockGap(detail.restock_out_days).toLocaleLowerCase("tr-TR")}</Badge>
+                </Link>
+              )}
             </div>
           </header>
 
@@ -320,16 +329,20 @@ export default async function VolumePage({ params }: VolumePageProps) {
             <BestPriceCard price={best.price} stores={best.stores} deal={deal} alternative={alternative} />
           )}
           {!best && !detail.unverified && (
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface px-5 py-4">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-line bg-surface px-5 py-4">
+              <div className="min-w-0 sm:max-w-sm">
                 <p className="font-display text-xl text-ink">Şu an hiçbir mağazada stokta yok</p>
                 <p className="mt-1 text-sm text-muted">
-                  Hedef fiyat koyarsan stoğa girip o fiyata indiğinde e-postayla haber veririz.
+                  Yeniden satışa çıktığında haber verelim. İstersen aşağıdan bir fiyat alarmı da kurabilirsin.
                 </p>
               </div>
-              <a href="#alarm-title" className="inline-flex min-h-11 items-center gap-1 font-semibold text-ink-2 hover:text-accent">
-                Fiyat alarmı kur <span aria-hidden>↓</span>
-              </a>
+              {user ? (
+                <StockAlertButton volumeId={numId} initial={stockAlertState?.alert ?? null} />
+              ) : (
+                <LoginLink className="inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-semibold text-on-accent hover:bg-accent-hover">
+                  Stoğa girince haber al
+                </LoginLink>
+              )}
             </div>
           )}
 
