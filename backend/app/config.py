@@ -98,9 +98,12 @@ class Settings:
     #: a search only fetches ``/products/<handle>.js`` for products missing
     #: from the snapshot. 0 turns the snapshot off.
     kitapbulan_catalog_ttl_minutes: float = float(os.getenv("KITAPBULAN_CATALOG_TTL_MINUTES", "60"))
+    #: Look series up in the snapshot instead of the store's search page
+    #: (Shopify rate-limits /search: 429 for 523 series on 2026-11-05).
+    kitapbulan_snapshot_search: bool = os.getenv("KITAPBULAN_SNAPSHOT_SEARCH", "1") not in ("0", "false", "False")
     kitapbulan_catalog_collections: tuple[str, ...] = tuple(
         c.strip()
-        for c in os.getenv("KITAPBULAN_CATALOG_COLLECTIONS", "kitap-cizgi-roman").split(",")
+        for c in os.getenv("KITAPBULAN_CATALOG_COLLECTIONS", "kitap-manga,kitap-cizgi-roman").split(",")
         if c.strip()
     )
 
