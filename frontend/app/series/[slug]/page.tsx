@@ -7,6 +7,7 @@ import { SortBar } from "@/components/SortBar";
 import { Segmented } from "@/components/Segmented";
 import { Blurb } from "@/components/Blurb";
 import { EditionLinks } from "@/components/EditionLinks";
+import { SpecialSets } from "@/components/SpecialSets";
 import { JsonLd, breadcrumbs } from "@/components/JsonLd";
 import { ReportIssue } from "@/components/ReportIssue";
 import { VolumeCard } from "@/components/VolumeCard";
@@ -274,6 +275,8 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
 
       {/* -- other editions (e.g. Soichi <-> Soichi (Bez Cilt)) ---------------- */}
       <EditionLinks editions={detail.editions ?? []} />
+
+      <SpecialSets sets={detail.special_sets ?? []} />
 
       {/* -- volumes ------------------------------------------------------ */}
       <section aria-labelledby="ciltler" className="space-y-4">

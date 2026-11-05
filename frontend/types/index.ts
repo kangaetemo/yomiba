@@ -205,6 +205,21 @@ export interface SeriesVolume {
   restocked_at?: string | null;
 }
 
+/** A box set / bundle sold as one product, shown on its series' pages. */
+export interface SpecialSet {
+  id: number;
+  title: string;
+  store: string;
+  product_url: string;
+  image_url: string | null;
+  price: number | null;
+  in_stock: boolean | null;
+  preorder: boolean;
+  last_checked: string | null;
+  /** Other series the set also covers. */
+  also: { title: string; slug: string }[];
+}
+
 /** Another edition of the same work ("Soichi" <-> "Soichi (Bez Cilt)"). */
 export interface SeriesEdition {
   id: number;
@@ -232,6 +247,8 @@ export interface SeriesDetail {
   upcoming_volumes?: SeriesVolume[];
   /** Other editions of the same work; usually empty. */
   editions?: SeriesEdition[];
+  /** Box sets / bundles that include this series (admin-added). */
+  special_sets?: SpecialSet[];
   /** A finished single-volume work: its series page opens the volume. */
   one_shot?: boolean;
   /** Story intro: the first volume's back-cover text. */

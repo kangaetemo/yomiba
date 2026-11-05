@@ -29,8 +29,11 @@ from .email_token import EmailToken
 from .series_popularity import SeriesPopularity
 from .analytics import AnalyticsEvent, AnalyticsSalt
 from .content_report import ContentReport
+from .special_set import SpecialSet, SpecialSetSeries
 
 __all__ = [
+    "SpecialSet",
+    "SpecialSetSeries",
     "Publisher",
     "PublisherAlias",
     "Series",
