@@ -73,7 +73,7 @@ export default async function InstagramPage({ searchParams }: {
           : kind === "yeni-seri"
             ? "Türkiye'de yeni başlayan bir seriyi tanıtan post: ilk cildin kapağı ve kısa tanıtımıyla, fiyat olmadan."
             : kind === "tekrar-stokta"
-              ? "Tükendikten sonra yeniden stoğa giren ciltlerden kaydırmalı post: ne kadar süre yok olduklarıyla, fiyat ve mağaza adı olmadan."
+              ? "Tükendikten sonra yeniden stoğa giren ciltlerden kaydırmalı post. Her cildin ne kadar süre bulunmadığı yazar, fiyat ve mağaza adı yoktur."
               : "Haftanın çıkan ciltlerinden kaydırmalı post: sitedeki kapaklarla, fiyat olmadan."}
         {" "}Görsellerdeki yazıları önizlemenin altından değiştirebilirsin.
         {" "}Görselleri indirip açıklama metnini kopyalayarak Instagram&apos;da paylaşabilirsin; buradan hiçbir şey otomatik paylaşılmaz.

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Tekrar stokta: yeniden satışa çıkan mangalar",
   description:
-    "Tükenen manga ciltleri yeniden satışta: Türk kitapçılarında bir süre hiç bulunmayıp tekrar stoğa giren ciltler, güncel en ucuz fiyatlarıyla.",
+    "Türk kitapçılarında bir süre hiç bulunmayıp yeniden stoğa giren manga ciltleri ve güncel en ucuz fiyatları.",
   alternates: { canonical: "/tekrar-stokta" },
   openGraph: openGraph({
     title: "Tekrar stokta: yeniden satışa çıkan mangalar",
@@ -37,8 +37,7 @@ export default async function RestocksPage({ searchParams }: {
         <p className="eyebrow">Stok takibi</p>
         <h1 className="text-4xl font-semibold text-ink">Tekrar stokta</h1>
         <p className="max-w-2xl text-muted">
-          Tükendikten sonra en az {gap} gün hiçbir mağazada bulunmayan, sonra yeniden satışa çıkan ciltler.
-          Yalnızca şu an hâlâ stokta olanlar listelenir.
+          En az {gap} gün hiçbir mağazada bulunmayıp yeniden satışa çıkan ciltler. Listede sadece şu an stokta olanlar var.
         </p>
       </header>
       <nav aria-label="Dönem" className="flex flex-wrap gap-2">
@@ -52,7 +51,7 @@ export default async function RestocksPage({ searchParams }: {
       {!feed ? <p role="status" className="text-muted">Liste şu an yüklenemedi. Biraz sonra tekrar deneyebilirsin.</p>
         : feed.items.length === 0 ? (
           <p className="rounded-xl border border-dashed border-line-strong bg-surface/70 p-6 text-sm text-muted">
-            Bu dönemde yeniden stoğa giren cilt yok. Beklediğin bir cilt varsa sayfasındaki &quot;Stoğa girince haber ver&quot; ile e-posta alabilirsin.
+            Bu dönemde tükenip geri gelen cilt yok. Beklediğin bir cilt varsa sayfasındaki &quot;Stoğa girince haber ver&quot; düğmesine bas, geri geldiğinde e-posta atalım.
           </p>
         )
         : <><p className="text-sm text-muted">{feed.total} cilt · en yeni önce</p><RestockGrid items={feed.items} /></>}
@@ -64,7 +63,7 @@ export default async function RestocksPage({ searchParams }: {
         </nav>
       )}
       <p className="max-w-3xl text-xs leading-relaxed text-faint">
-        Bir cilt, fiyatı ve stoğu güncel olan en az bir mağazada satışta olduğunda stokta sayılır. Kısa süreli kesintiler (bir mağazanın ürünü bir gün göstermemesi gibi) listeye girmez. Fiyatlar kargo hariçtir; mağazadaki son durumu kontrol et.
+        Fiyatı ve stoğu güncel en az bir mağaza satıyorsa cildi stokta sayıyoruz. Bir mağazanın ürünü bir gün göstermemesi gibi kısa kesintiler listeye girmez. Fiyatlara kargo dahil değil, almadan önce mağazadaki son durumu kontrol et.
       </p>
     </div>
   );

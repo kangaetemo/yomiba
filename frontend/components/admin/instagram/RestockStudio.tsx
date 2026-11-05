@@ -38,13 +38,13 @@ function buildCaption(volumes: RestockVolume[], featured: RestockVolume[], perio
   const tags = ["#manga", "#mangatürkiye", "#tekrarstokta",
     ...new Set(featured.map((v) => hashtag(v.series_title))), "#yomiba"];
   return [
-    `Tükenen ciltler geri döndü 📚 ${period} ${volumes.length} cilt yeniden raflarda.`,
+    `Tükenen ${volumes.length} cilt ${period.toLocaleLowerCase("tr-TR")} yeniden raflara geldi 📚`,
     `${named.join(", ")}${more}`,
     "",
-    "👉 Kaydır: hepsi içeride.",
+    "👉 Kaydır, hepsi içeride.",
     "",
     `Tam liste: ${RESTOCK_LINK} (link profilde)`,
-    "Beklediğin cilt mi tükendi? Cilt sayfasından stok alarmı kur, stoğa girince haber verelim 🔔",
+    "Beklediğin bir cilt tükendiyse sayfasından stok alarmı kur, geri gelince haber verelim 🔔",
     "",
     "Sen hangisini bekliyordun? 👇",
     "",
@@ -54,16 +54,16 @@ function buildCaption(volumes: RestockVolume[], featured: RestockVolume[], perio
 
 const coverTexts = (total: number, period: string): TextField<CoverText>[] => [
   { id: "etiket", label: "Üst etiket", value: `${period.toLocaleUpperCase("tr-TR")} · STOK TAKİBİ` },
-  { id: "baslik", label: "Başlık (son satır renkli)", value: `Tükenmişti.\n${total} cilt\ngeri döndü.`, multiline: true },
+  { id: "baslik", label: "Başlık (son satır renkli)", value: `${total} tükenen cilt\nyeniden\nraflarda.`, multiline: true },
   { id: "kaydir", label: "Kaydır düğmesi", value: "Kaydır, hepsini gör" },
 ];
 
 const ctaTexts = (): TextField<CtaText>[] => [
   { id: "baslik", label: "Başlık", value: "Bir dahakine\nkaçırma.", multiline: true },
   { id: "adim1", label: "1. kutu başlığı", value: "Stok alarmı kur" },
-  { id: "adim1Metin", label: "1. kutu metni", value: "Tükenen cilt stoğa girince e-posta gelsin" },
+  { id: "adim1Metin", label: "1. kutu metni", value: "Tükenen cilt stoğa girince e-posta al" },
   { id: "adim2", label: "2. kutu başlığı", value: "İstek listene ekle" },
-  { id: "adim2Metin", label: "2. kutu metni", value: "Geri döndüğünde sana yazalım" },
+  { id: "adim2Metin", label: "2. kutu metni", value: "Geri gelince sana yazalım" },
   { id: "adim3", label: "3. kutu başlığı", value: "Koleksiyonunu tut" },
   { id: "adim3Metin", label: "3. kutu metni", value: "Eksik ciltlerini tek yerde gör" },
   { id: "linkUst", label: "Link üstü", value: "Link profilde" },
@@ -118,8 +118,8 @@ export function RestockStudio({ volumes, period, fileStem }: {
         <CaptionEditor generated={generated} caption={caption} setCaption={setCaption} />
 
         <CoverPromo covers={ranked.map((v) => v.cover_url)} fileStem={fileStem} fields={promoTexts(
-          `${period.toLocaleUpperCase("tr-TR")} · STOK TAKİBİ`, `Tükenmişti.\n${volumes.length} cilt\ngeri döndü.`,
-          "Yeniden stoğa girenler\nsitede.", RESTOCK_LINK,
+          `${period.toLocaleUpperCase("tr-TR")} · STOK TAKİBİ`, `${volumes.length} tükenen cilt\nyeniden\nraflarda.`,
+          "Hangi mağazada\nolduğu sitede.", RESTOCK_LINK,
         )} />
 
         <section className="space-y-3">

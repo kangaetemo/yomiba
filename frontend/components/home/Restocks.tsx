@@ -26,11 +26,11 @@ export function RestockShelf({ items, windowDays, minGapDays }: {
   return (
     <section id="tekrar-stokta" aria-labelledby="tekrar-stokta-title" className="scroll-mt-28 space-y-6">
       <SectionHeading id="tekrar-stokta-title" folio="03" eyebrow="Stok takibi" title="Tekrar stokta"
-        lead={`Tükendikten sonra en az ${minGapDays} gün hiçbir mağazada bulunmayan, son ${windowDays} günde yeniden satışa çıkan ciltler.`}
+        lead={`En az ${minGapDays} gün hiçbir mağazada bulunmayıp son ${windowDays} günde yeniden satışa çıkan ciltler.`}
         action={{ href: "/tekrar-stokta", label: "Tümünü gör" }} />
       {items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line-strong bg-surface/70 p-6 text-sm text-muted">
-          Son {windowDays} günde yeniden stoğa giren cilt olmadı. Beklediğin bir cilt varsa sayfasından stok alarmı kurabilirsin.
+          Son {windowDays} günde tükenip geri gelen cilt olmadı. Beklediğin bir cilt varsa sayfasından stok alarmı kurabilirsin.
         </p>
       ) : <RestockGrid items={items} />}
     </section>

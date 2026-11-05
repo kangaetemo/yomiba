@@ -114,13 +114,13 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
             <span>
               <span className="block font-semibold text-ink">İstek listemdeki ciltler tekrar stoğa girince haber ver</span>
               <span className="block text-muted">
-                Tükenip en az bir hafta hiçbir mağazada bulunmayan bir cilt yeniden satışa çıkınca e-posta atarız. Elindeki ciltler için yazmayız.
+                İstek listendeki bir cilt en az bir hafta hiçbir mağazada bulunmayıp yeniden satışa çıkarsa e-posta atarız. &quot;Bende var&quot; dediğin ciltler için yazmayız.
                 {!user.email_verified && " Bu e-postalar için önce adresini doğrulaman gerekiyor."}
               </span>
             </span>
           </label>
           <p className="text-xs text-muted">
-            Cilt sayfasındaki stok alarmları ve fiyat alarmları bu ayardan etkilenmez.
+            Cilt sayfasından kurduğun stok ve fiyat alarmları bu ayardan etkilenmez.
           </p>
           <Note status={notifications.status} />
         </section>

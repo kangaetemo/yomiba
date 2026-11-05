@@ -82,7 +82,7 @@ export type RestockListText = "etiket" | "baslik" | "not" | "link";
 export const restockListTexts = (shown: number, total: number, period: string): TextField<RestockListText>[] => [
   { id: "etiket", label: "Üst etiket", value: `${period.toLocaleUpperCase("tr-TR")} · ${total} CİLT` },
   { id: "baslik", label: "Başlık", value: "Yeniden raflarda" },
-  { id: "not", label: "Alt not", value: total > shown ? `+${total - shown} cilt daha sitede` : "Hepsi ve güncel stok durumu sitede" },
+  { id: "not", label: "Alt not", value: total > shown ? `+${total - shown} cilt daha sitede` : "Hangi mağazada olduğu sitede" },
   { id: "link", label: "Link", value: RESTOCK_LINK },
 ];
 

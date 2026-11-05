@@ -258,8 +258,8 @@ def _queue_mail(session: Session, user: User, items: dict[int, str], offers: dic
     if "alert" in reasons:
         notes.append("Stok alarmı bir kez çalar. Yine haber almak istersen cilt sayfasından yeniden kurabilirsin.")
     if "wishlist" in reasons:
-        notes.append("İstek listendeki ciltler tükendikten sonra yeniden satışa çıkınca yazıyoruz. "
-                     f"Bu e-postaları Hesabım sayfasından kapatabilirsin: {site}/hesap")
+        notes.append("İstek listendeki ciltler uzun süre tükendikten sonra geri gelince bu e-postayı atıyoruz. "
+                     f"Hesabım sayfasından kapatabilirsin: {site}/hesap")
 
     text = "\n".join([
         f"Merhaba {user.display_name},", "", lead, "",

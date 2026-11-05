@@ -53,8 +53,8 @@ export function StockAlertButton({ volumeId, initial }: { volumeId: number; init
       </button>
       <p className="text-xs text-muted">
         {waiting
-          ? "Bir mağazada stoğa girince e-posta atarız. Vazgeçmek için düğmeye tekrar bas."
-          : "Bir mağazada stoğa girdiğini görünce e-postayla bir kez haber veririz."}
+          ? "Bir mağazada stoğa girince e-posta atacağız. Vazgeçersen düğmeye tekrar bas."
+          : "Bir mağazada stoğa girince tek bir e-posta atarız."}
       </p>
       {error && <p className="text-xs text-bad">{error}</p>}
     </div>
