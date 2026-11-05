@@ -36,10 +36,10 @@ from __future__ import annotations
 
 import html as html_module
 import logging
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlsplit
 
 from ..normalization import normalize_isbn, parse_volume_range, parse_volume_title
-from .base import BaseScraper, ScraperError
+from .base import BaseScraper, ProductInfo, ScraperError
 from .search_result import SearchResult
 from .relevance import filter_manga_results
 
@@ -194,4 +194,27 @@ class KomikseylerScraper(BaseScraper):
                 relevance=1.0,
             ),
             None,
+        )
+
+    # -- one product (special sets) ----------------------------------------------
+    def read_product(self, url: str) -> ProductInfo | None:
+        """A product by its page URL (``/urun/<slug>/``) through the Store
+        API's ``slug`` filter: a box set the search import drops."""
+        parts = [p for p in urlsplit(url).path.split("/") if p]
+        if not parts:
+            return None
+        data = self.get_json(f"{self.base_url}{STORE_API}?slug={quote_plus(parts[-1])}")
+        if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+            return None
+        product = data[0]
+        raw_name = product.get("name")
+        title = " ".join(html_module.unescape(str(raw_name)).split()) if raw_name else None
+        images = product.get("images") or []
+        image = images[0].get("src") if images and isinstance(images[0], dict) else None
+        stock = product.get("is_in_stock")
+        return ProductInfo(
+            title=title,
+            in_stock=bool(stock) if stock is not None else None,
+            price=self._price_cents_to_decimal(product.get("prices") or {}),
+            image_url=image,
         )

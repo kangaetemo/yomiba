@@ -51,6 +51,27 @@ class SeriesEditionOut(BaseModel):
     lowest_price: float | None = None
 
 
+class SpecialSetLinkOut(BaseModel):
+    title: str
+    slug: str
+
+
+class SpecialSetOut(BaseModel):
+    """A box set / bundle of this series sold as one product."""
+
+    id: int
+    title: str
+    store: str
+    product_url: str
+    image_url: str | None = None
+    price: float | None = None
+    in_stock: bool | None = None
+    preorder: bool = False
+    last_checked: datetime | None = None
+    #: Other series the set also covers.
+    also: list[SpecialSetLinkOut] = []
+
+
 class SeriesOut(BaseModel):
     id: int
     title: str
@@ -64,6 +85,8 @@ class SeriesOut(BaseModel):
     upcoming_volumes: list[SeriesVolumeOut] = []
     #: Other editions of the same work; empty for most series.
     editions: list[SeriesEditionOut] = []
+    #: Box sets / bundles that include this series.
+    special_sets: list[SpecialSetOut] = []
     #: Story intro: the first volume's back-cover text.
     description: str | None = None
     #: A finished single-volume work (completed in Japan and in Turkey, one

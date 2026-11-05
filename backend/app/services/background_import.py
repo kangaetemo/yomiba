@@ -656,6 +656,7 @@ class BackgroundImportRunner:
                 self._verify_unseen(session, query, report, started)
                 record = record_import_result(session, key, report)
                 self._check_price_alerts(session, query)
+                self._refresh_special_sets(session, query)
                 logger.info(
                     "background import for %r finished: status=%s ok=%d failed=%d "
                     "found=%d created=%d updated=%d",
@@ -680,6 +681,17 @@ class BackgroundImportRunner:
             # garbage collection — never acceptable with a bounded pool.
             session.close()
 
+
+    @staticmethod
+    def _refresh_special_sets(session: Session, query: str) -> None:
+        """Re-read the box sets linked to this series (best effort)."""
+        from . import special_sets
+
+        try:
+            special_sets.refresh_for_series(session, _catalog_series_ids(session, query))
+        except Exception:  # noqa: BLE001 - a set never fails the price refresh
+            logger.exception("background import for %r: special set refresh failed", query)
+            session.rollback()
 
     @staticmethod
     def _check_price_alerts(session: Session, query: str) -> None:

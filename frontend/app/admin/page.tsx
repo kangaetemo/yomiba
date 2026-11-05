@@ -37,6 +37,10 @@ export default async function AdminPage() {
         <h2 className="font-semibold text-ink">Instagram taslakları →</h2>
         <p className="mt-1 text-sm text-muted">Haftanın çıkan ciltlerinden gerçek kapak ve mağaza fiyatlarıyla kaydırmalı post: PNG olarak indir, açıklama metnini kopyala.</p>
       </Link>
+      <Link href="/admin/ozel-setler" className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
+        <h2 className="font-semibold text-ink">Özel setler →</h2>
+        <p className="mt-1 text-sm text-muted">Kutulu set ve paket gibi tek bir cilde ait olmayan ürünleri linkiyle ekle, seri sayfalarında fiyatıyla göster.</p>
+      </Link>
       <Link href="/admin/bildirimler"className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:bg-surface-2">
         <h2 className="font-semibold text-ink">
           Hata bildirimleri →{" "}

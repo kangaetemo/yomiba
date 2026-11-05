@@ -53,6 +53,16 @@ class ListingCheck:
     price: Decimal | None = None
 
 
+@dataclass(frozen=True)
+class ProductInfo:
+    """Name, image, price and stock of one product page (special sets)."""
+
+    title: str | None
+    in_stock: bool | None
+    price: Decimal | None = None
+    image_url: str | None = None
+
+
 class ScraperError(RuntimeError):
     """Raised when a scraper cannot complete its job.
 
@@ -344,6 +354,43 @@ class BaseScraper:
         else:
             return None
         return ListingCheck(in_stock=in_stock, price=parse_tr_price(offers.get("price")))
+
+    def read_product(self, url: str) -> ProductInfo | None:
+        """Name, image, price and stock of any product page (a box set the
+        importer never attaches to a volume). Default: the page's
+        schema.org Product JSON-LD. None when the page has no Product node
+        or answers with an error."""
+        response = self.get(url)
+        if response.status_code >= 400 or looks_like_blocked_page(
+            response.status_code, response.text
+        ):
+            return None
+        node = self.product_json_ld_node(self.extract_json_ld(response.text))
+        if node is None:
+            return None
+        image = node.get("image")
+        if isinstance(image, list):
+            image = image[0] if image else None
+        if isinstance(image, dict):
+            image = image.get("url")
+        offers = node.get("offers")
+        if isinstance(offers, list):
+            offers = offers[0] if offers else None
+        offers = offers if isinstance(offers, dict) else {}
+        availability = str(offers.get("availability") or "")
+        if any(k in availability for k in ("OutOfStock", "Discontinued", "SoldOut")):
+            in_stock: bool | None = False
+        elif any(k in availability for k in ("InStock", "LimitedAvailability", "PreOrder", "BackOrder")):
+            in_stock = True
+        else:
+            in_stock = None
+        name = node.get("name")
+        return ProductInfo(
+            title=" ".join(str(name).split()) if name else None,
+            in_stock=in_stock,
+            price=parse_tr_price(offers.get("price")),
+            image_url=str(image) if image else None,
+        )
 
     def close(self) -> None:
         if self._owns_client:

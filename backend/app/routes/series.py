@@ -11,8 +11,8 @@ from ..auth import optional_user
 from ..models import User, Volume, WishlistItem
 from ..normalization.text import slugify
 from ..normalization.volume import UNNUMBERED_VOLUME
-from ..schemas.series import SeriesEditionOut, SeriesOut, SeriesVolumeOut
-from ..services import catalog_service, collections_service, restocks, series_slugs, volume_descriptions
+from ..schemas.series import SeriesEditionOut, SeriesOut, SeriesVolumeOut, SpecialSetLinkOut, SpecialSetOut
+from ..services import catalog_service, collections_service, restocks, series_slugs, special_sets, volume_descriptions
 from ..utils import from_cents
 from ..services.covers import cover_url
 
@@ -98,6 +98,12 @@ def get_series_detail(
         volumes=volumes,
         upcoming_volumes=upcoming,
         editions=editions,
+        special_sets=[SpecialSetOut(
+            id=s.id, title=s.title, store=s.store, product_url=s.product_url, image_url=s.image_url,
+            price=from_cents(s.price), in_stock=s.in_stock, preorder=s.preorder,
+            last_checked=s.last_checked,
+            also=[SpecialSetLinkOut(title=t, slug=slug) for t, slug in s.also],
+        ) for s in special_sets.for_series(session, detail.series.id)],
         description=intro[0] if intro else None,
         one_shot=(
             detail.series.jp_status == "completed"
