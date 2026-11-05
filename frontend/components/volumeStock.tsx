@@ -20,8 +20,14 @@ const STOCK_BADGE: Record<VolumeStock, { tone: BadgeTone; label: string }> = {
   out_of_stock: { tone: "soldout", label: "Stokta yok" },
 };
 
+/** In stock again after selling out everywhere (the "Tekrar stokta" list). */
+export function isRestocked(v: SeriesVolume): boolean {
+  return volumeStock(v) === "in_stock" && Boolean(v.restocked_at);
+}
+
 export function StockBadge({ volume, className = "" }: { volume: SeriesVolume; className?: string }) {
-  const { tone, label } = STOCK_BADGE[volumeStock(volume)];
+  const { tone, label: plain } = STOCK_BADGE[volumeStock(volume)];
+  const label = isRestocked(volume) ? "Tekrar stokta" : plain;
   return (
     <Badge tone={tone} dot className={className}>
       {label}

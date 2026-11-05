@@ -89,6 +89,11 @@ class VolumeOut(BaseModel):
     missing_stores: list[MissingStoreOut] = []
     last_refresh_at: datetime | None = None
     price_deal: PriceDealOut | None = None
+    #: Back in stock after selling out everywhere, within the badge window
+    #: (services/restocks.py); None otherwise. ``restock_out_days``: how
+    #: long no store had it (None: never seen in stock before).
+    restocked_at: datetime | None = None
+    restock_out_days: int | None = None
 
 
 class VolumeCollectionStatusIn(BaseModel):

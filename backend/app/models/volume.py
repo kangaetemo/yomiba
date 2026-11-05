@@ -95,6 +95,11 @@ class Volume(Base):
     #: with another volume of the series): fine as the series intro, not
     #: shown as this volume's own; other stores are tried for a better one.
     description_generic: Mapped[bool | None] = mapped_column(Boolean)
+    #: Stock tracking for "Tekrar stokta" (services/restocks.py): the last
+    #: price refresh that found the volume fresh and in stock at any store,
+    #: and the last refresh that looked at all (in stock or not).
+    last_in_stock_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stock_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     series: Mapped[Series] = relationship(back_populates="volumes")
     listings: Mapped[list[StoreListing]] = relationship(

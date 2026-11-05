@@ -11,7 +11,7 @@ from ..auth import optional_user, require_admin, require_user
 from ..models import ImportRecord, ListingExclusion, Store, StoreListing, User, Volume
 from ..normalization.text import slugify
 from ..normalization.volume import UNNUMBERED_VOLUME
-from ..schemas.price_alert import PriceAlertDetail, PriceAlertIn, PriceAlertOut
+from ..schemas.price_alert import PriceAlertDetail, PriceAlertIn, PriceAlertOut, StockAlertDetail, StockAlertOut
 from ..schemas.price_history import HistoryListingOut, HistoryPointOut, LowestPointOut, PriceHistoryOut
 from ..schemas.volume import (
     MissingStoreOut,
@@ -26,6 +26,8 @@ from ..services import (
     collections_service,
     series_slugs,
     price_alerts_service,
+    restocks,
+    stock_alerts_service,
     volume_descriptions,
     wishlist_service,
 )
@@ -104,10 +106,13 @@ def _build_volume_out(
     ]
     missing, record = _missing_stores(session, volume) if admin else ([], None)
     deals = [] if detail.unverified else current_price_deals(session, volume_id=volume.id, hours=24 * 30)
+    restock = None if detail.unverified else restocks.latest_events(session, [volume.id]).get(volume.id)
     return VolumeOut(
         missing_stores=missing,
         last_refresh_at=record.last_success_at if record is not None else None,
         price_deal=deals[0] if deals else None,
+        restocked_at=restock.created_at if restock else None,
+        restock_out_days=restocks.out_days(restock) if restock else None,
         id=volume.id,
         number=None if volume.volume_number == UNNUMBERED_VOLUME else volume.volume_number,
         cover_url=cover_url(volume.cover_key),
@@ -299,6 +304,47 @@ def delete_price_alert(
     _require_catalog_volume(session, volume_id)
     price_alerts_service.delete_price_alert(session, volume_id, user.id)
     return PriceAlertOut(volume_id=volume_id, alert=None)
+
+
+# ---------------------------------------------------------------------------
+# Stock alerts ("stoğa girince haber ver"; fired by services/restocks.py)
+# ---------------------------------------------------------------------------
+def _stock_alert_out(volume_id: int, alert) -> StockAlertOut:
+    return StockAlertOut(volume_id=volume_id, alert=StockAlertDetail(
+        id=alert.id, created_at=alert.created_at, triggered_at=alert.triggered_at) if alert else None)
+
+
+@router.get("/volume/{volume_id}/stock-alert", response_model=StockAlertOut)
+def get_stock_alert(
+    volume_id: int,
+    session: Session = Depends(get_db),
+    user: User = Depends(require_user),
+) -> StockAlertOut:
+    _require_catalog_volume(session, volume_id)
+    return _stock_alert_out(volume_id, stock_alerts_service.get_stock_alert(session, volume_id, user.id))
+
+
+@router.put("/volume/{volume_id}/stock-alert", response_model=StockAlertOut)
+def set_stock_alert(
+    volume_id: int,
+    session: Session = Depends(get_db),
+    user: User = Depends(require_user),
+) -> StockAlertOut:
+    """Set the alert, or set a fired one again; idempotent."""
+    _require_catalog_volume(session, volume_id)
+    return _stock_alert_out(volume_id, stock_alerts_service.set_stock_alert(session, volume_id, user.id))
+
+
+@router.delete("/volume/{volume_id}/stock-alert", response_model=StockAlertOut)
+def delete_stock_alert(
+    volume_id: int,
+    session: Session = Depends(get_db),
+    user: User = Depends(require_user),
+) -> StockAlertOut:
+    """Delete the alert; idempotent."""
+    _require_catalog_volume(session, volume_id)
+    stock_alerts_service.delete_stock_alert(session, volume_id, user.id)
+    return StockAlertOut(volume_id=volume_id, alert=None)
 
 
 @router.delete("/volume/{volume_id}/listings/{listing_id}")

@@ -61,7 +61,7 @@ def test_init_db_creates_alias_table_on_fresh_database(alembic_url):
         assert "publisher_aliases" in tables
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0034_drop_retired_store"
+        ).fetchone()[0] == "0035_restocks"
         # No publisher rows on a fresh database -> no seeds.
         assert conn.execute(
             "SELECT COUNT(*) FROM publisher_aliases").fetchone()[0] == 0

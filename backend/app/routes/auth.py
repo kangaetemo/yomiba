@@ -35,7 +35,7 @@ from ..login_rate_limit import (
     device_user_id,
     issue_device_token,
 )
-from ..models import EmailOutbox, EmailToken, PriceAlert, User, UserSession, UserVolumeCollection, WishlistItem
+from ..models import EmailOutbox, EmailToken, PriceAlert, StockAlert, User, UserSession, UserVolumeCollection, WishlistItem
 from ..services import account_mail
 from ..services.analytics import client_ip
 from ..utils import utcnow
@@ -74,7 +74,10 @@ class TokenIn(BaseModel):
 
 
 class ProfileIn(BaseModel):
-    display_name: str = ""
+    #: Omitted (None): keep the current value.
+    display_name: str | None = None
+    #: Wishlist "back in stock" mails (services/restocks.py).
+    restock_mail: bool | None = None
 
 
 class PasswordIn(BaseModel):
@@ -98,6 +101,8 @@ class UserOut(BaseModel):
     email_verified: bool
     #: Account mails can be sent (SMTP configured); else no verification link.
     mail_enabled: bool
+    #: Mails when a wishlist volume is back in stock after selling out.
+    restock_mail: bool = True
     #: Something the reader should be told once (e.g. the old password was removed).
     notice: str | None = None
 
@@ -119,7 +124,7 @@ def _public(user: User, notice: str | None = None) -> UserOut:
     return UserOut(id=user.id, email=user.email, display_name=user.display_name, role=user.role,
                    has_password=user.password_hash is not None, google=user.google_sub is not None,
                    email_verified=user.email_verified_at is not None, mail_enabled=account_mail.enabled(),
-                   notice=notice)
+                   restock_mail=user.restock_mail is not False, notice=notice)
 
 
 def _bad(detail: str, status: int = 422) -> HTTPException:
@@ -219,7 +224,7 @@ def _take_over(session: Session, user: User) -> str | None:
 
 
 def _delete_personal_data(session: Session, user: User) -> None:
-    for model in (UserVolumeCollection, WishlistItem, PriceAlert, UserSession, EmailToken):
+    for model in (UserVolumeCollection, WishlistItem, PriceAlert, StockAlert, UserSession, EmailToken):
         session.execute(delete(model).where(model.user_id == user.id))
     session.execute(delete(EmailOutbox).where(EmailOutbox.to_email == user.email, EmailOutbox.sent_at.is_(None)))
     session.delete(user)
@@ -482,7 +487,10 @@ def me(user: User = Depends(require_user)) -> UserOut:
 
 @router.patch("/me", response_model=UserOut)
 def update_profile(payload: ProfileIn, user: User = Depends(require_user), session: Session = Depends(get_db)) -> UserOut:
-    user.display_name = _clean_name(payload.display_name)
+    if payload.display_name is not None:
+        user.display_name = _clean_name(payload.display_name)
+    if payload.restock_mail is not None:
+        user.restock_mail = payload.restock_mail
     user.updated_at = utcnow()
     session.commit()
     return _public(user)

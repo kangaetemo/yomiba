@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel
@@ -31,6 +31,8 @@ class SeriesVolumeOut(BaseModel):
     cover_url: str | None = None
     #: Local release date from the catalog source; ``None`` when unknown.
     release_date: date | None = None
+    #: Back in stock after selling out, within the badge window; else None.
+    restocked_at: datetime | None = None
 
 
 class SeriesEditionOut(BaseModel):

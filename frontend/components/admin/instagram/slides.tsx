@@ -41,7 +41,7 @@ const weekdayLabel = (iso: string) => {
 };
 
 /** What a cover or a book title needs of a volume. */
-type Book = Pick<LaunchVolume, "series_title" | "number" | "covers_from" | "covers_to" | "cover_url">;
+export type Book = Pick<LaunchVolume, "series_title" | "number" | "covers_from" | "covers_to" | "cover_url">;
 
 /** "One Piece 105", "Dragon Ball 5 (9–10)". */
 export function bookTitle(v: Omit<Book, "cover_url">): string {
@@ -129,12 +129,16 @@ export const coverTexts = (total: number, weekLabel: string): TextField<CoverTex
   { id: "kaydir", label: "Kaydır düğmesi", value: "Kaydır, hepsini gör" },
 ];
 
-export function CoverSlide({ fan, tx }: { fan: InstagramVolume[]; tx: Record<CoverText, string> }) {
+export function CoverSlide({ fan, tx, kanji = "新刊" }: {
+  fan: (Book & { id: number })[]; tx: Record<CoverText, string>;
+  /** The faint word behind the title ("new releases" by default). */
+  kanji?: string;
+}) {
   const spots = FANS[fan.length] ?? [];
   return (
     <Frame background={C.ink} color={C.paper}>
       <div aria-hidden style={{ position: "absolute", right: -120, top: -120, width: 620, height: 620, borderRadius: "50%", backgroundImage: "radial-gradient(circle, rgba(184,50,27,0.55) 3px, transparent 3.5px)", backgroundSize: "22px 22px" }} />
-      <div aria-hidden style={{ position: "absolute", left: 72, top: 330, fontFamily: DISPLAY, fontSize: 360, fontWeight: 900, lineHeight: 1, color: "rgba(247,242,231,0.05)" }}>新刊</div>
+      <div aria-hidden style={{ position: "absolute", left: 72, top: 330, fontFamily: DISPLAY, fontSize: 360, fontWeight: 900, lineHeight: 1, color: "rgba(247,242,231,0.05)" }}>{kanji}</div>
       <div style={{ position: "absolute", left: 72, right: 72, top: 64 }}><Brand /></div>
       <div style={{ position: "absolute", left: 72, right: 72, top: 196, display: "flex", flexDirection: "column", gap: 22 }}>
         {tx.etiket ? (

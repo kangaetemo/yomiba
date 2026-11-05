@@ -12,7 +12,7 @@ from ..models import User, Volume, WishlistItem
 from ..normalization.text import slugify
 from ..normalization.volume import UNNUMBERED_VOLUME
 from ..schemas.series import SeriesEditionOut, SeriesOut, SeriesVolumeOut
-from ..services import catalog_service, collections_service, series_slugs, volume_descriptions
+from ..services import catalog_service, collections_service, restocks, series_slugs, volume_descriptions
 from ..utils import from_cents
 from ..services.covers import cover_url
 
@@ -35,6 +35,7 @@ def get_series_detail(
         WishlistItem.user_id == user.id,
         WishlistItem.volume_id.in_([v.id for v in detail.volumes]),
     ))) if user else set()
+    restocked = restocks.latest_events(session, [v.id for v in detail.volumes])
     volumes = [
         SeriesVolumeOut(
             id=volume.id,
@@ -48,6 +49,7 @@ def get_series_detail(
             wishlisted=volume.id in wishlisted,
             cover_url=cover_url(volume.cover_key),
             release_date=volume.release_date,
+            restocked_at=restocked[volume.id].created_at if volume.id in restocked else None,
         )
         for volume in detail.volumes
     ]
