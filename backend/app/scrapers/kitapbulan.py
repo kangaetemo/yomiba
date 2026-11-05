@@ -22,6 +22,12 @@ and İblis Keser after the 17 Berserk volumes, "1000 sonuç"). Every query
 token of length >= 3 must appear in the title or the product is dropped,
 and paging stops after two pages without a relevant product.
 
+SNAPSHOT SEARCH (2026-11-05): Shopify answered the search page with 429
+for 523 series even at one request every 2 s. With
+KITAPBULAN_SNAPSHOT_SEARCH on (default) a series is looked up in the
+collection snapshot below by title, and the search page is only used when
+there is no snapshot (failed read, snapshot off).
+
 PRICE/STOCK SNAPSHOT: one product JSON per volume made Kitapbulan the
 slowest store of every series by far (2s request gap since the 429s of
 2026-10-26, shared by all import workers). The comics collection is read
@@ -176,7 +182,9 @@ class KitapbulanScraper(BaseScraper):
             if len(normalize_text(token)) >= self._RELEVANCE_TOKEN_MIN_LEN
         ]
 
-        items = self._search_pages(query, query_tokens)
+        items = self._snapshot_items(query_tokens)
+        if items is None:
+            items = self._search_pages(query, query_tokens)
         results: list[SearchResult] = []
         for item in items:
             result, reason = self._item_to_result(item, query_tokens)
@@ -192,6 +200,34 @@ class KitapbulanScraper(BaseScraper):
 
     def _reject(self, reason: str) -> None:
         self.stats["rejected"][reason] = self.stats["rejected"].get(reason, 0) + 1
+
+    # -- snapshot search ------------------------------------------------------------
+    def _snapshot_items(self, query_tokens: list[str]) -> list[dict] | None:
+        """Search the collection snapshot instead of the store: the products
+        whose title holds every query token (the same relevance guard the
+        search page goes through). Shopify rate-limits its search page hard
+        (2026-11-05: 523 series failed with 429 on /search); a snapshot costs
+        a few requests an hour for every series. None when snapshot search is
+        off or there is no snapshot: the store's search page is used then."""
+        if not self.settings.kitapbulan_snapshot_search or not query_tokens:
+            return None
+        catalog = self._catalog()
+        if not catalog:
+            return None
+        max_results = max(1, self.settings.kitapbulan_max_search_results)
+        items: list[dict] = []
+        for handle, product in catalog.items():
+            title = re.sub(r"\s+", " ", str(product.get("title") or "")).strip()
+            if not title or not self._is_relevant(title, query_tokens):
+                continue
+            self.stats["raw_products"] += 1
+            items.append({"handle": handle, "title": title})
+            if len(items) >= max_results:
+                self.stats["stop_reason"] = "max_results"
+                break
+        else:
+            self.stats["stop_reason"] = "snapshot"
+        return items
 
     # -- paginated search ----------------------------------------------------------
     def _search_pages(self, query: str, query_tokens: list[str] | None = None) -> list[dict]:
