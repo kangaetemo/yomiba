@@ -19,7 +19,7 @@ export function NewVolumes({ volumes }: { volumes: NewVolume[] }) {
     <section id="yeni" aria-labelledby="yeni-title" className="scroll-mt-28 space-y-6">
       <SectionHeading
         id="yeni-title"
-        folio="03"
+        folio="04"
         eyebrow="Raflarda"
         title="Yeni çıkan ciltler"
         lead="Türkiye'de en son yayımlanan ciltler, yayınevinin çıkış tarihine göre."

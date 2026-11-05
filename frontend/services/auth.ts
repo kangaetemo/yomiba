@@ -15,6 +15,8 @@ export type CurrentUser = {
   email_verified: boolean;
   /** Account mails can be sent; without a mail server no verification link exists. */
   mail_enabled: boolean;
+  /** Mail when a wishlist volume is back in stock after selling out (optional: older backend). */
+  restock_mail?: boolean;
   /** Something to tell the reader once (e.g. the old password was removed). */
   notice?: string | null;
 };
@@ -50,6 +52,8 @@ export const confirmEmailToken = (token: string) =>
 export const rejectEmailToken = (token: string) => postJson<void>("/auth/email-token/reject", { token });
 export const updateProfile = (display_name: string) =>
   patchJson<CurrentUser>("/auth/me", { display_name });
+export const setRestockMail = (restock_mail: boolean) =>
+  patchJson<CurrentUser>("/auth/me", { restock_mail });
 /** Change (or, on a Google-only account, set) the password; other devices are signed out. */
 export const changePassword = (current_password: string, new_password: string) =>
   postJson<CurrentUser>("/auth/password", { current_password, new_password });

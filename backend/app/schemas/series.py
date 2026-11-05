@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel
@@ -33,6 +33,8 @@ class SeriesVolumeOut(BaseModel):
     release_date: date | None = None
     #: Announced ("Yakında") but already sold by a store: a pre-order.
     preorder: bool = False
+    #: Back in stock after selling out, within the badge window; else None.
+    restocked_at: datetime | None = None
 
 
 class SeriesEditionOut(BaseModel):

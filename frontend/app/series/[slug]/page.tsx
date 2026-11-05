@@ -364,7 +364,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
               <p className="text-sm text-muted">
                 {signedIn
                   ? "Elindekileri ✓ ile işaretle; istediklerini yer imiyle istek listene ekle."
-                  : "Koleksiyonunu oluştur, eksik ciltlerini tek bakışta gör."}
+                  : "Hesap açarsan elindeki ciltleri işaretleyip eksiklerini görebilirsin."}
               </p>
             </div>
           </div>

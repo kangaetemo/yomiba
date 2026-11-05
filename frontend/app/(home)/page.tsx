@@ -6,10 +6,11 @@ import { HashScroll } from "@/components/SectionLink";
 import { HowItWorks } from "@/components/home/HowItWorks";
 import { NewSeries } from "@/components/home/NewSeries";
 import { NewVolumes } from "@/components/home/NewVolumes";
+import { RestockShelf } from "@/components/home/Restocks";
 import { OneShots, PopularSeries } from "@/components/home/PopularSeries";
 import { currentUserOrNull } from "@/services/auth";
-import { getHomeFeed, getPriceDrops } from "@/services/catalog";
-import type { HomeFeed, PriceDrop } from "@/types";
+import { getHomeFeed, getPriceDrops, getRestocks } from "@/services/catalog";
+import type { HomeFeed, PriceDrop, RestocksFeed } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -17,25 +18,27 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: openGraph({
     title: "Yomiba - Manga fiyat karşılaştırma ve koleksiyon takibi",
-    description: "Manga fiyatlarını Türk kitapçıları arasında karşılaştır, koleksiyonunu takip et, fiyat alarmı kur.",
+    description: "Türk kitapçılarındaki manga fiyatlarını karşılaştır. Koleksiyonunu tut, istediğin cilde fiyat alarmı kur.",
     url: "/",
   }),
 };
 
 const DEAL_WINDOW_DAYS = 7;
+const RESTOCK_WINDOW_DAYS = 7;
 /** The feed carries a wider pool for the hero; the shelf shows the top of it. */
 const SHELF_SIZE = 8;
 
 export default async function HomePage() {
   // Each feed degrades on its own: a failing shelf is hidden, the page and
   // the search always render.
-  const [feed, drops, user] = await Promise.all([
+  const [feed, drops, restocks, user] = await Promise.all([
     getHomeFeed().catch((): HomeFeed | null => null),
     // Newest first: a big drop from days ago must not hold the shelf while
     // fresh ones keep arriving.
     getPriceDrops(DEAL_WINDOW_DAYS * 24, 6, { significant: true, sort: "recent" })
       .then((d) => d.drops)
       .catch((): PriceDrop[] | null => null),
+    getRestocks(RESTOCK_WINDOW_DAYS, 6).catch((): RestocksFeed | null => null),
     currentUserOrNull(),
   ]);
 
@@ -44,6 +47,7 @@ export default async function HomePage() {
       <HomeHero feed={feed} signedIn={Boolean(user)} />
       {feed && <PopularSeries series={feed.popular_series.slice(0, SHELF_SIZE)} />}
       <HotDeals drops={drops} windowDays={DEAL_WINDOW_DAYS} />
+      <RestockShelf items={restocks?.items ?? null} windowDays={RESTOCK_WINDOW_DAYS} minGapDays={restocks?.min_gap_days ?? 7} />
       {feed && <NewVolumes volumes={feed.new_volumes} />}
       {feed && <NewSeries series={feed.new_series ?? []} />}
       {feed && <OneShots series={feed.one_shots ?? []} />}

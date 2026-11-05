@@ -36,3 +36,16 @@ class PriceAlertIn(BaseModel):
     #: overflow SQLite INTEGER at extreme values (L1).
     threshold_price: int | None = Field(default=None, ge=1, le=1_000_000_000)
     is_active: bool | None = None
+
+
+class StockAlertDetail(BaseModel):
+    id: int
+    created_at: datetime
+    #: When the "back in stock" mail was queued; None = still waiting.
+    triggered_at: datetime | None = None
+
+
+class StockAlertOut(BaseModel):
+    volume_id: int
+    #: ``null`` when the volume has no stock alert.
+    alert: StockAlertDetail | None = None

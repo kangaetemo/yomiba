@@ -62,7 +62,7 @@ export function SearchSection({
           <div className="rounded-xl border border-dashed border-line-strong bg-surface/70 p-6 text-center">
             <p className="font-display text-lg text-ink-2">“{query.trim()}” katalogda bulunamadı</p>
             <p className="mt-1 text-sm text-muted">
-              Türkçe ya da orijinal adıyla deneyin.
+              Türkçe ya da orijinal adıyla dene.
             </p>
           </div>
         )}
