@@ -85,6 +85,9 @@ class Settings:
     #: BKM search prices are stale (WAW index): every result's price is read
     #: from its product page, up to this many pages per search.
     bkm_max_detail_requests: int = int(os.getenv("BKM_MAX_DETAIL_REQUESTS", "100"))
+    #: A BKM product page read by one query is reused by the others of the
+    #: same price refresh for this long (related titles list the same books).
+    bkm_page_cache_minutes: float = float(os.getenv("BKM_PAGE_CACHE_MINUTES", "180"))
 
     # Long series need deep searches: Kitapbulan shows 6 products a page and
     # lists ~130 English One Piece volumes before the Turkish ones; Gerekli

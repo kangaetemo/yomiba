@@ -57,8 +57,11 @@ def fresh_price_deals_cache():
     from app.routes import home
     from app.services import price_deals
 
+    from app.scrapers import bkm
+
     price_deals.clear_cache()
     home.clear_cache()
+    bkm._PAGE_CACHE.clear()  # noqa: SLF001 - process-wide product page cache
     yield
     price_deals.clear_cache()
     home.clear_cache()
