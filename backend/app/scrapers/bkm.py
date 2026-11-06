@@ -379,26 +379,26 @@ class BkmScraper(BaseScraper):
         ``offers`` (the search index is stale), plus publisher / author /
         language.
 
-        Results naming the query are read up to ``bkm_max_detail_requests``;
-        the others (other titles, merchandise of a broad search: "Mavi Kutu"
-        returns 50 pencil boxes) only up to ``max_detail_requests``. A result
-        whose page was not read keeps the search data (counted in
-        ``stats["price_unverified"]``).
+        Up to ``bkm_max_detail_requests`` pages, results naming the query
+        first. A result whose page was not read or gave no offer loses its
+        search price (``price=None``: the listing keeps its last page price)
+        and is counted in ``stats["price_unverified"]``. Keeping the search
+        price there flipped Berserk 18-20 back to 210 TL on 2026-11-06: a
+        second query whose words are not in "Berserk 20" read only the
+        first 15 pages.
         """
         core = normalize_text(parse_volume_title(query).base_title or query) if query else ""
         named = [i for i, r in enumerate(results) if not core or core in normalize_text(r.title)]
         named_set = set(named)
-        others = [i for i in range(len(results)) if i not in named_set]
-        order = (named[:max(0, self.settings.bkm_max_detail_requests)]
-                 + others[:max(0, self.settings.max_detail_requests)])
+        order = named + [i for i in range(len(results)) if i not in named_set]
         verified: set[int] = set()
-        for index in order:
+        for index in order[:max(0, self.settings.bkm_max_detail_requests)]:
             result = results[index]
             try:
                 enriched, from_page = self._enrich_one(result)
             except ScraperError:
                 logger.warning(
-                    "bkm: detail enrichment failed for %s (keeping search data)",
+                    "bkm: detail enrichment failed for %s (no price from search)",
                     result.product_url,
                 )
                 continue
@@ -410,6 +410,9 @@ class BkmScraper(BaseScraper):
             results[index] = enriched
             if from_page:
                 verified.add(index)
+        for index, result in enumerate(results):
+            if index not in verified and result.price is not None:
+                results[index] = result.model_copy(update={"price": None})
         self.stats["price_unverified"] = len(results) - len(verified)
         return results
 
