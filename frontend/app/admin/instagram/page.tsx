@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { InstagramStudio } from "@/components/admin/instagram/InstagramStudio";
 import { LaunchStudio } from "@/components/admin/instagram/LaunchStudio";
@@ -65,7 +64,6 @@ export default async function InstagramPage({ searchParams }: {
   const launch = kind === "acilis";
   const header = (
     <header className="space-y-1">
-      <p className="text-sm"><Link href="/admin" className="text-new hover:underline">← Admin</Link></p>
       <h1 className="text-2xl font-bold tracking-tight text-ink">Instagram taslakları</h1>
       <p className="text-sm text-muted">
         {launch

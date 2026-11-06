@@ -1,12 +1,10 @@
 "use client";
 
 /**
- * AdminControls: no-auth operational panel (P26).
- *
- * Two independent panels sharing one component file (kept small on purpose):
- * 1. Catalog sync — live status (polled while running) + manual trigger.
- * 2. Store import — run an import for a query, show per-store results,
- *    failures and duration; below it the recent import-attempt history.
+ * Admin operational panels, one exported card each. The admin pages pick
+ * them by section: /admin/fiyatlar (price refresh, shelf coverage, unpriced
+ * series), /admin/magazalar (manual store import, store probe) and
+ * /admin/katalog (catalog sync, Mangakol audit, covers, foreign editions).
  *
  * All API calls go through services/admin.ts; the server response is the
  * source of truth (no optimistic state).
@@ -233,10 +231,10 @@ function ForeignEditionsBox() {
   const remove = plan?.listings.filter((l) => l.action === "remove") ?? [];
   const scanning = status?.state === "scanning";
   return (
-    <div className="space-y-2 rounded-lg border border-line p-3 text-xs">
+    <div className="space-y-2 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-muted">
-          Yabancı baskı taraması: İngilizce vb. baskıların ilanlarını ürün sayfasıyla kanıtlayıp kaldırır.
+          İngilizce vb. baskıların ilanlarını ürün sayfasıyla kanıtlayıp kaldırır.
           {scanning && <span className="ml-1 text-accent">· taranıyor…</span>}
         </p>
         <div className="flex gap-2">
@@ -399,7 +397,7 @@ function CoverBox() {
 
   const pct = status && status.total > 0 ? Math.round((100 * status.stored) / status.total) : 0;
   return (
-    <div className="space-y-2 rounded-lg border border-line p-3 text-xs">
+    <div className="space-y-2 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-muted">
           Kapaklar kendi sunucumuzdan: {status ? `${status.stored} / ${status.total} cilt (%${pct})` : "…"}
@@ -565,8 +563,6 @@ function CatalogSyncPanel() {
       )}
 
       <IsbnFixBox disabled={Boolean(status?.running)} />
-      <CoverBox />
-      <ForeignEditionsBox />
     </section>
   );
 }
@@ -779,7 +775,6 @@ function ImportPanel() {
         )}
       </div>
 
-      <StoreProbeBox />
     </section>
   );
 }
@@ -845,10 +840,10 @@ function StoreProbeBox() {
   const running = status?.state === "running";
   const results = status?.results ?? [];
   return (
-    <div className="space-y-3 rounded-lg border border-line p-3 text-xs">
+    <div className="space-y-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="max-w-xl text-muted">
-          Mağaza erişim testi: her mağazanın arama ve ürün sayfasını bu sunucudan bir kez çeker (bot korumasını aşmaya
+          Her mağazanın arama ve ürün sayfasını bu sunucudan bir kez çeker (bot korumasını aşmaya
           çalışmaz). Yeni mağaza eklemeden önce çalıştır.
           {running && (
             <span className="ml-1 text-accent">
@@ -1018,7 +1013,7 @@ function CoveragePanel() {
     <section className="space-y-3 rounded-xl border border-line bg-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-ink">
-          Raf kapsaması
+          Fiyat yenileme ve raf kapsaması
           {cycleActive && (
             <span className="ml-2 text-sm font-normal text-accent">
               · {priceRefresh?.current_cycle_mode === "unpriced" ? "fiyatsızlar: " : ""}
@@ -1364,14 +1359,26 @@ function CatalogAuditPanel() {
   );
 }
 
-export function AdminControls() {
+/** A titled card for one of the stand-alone tools below. */
+function ToolSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-6">
-      <CatalogAuditPanel />
-      <CoveragePanel />
-      <MissingCoveragePanel />
-      <CatalogSyncPanel />
-      <ImportPanel />
-    </div>
+    <section className="space-y-3 rounded-xl border border-line bg-surface p-5">
+      <h2 className="text-lg font-semibold text-ink">{title}</h2>
+      {children}
+    </section>
   );
 }
+
+export function CoverPanel() {
+  return <ToolSection title="Kapaklar"><CoverBox /></ToolSection>;
+}
+
+export function ForeignEditionsPanel() {
+  return <ToolSection title="Yabancı baskılar"><ForeignEditionsBox /></ToolSection>;
+}
+
+export function StoreProbePanel() {
+  return <ToolSection title="Mağaza erişim testi"><StoreProbeBox /></ToolSection>;
+}
+
+export { CatalogAuditPanel, CatalogSyncPanel, CoveragePanel, ImportPanel, MissingCoveragePanel };
