@@ -44,7 +44,7 @@ import logging
 from urllib.parse import quote_plus
 
 from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
-from .base import BaseScraper, ScraperError
+from .base import BaseScraper, ListingCheck, ScraperError
 from .common import parse_tr_price
 from .search_result import SearchResult
 from .relevance import filter_manga_results
@@ -78,6 +78,21 @@ class BkmScraper(BaseScraper):
     fallback_search_endpoint = (
         "https://cdn.bkmkitap.com/srv/service/product/searchAll/{query}"
     )
+
+    def check_listing(self, url: str) -> ListingCheck | None:
+        """Stock from the product page, never its price.
+
+        The page's JSON-LD ``offers.price`` is not what BKM sells the book
+        for: SEKIRO Yan Hikaye Cilt 1 read 168 TL there while search
+        (``price_sell``, the price the shop shows) said 210 TL, so every
+        re-check of a listing the search missed dropped the price by ~20%
+        and the next search put it back (6 Nov, "BKM ucuz gözüküyor ama
+        değil", almost every series). Only the search sets BKM prices; a
+        price-less check keeps the listing's last search price."""
+        check = super().check_listing(url)
+        if check is None:
+            return None
+        return ListingCheck(in_stock=check.in_stock, price=None)
 
     def search(self, query: str) -> list[SearchResult]:
         """Search BKM; when the plain query finds nothing of the series, retry
