@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AutoRefresh, ChangeLogList } from "@/components/admin/ChangeLogList";
 import { Segmented } from "@/components/Segmented";
@@ -63,7 +62,6 @@ export default async function ChangeLogPage({ searchParams }: {
   return <div className="space-y-6">
     {log.cycle_active && log.window === "cycle" && <AutoRefresh seconds={60} />}
     <header className="space-y-2">
-      <Link href="/admin" className="text-sm text-new hover:underline">← Yönetim paneli</Link>
       <h1 className="text-2xl font-bold tracking-tight text-ink">Fiyat değişiklikleri</h1>
       <p className="max-w-3xl text-sm text-muted">
         Fiyat yenilemede ve elle içe aktarmada hangi cildin hangi mağazada değiştiği: yeni kayıtlar,

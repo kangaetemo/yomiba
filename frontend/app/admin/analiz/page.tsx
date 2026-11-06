@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AnalyticsDashboard } from "@/components/admin/AnalyticsDashboard";
 import { Segmented } from "@/components/Segmented";
@@ -19,7 +18,6 @@ export default async function AnalyticsPage({ searchParams }: {
   const report = await getAnalytics(days);
   return <div className="space-y-6">
     <header className="space-y-2">
-      <Link href="/admin" className="text-sm text-new hover:underline">← Yönetim paneli</Link>
       <h1 className="text-2xl font-bold tracking-tight text-ink">Analiz</h1>
       <p className="max-w-3xl text-sm text-muted">Ziyaretçiler, en çok bakılan seri ve ciltler, mağazalara giden tıklamalar, aramalar ve trafik kaynakları. Yönetici ziyaretleri ve botlar sayılmaz.</p>
     </header>
