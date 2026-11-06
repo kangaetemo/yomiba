@@ -82,6 +82,9 @@ class Settings:
     bkm_search_page_size: int = int(os.getenv("BKM_SEARCH_PAGE_SIZE", "20"))
     bkm_max_search_pages: int = int(os.getenv("BKM_MAX_SEARCH_PAGES", "5"))
     bkm_max_search_results: int = int(os.getenv("BKM_MAX_SEARCH_RESULTS", "100"))
+    #: BKM search prices are stale (WAW index): every result's price is read
+    #: from its product page, up to this many pages per search.
+    bkm_max_detail_requests: int = int(os.getenv("BKM_MAX_DETAIL_REQUESTS", "100"))
 
     # Long series need deep searches: Kitapbulan shows 6 products a page and
     # lists ~130 English One Piece volumes before the Turkish ones; Gerekli
