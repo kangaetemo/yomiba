@@ -405,11 +405,10 @@ def test_page_without_offers_drops_search_price():
     assert s.stats["price_unverified"] == 1
 
 
-def test_query_not_naming_the_titles_still_reads_their_pages():
+def test_related_query_never_writes_the_search_price():
     """Berserk 18-20, 2026-11-06: read at 14:42 (168 TL), flipped back to
-    the search's 210 TL at 15:01 by a query whose words are not in the
-    titles: only its first 15 results had their page read."""
-    pages = []
+    the search's 210 TL at 15:01 by a related title's query that read only
+    its first 15 pages. Unread results now carry no price."""
     other = [dict(_sekiro_item(100 + n), title=f"Kalem Kutusu {n}", link=f"https://www.bkmkitap.com/kutu-{n}")
              for n in range(20)]
 
@@ -417,14 +416,42 @@ def test_query_not_naming_the_titles_still_reads_their_pages():
         if "search_v2" in request.url.path:
             items = other + [_sekiro_item(n) for n in range(1, 31)]
             return httpx.Response(200, json={"res": items, "total_item_count": len(items)})
-        pages.append(request.url.path)
         return httpx.Response(200, text=_offer_page("168.00"))
 
     s = make_scraper(handler, bkm_search_page_size=100)
-    results = s.search("Ölümsüz Hanbei Yan Hikaye")
+    results = s.search("Kalem Kutusu")
     sekiro = [r for r in results if r.title.startswith("SEKIRO")]
-    assert len(sekiro) == 30 and all(r.price == Decimal("168.00") for r in sekiro)
-    assert s.stats["price_unverified"] == 0
+    assert len(sekiro) == 30
+    prices = sorted(str(r.price) for r in sekiro)
+    assert prices == ["168.00"] * 15 + ["None"] * 15  # 15 pages for other titles
+    assert all(r.price == Decimal("168.00") for r in results if r.title.startswith("Kalem"))
+
+
+def test_page_read_by_one_query_is_reused_by_the_next():
+    pages = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "search_v2" in request.url.path:
+            items = [_sekiro_item(n) for n in range(1, 31)]
+            return httpx.Response(200, json={"res": items, "total_item_count": len(items)})
+        pages.append(request.url.path)
+        return httpx.Response(200, text=_offer_page("168.00"))
+
+    first = make_scraper(handler, bkm_search_page_size=100)
+    first.search("SEKIRO-Yan Hikâye: Ölümsüz Hanbei")
+    assert len(pages) == 30
+    second = make_scraper(handler, bkm_search_page_size=100)
+    results = second.search("Ölümsüz Hanbei")
+    assert len(pages) == 30  # nothing read again
+    assert second.stats["pages_cached"] == 30
+    assert all(r.price == Decimal("168.00") for r in results)
+
+
+def test_subtitled_query_names_the_short_store_title():
+    """"Kamisama Kiss 5" names "Kamisama Kiss -Tanrılık Görevine Başladım"."""
+    s = make_scraper(lambda request: httpx.Response(404))
+    assert s._names_query("kamisama kiss tanrilik gorevine basladim", "Kamisama Kiss 5")
+    assert not s._names_query("berserk deluxe", "Kalem Kutusu 3")
 
 
 def test_results_beyond_the_page_budget_carry_no_price():

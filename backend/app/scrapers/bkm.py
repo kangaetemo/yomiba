@@ -44,6 +44,8 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
 from urllib.parse import quote_plus
 
 from ..normalization import normalize_isbn, normalize_text, parse_volume_range, parse_volume_title
@@ -66,6 +68,31 @@ NON_MANGA_KEYWORDS: tuple[str, ...] = (
     "pelus",
     "kutulu fig",
 )
+
+
+#: Product pages read recently, shared by every import in this process:
+#: url -> (monotonic read time, JSON-LD Product node). One price refresh
+#: searches every catalog title, and BKM's fuzzy search returns the same
+#: products for related titles ("Berserk" and its other editions), so
+#: without this a page was read once per query that listed it.
+_PAGE_CACHE: dict[str, tuple[float, dict]] = {}
+_PAGE_CACHE_LOCK = threading.Lock()
+_PAGE_CACHE_MAX = 20000
+
+
+def _cached_node(url: str, ttl: float) -> dict | None:
+    with _PAGE_CACHE_LOCK:
+        hit = _PAGE_CACHE.get(url)
+    if hit is None or time.monotonic() - hit[0] > ttl:
+        return None
+    return hit[1]
+
+
+def _cache_node(url: str, node: dict) -> None:
+    with _PAGE_CACHE_LOCK:
+        if len(_PAGE_CACHE) >= _PAGE_CACHE_MAX:
+            _PAGE_CACHE.clear()
+        _PAGE_CACHE[url] = (time.monotonic(), node)
 
 
 class BkmScraper(BaseScraper):
@@ -374,39 +401,64 @@ class BkmScraper(BaseScraper):
         )
 
     # -- detail-page enrichment (publisher / author / language) --------------------
-    def _enrich_with_details(self, results: list[SearchResult], query: str = "") -> list[SearchResult]:
-        """Read each result's product page: price and stock from its
-        ``offers`` (the search index is stale), plus publisher / author /
-        language.
+    def _names_query(self, core: str, title: str) -> bool:
+        """The result title names the queried series: "Berserk 20" for
+        "Berserk", or "Zom 100 Cilt 10" for "Zom 100: Ölülerin
+        Yapılacaklar Listesi"."""
+        if not core:
+            return True
+        title_norm = normalize_text(title)
+        if core in title_norm:
+            return True
+        base = normalize_text(parse_volume_title(title).base_title or "")
+        return len(base) >= 3 and base in core
 
-        Up to ``bkm_max_detail_requests`` pages, results naming the query
-        first. A result whose page was not read or gave no offer loses its
-        search price (``price=None``: the listing keeps its last page price)
-        and is counted in ``stats["price_unverified"]``. Keeping the search
-        price there flipped Berserk 18-20 back to 210 TL on 2026-11-06: a
-        second query whose words are not in "Berserk 20" read only the
-        first 15 pages.
+    def _enrich_with_details(self, results: list[SearchResult], query: str = "") -> list[SearchResult]:
+        """Price and stock from each result's product page (the search index
+        is stale), plus publisher / author / language.
+
+        Pages read in the last ``bkm_page_cache_minutes`` are not read again.
+        Otherwise results naming the query are read up to
+        ``bkm_max_detail_requests``, other hits (related titles,
+        merchandise) up to ``max_detail_requests``. A result without a page
+        price loses its search price (``price=None``: the listing keeps its
+        last page price), counted in ``stats["price_unverified"]``. Keeping
+        it flipped Berserk 18-20 back to 210 TL on 2026-11-06 (a related
+        title's query read only 15 pages); reading every page of every query
+        made the price refresh three times slower.
         """
         core = normalize_text(parse_volume_title(query).base_title or query) if query else ""
-        named = [i for i, r in enumerate(results) if not core or core in normalize_text(r.title)]
-        named_set = set(named)
-        order = named + [i for i in range(len(results)) if i not in named_set]
+        ttl = max(0.0, self.settings.bkm_page_cache_minutes) * 60
+        budgets = {True: max(0, self.settings.bkm_max_detail_requests),
+                   False: max(0, self.settings.max_detail_requests)}
+        named = {i: self._names_query(core, r.title) for i, r in enumerate(results)}
+        order = sorted(range(len(results)), key=lambda i: not named[i])
         verified: set[int] = set()
-        for index in order[:max(0, self.settings.bkm_max_detail_requests)]:
+        cached = 0
+        for index in order:
             result = results[index]
-            try:
-                enriched, from_page = self._enrich_one(result)
-            except ScraperError:
-                logger.warning(
-                    "bkm: detail enrichment failed for %s (no price from search)",
-                    result.product_url,
-                )
-                continue
-            except Exception:
-                logger.exception(
-                    "bkm: unexpected enrichment error for %s", result.product_url
-                )
-                continue
+            node = _cached_node(result.product_url, ttl) if ttl else None
+            if node is not None:
+                cached += 1
+                self._page_checked.add(result.product_url)
+                enriched, from_page = self._apply_node(result, node)
+            else:
+                if budgets[named[index]] <= 0:
+                    continue
+                budgets[named[index]] -= 1
+                try:
+                    enriched, from_page = self._enrich_one(result)
+                except ScraperError:
+                    logger.warning(
+                        "bkm: detail enrichment failed for %s (no price from search)",
+                        result.product_url,
+                    )
+                    continue
+                except Exception:
+                    logger.exception(
+                        "bkm: unexpected enrichment error for %s", result.product_url
+                    )
+                    continue
             results[index] = enriched
             if from_page:
                 verified.add(index)
@@ -414,6 +466,7 @@ class BkmScraper(BaseScraper):
             if index not in verified and result.price is not None:
                 results[index] = result.model_copy(update={"price": None})
         self.stats["price_unverified"] = len(results) - len(verified)
+        self.stats["pages_cached"] = cached
         return results
 
     #: Out-of-stock results whose page is checked for a removed product.
@@ -460,7 +513,11 @@ class BkmScraper(BaseScraper):
         node = self.product_json_ld_node(self.extract_json_ld(response.text))
         if node is None:
             return result, False
+        _cache_node(result.product_url, node)
+        return self._apply_node(result, node)
 
+    @staticmethod
+    def _apply_node(result: SearchResult, node: dict) -> tuple[SearchResult, bool]:
         updates: dict = {}
         offers = node.get("offers")
         if isinstance(offers, list):
