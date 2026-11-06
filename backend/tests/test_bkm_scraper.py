@@ -357,3 +357,68 @@ def test_retries_with_cilt_when_the_plain_query_finds_nothing_of_the_series():
     queries.clear()
     s.search("Mavi Kutu cilt")
     assert set(queries) == {"Mavi Kutu cilt"}
+
+
+# -- product page price wins over the stale search index ----------------------------
+
+def _offer_page(price: str, availability: str = "InStock") -> str:
+    node = {"@context": "https://schema.org", "@type": "Product", "name": "x",
+            "offers": {"@type": "Offer", "price": price, "priceCurrency": "TRY",
+                       "availability": f"https://schema.org/{availability}"}}
+    return f'<html><script type="application/ld+json">{json.dumps(node)}</script></html>'
+
+
+def _sekiro_item(n: int) -> dict:
+    return {"id": str(n), "title": f"SEKIRO-Yan Hikâye: Ölümsüz Hanbei {n}", "category": "Kitap",
+            "link": f"https://www.bkmkitap.com/sekiro-{n}", "price": "210,00", "price_sell": "210,00",
+            "stock_level": "1", "gtin": None, "brand": "Athica", "writer": None}
+
+
+def test_product_page_price_and_stock_win_over_search():
+    """SEKIRO Yan Hikaye Cilt 1, 2026-11-06: search 210 TL, the shop and
+    its product page 168 TL. The listing flipped 210 -> 168 -> 210."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "search_v2" in request.url.path:
+            return httpx.Response(200, json={"res": [_sekiro_item(1), _sekiro_item(2)],
+                                             "total_item_count": 2})
+        if request.url.path == "/sekiro-1":
+            return httpx.Response(200, text=_offer_page("168.00"))
+        return httpx.Response(200, text=_offer_page("245.00", "OutOfStock"))
+
+    s = make_scraper(handler)
+    results = {r.volume_number: r for r in s.search("SEKIRO-Yan Hikâye: Ölümsüz Hanbei")}
+    assert (results[1].price, results[1].in_stock) == (Decimal("168.00"), True)
+    assert (results[2].price, results[2].in_stock) == (Decimal("245.00"), False)
+    assert s.stats["price_unverified"] == 0
+
+
+def test_page_without_offers_keeps_search_price():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "search_v2" in request.url.path:
+            return httpx.Response(200, json={"res": [_sekiro_item(1)], "total_item_count": 1})
+        return httpx.Response(200, text=PRODUCT_PAGE)
+
+    s = make_scraper(handler)
+    [result] = s.search("SEKIRO-Yan Hikâye: Ölümsüz Hanbei")
+    assert result.price == Decimal("210")
+    assert s.stats["price_unverified"] == 1
+
+
+def test_every_volume_of_a_long_series_is_read_but_unrelated_hits_are_capped():
+    """The old 15-page cap left volume 16+ on the stale search price."""
+    pages = []
+    other = [dict(_sekiro_item(100 + n), title=f"Kalem Kutusu {n}", link=f"https://www.bkmkitap.com/kutu-{n}")
+             for n in range(5)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "search_v2" in request.url.path:
+            items = [_sekiro_item(n) for n in range(1, 31)] + other
+            return httpx.Response(200, json={"res": items, "total_item_count": len(items)})
+        pages.append(request.url.path)
+        return httpx.Response(200, text=_offer_page("168.00"))
+
+    s = make_scraper(handler, bkm_search_page_size=100, max_detail_requests=2)
+    results = s.search("SEKIRO-Yan Hikâye: Ölümsüz Hanbei")
+    sekiro = [r for r in results if r.title.startswith("SEKIRO")]
+    assert len(sekiro) == 30 and all(r.price == Decimal("168.00") for r in sekiro)
+    assert sum(p.startswith("/kutu-") for p in pages) == 2

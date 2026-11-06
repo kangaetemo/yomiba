@@ -19,8 +19,11 @@ Data sources (all public, no authentication):
    BKM's own suggestion endpoint; used only when the WAW endpoint is
    unavailable (network error / HTTP error on the first page).
 
-3. Detail page (enrichment, best effort): the product page embeds schema.org
-   JSON-LD with ``publisher, author, inLanguage, isbn, offers``.
+3. Detail page: the product page embeds schema.org JSON-LD with
+   ``publisher, author, inLanguage, isbn, offers``. Its ``offers`` price and
+   availability win over the search: the WAW index lags behind the shop
+   (SEKIRO Yan Hikaye Cilt 1 on 2026-11-06: search 210 TL, page and shop
+   168 TL; most series showed an older, lower search price than the shop).
 
 Behaviour:
 
@@ -145,7 +148,7 @@ class BkmScraper(BaseScraper):
 
         self.gone_urls = set()
         self._page_checked: set[str] = set()
-        results = self._enrich_with_details(results)
+        results = self._enrich_with_details(results, query)
         results = self._drop_gone(results)
         results = filter_manga_results(results, stats=self.stats)
         self.stats["accepted"] = len(results)
@@ -371,16 +374,28 @@ class BkmScraper(BaseScraper):
         )
 
     # -- detail-page enrichment (publisher / author / language) --------------------
-    def _enrich_with_details(self, results: list[SearchResult]) -> list[SearchResult]:
-        """Best-effort enrichment with detail-page JSON-LD.
+    def _enrich_with_details(self, results: list[SearchResult], query: str = "") -> list[SearchResult]:
+        """Read each result's product page: price and stock from its
+        ``offers`` (the search index is stale), plus publisher / author /
+        language.
 
-        One failing detail request never loses the search result; it is kept
-        with whatever metadata the search endpoint provided.
+        Results naming the query are read up to ``bkm_max_detail_requests``;
+        the others (other titles, merchandise of a broad search: "Mavi Kutu"
+        returns 50 pencil boxes) only up to ``max_detail_requests``. A result
+        whose page was not read keeps the search data (counted in
+        ``stats["price_unverified"]``).
         """
-        limit = self.settings.max_detail_requests
-        for index, result in enumerate(results[:limit]):
+        core = normalize_text(parse_volume_title(query).base_title or query) if query else ""
+        named = [i for i, r in enumerate(results) if not core or core in normalize_text(r.title)]
+        named_set = set(named)
+        others = [i for i in range(len(results)) if i not in named_set]
+        order = (named[:max(0, self.settings.bkm_max_detail_requests)]
+                 + others[:max(0, self.settings.max_detail_requests)])
+        verified: set[int] = set()
+        for index in order:
+            result = results[index]
             try:
-                enriched = self._enrich_one(result)
+                enriched, from_page = self._enrich_one(result)
             except ScraperError:
                 logger.warning(
                     "bkm: detail enrichment failed for %s (keeping search data)",
@@ -393,6 +408,9 @@ class BkmScraper(BaseScraper):
                 )
                 continue
             results[index] = enriched
+            if from_page:
+                verified.add(index)
+        self.stats["price_unverified"] = len(results) - len(verified)
         return results
 
     #: Out-of-stock results whose page is checked for a removed product.
@@ -422,23 +440,42 @@ class BkmScraper(BaseScraper):
             self.stats["rejected"]["gone"] = len(self.gone_urls)
         return [r for r in results if r.product_url not in self.gone_urls]
 
-    def _enrich_one(self, result: SearchResult) -> SearchResult:
+    def _enrich_one(self, result: SearchResult) -> tuple[SearchResult, bool]:
+        """(result updated from its product page, whether the page gave the
+        price and stock)."""
         response = self.get(result.product_url)
         self._page_checked.add(result.product_url)
         if response.status_code in (404, 410) and not result.in_stock:
             # Removed product still in BKM's search index (an in-stock result
             # with a missing page is contradictory: not proof, keep it).
             self.gone_urls.add(result.product_url)
-            return result
+            return result, False
         if response.status_code >= 400:
             raise ScraperError(
                 f"bkm: detail page HTTP {response.status_code} for {result.product_url}"
             )
         node = self.product_json_ld_node(self.extract_json_ld(response.text))
         if node is None:
-            return result
+            return result, False
 
         updates: dict = {}
+        offers = node.get("offers")
+        if isinstance(offers, list):
+            offers = offers[0] if offers else None
+        from_page = False
+        if isinstance(offers, dict):
+            price = parse_tr_price(offers.get("price"))
+            availability = str(offers.get("availability") or "")
+            if any(k in availability for k in ("OutOfStock", "Discontinued", "SoldOut")):
+                in_stock: bool | None = False
+            elif any(k in availability for k in ("InStock", "LimitedAvailability", "PreOrder")):
+                in_stock = True
+            else:
+                in_stock = None
+            if price is not None and in_stock is not None:
+                updates["price"] = price
+                updates["in_stock"] = in_stock
+                from_page = True
         publisher = node.get("publisher")
         if isinstance(publisher, dict) and publisher.get("name"):
             updates["publisher"] = publisher.get("name")
@@ -452,5 +489,5 @@ class BkmScraper(BaseScraper):
             if isbn:
                 updates["isbn"] = isbn
         if not updates:
-            return result
-        return result.model_copy(update=updates)
+            return result, from_page
+        return result.model_copy(update=updates), from_page
