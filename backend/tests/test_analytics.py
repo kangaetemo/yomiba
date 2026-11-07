@@ -140,6 +140,44 @@ def test_report(client, visitor, db_session, catalog):
     assert len(client.get("/admin/analytics?days=1").json()["series"]) == 24
 
 
+def _event_at(ts, session_id, kind="pageview", **extra):
+    local = analytics.local_now(ts)
+    return AnalyticsEvent(ts=ts, day=local.date().isoformat(), hour=local.hour, kind=kind, path="/",
+                          visitor=session_id[:16], session=session_id, is_returning=False, logged_in=False,
+                          device="desktop", browser="Chrome", os="Windows", **extra)
+
+
+def test_report_last_24_hours(client, db_session):
+    now = datetime.now(timezone.utc)
+    db_session.add_all([
+        _event_at(now - timedelta(minutes=30), "sess-now-0001"),
+        _event_at(now - timedelta(hours=23, minutes=50), "sess-early-001"),
+        _event_at(now - timedelta(hours=25), "sess-prev-0001"),          # the 24 hours before
+        _event_at(now - timedelta(hours=30), "sess-prev-0002"),
+        _event_at(now - timedelta(hours=50), "sess-old-00001"),          # in neither window
+    ])
+    db_session.commit()
+
+    r = client.get("/admin/analytics?hours=24&days=7").json()
+    assert r["hours"] == 24 and r["days"] is None and r["bucket"] == "hour"
+    assert r["totals"]["pageviews"] == 2 and r["previous"]["pageviews"] == 2
+    # One bar per clock hour the window touches: 24, or 25 when it starts mid-hour.
+    assert len(r["series"]) in (24, 25) and sum(p["pageviews"] for p in r["series"]) == 2
+    assert all("T" in p["t"] for p in r["series"])
+    assert sum(map(sum, r["heatmap"])) == 2 and r["funnel"]["sessions"] == 2
+
+    # Unknown hour values fall back to the day periods.
+    assert client.get("/admin/analytics?hours=5&days=7").json()["days"] == 7
+
+
+def test_window_hours_cover_partial_hours():
+    lo = datetime(2026, 11, 6, 10, 20, tzinfo=timezone.utc)                  # 13:20 local
+    keys = analytics.Window.between(lo, lo + timedelta(hours=24)).hours()
+    assert keys[0] == ("2026-11-06", 13) and keys[-1] == ("2026-11-07", 13) and len(keys) == 25
+    exact = datetime(2026, 11, 6, 10, 0, tzinfo=timezone.utc)
+    assert len(analytics.Window.between(exact, exact + timedelta(hours=24)).hours()) == 24
+
+
 def test_report_requires_admin(visitor):
     assert visitor.get("/admin/analytics").status_code == 401
 

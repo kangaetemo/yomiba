@@ -41,5 +41,8 @@ async def beacon(request: Request, session: Session = Depends(get_db),
 
 
 @router.get("/admin/analytics", dependencies=[Depends(require_admin)])
-def report(days: int = Query(default=30), session: Session = Depends(get_db)) -> dict:
-    return analytics.build_report(session, days)
+def report(days: int = Query(default=30), hours: int | None = Query(default=None),
+           session: Session = Depends(get_db)) -> dict:
+    """``days`` is whole local days up to today; ``hours=24`` (wins over
+    ``days``) is the rolling last 24 hours up to now."""
+    return analytics.build_report(session, days, hours=hours)
