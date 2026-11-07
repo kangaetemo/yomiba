@@ -26,8 +26,17 @@ const DEVICE_NAMES: Record<string, string> = { mobile: "Telefon", tablet: "Table
 const fmtDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("tr-TR", { day: "numeric", month: "short", timeZone: "UTC" });
 const fmtDayLong = (d: string) =>
   new Date(`${d}T12:00:00Z`).toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
-const pointLabel = (p: Point, long = false) =>
-  typeof p.t === "number" ? `${String(p.t).padStart(2, "0")}:00` : long ? fmtDayLong(p.t) : fmtDay(p.t);
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" });
+/** t: an hour of today (13), a day ("2026-11-07") or a clock hour of the last 24 hours ("2026-11-07T13:00"). */
+function pointLabel(p: Point, long = false) {
+  if (typeof p.t === "number") return `${String(p.t).padStart(2, "0")}:00`;
+  if (p.t.includes("T")) {
+    const [day, hour] = p.t.split("T");
+    return long ? `${fmtDayLong(day)} ${hour}` : hour;
+  }
+  return long ? fmtDayLong(p.t) : fmtDay(p.t);
+}
 
 function Card({ title, note, children, className = "" }: { title: string; note?: string; children: React.ReactNode; className?: string }) {
   return (
@@ -125,7 +134,7 @@ function niceMax(v: number) {
   return [1, 2, 2.5, 5, 10].map((m) => m * p).find((m) => m >= v) ?? v;
 }
 
-function TrendChart({ points }: { points: Point[] }) {
+function TrendChart({ points, note }: { points: Point[]; note: string }) {
   const [metric, setMetric] = useState<MetricKey>("visitors");
   const [hover, setHover] = useState<number | null>(null);
   const [ref, W] = useWidth(720);
@@ -142,7 +151,7 @@ function TrendChart({ points }: { points: Point[] }) {
   const at = hover === null ? null : points[hover];
 
   return (
-    <Card title="Zaman içinde" note={`Toplam ${num(total)} · ${points.length === 24 ? "saat saat (bugün)" : "gün gün"}`}>
+    <Card title="Zaman içinde" note={`Toplam ${num(total)} · ${note}`}>
       <div role="group" aria-label="Ölçü" className="inline-flex flex-wrap gap-0.5 rounded-lg bg-surface-2 p-0.5">
         {METRICS.map((m) => (
           <button key={m.key} type="button" aria-pressed={metric === m.key} onClick={() => setMetric(m.key)}
@@ -337,6 +346,9 @@ export function AnalyticsDashboard({ report: r }: { report: AnalyticsReport }) {
   const router = useRouter();
   const [refreshing, startRefresh] = useTransition();
   const days = r.days;
+  const range = r.hours ? `${fmtTime(r.since)} – ${fmtTime(r.until)}`
+    : days === 1 ? fmtDayLong(r.end) : `${fmtDay(r.start)} – ${fmtDay(r.end)}`;
+  const trendNote = r.hours ? `saat saat (son ${r.hours} saat)` : days === 1 ? "saat saat (bugün)" : "gün gün";
 
   return (
     <div className="space-y-6">
@@ -354,7 +366,7 @@ export function AnalyticsDashboard({ report: r }: { report: AnalyticsReport }) {
           )}
         </p>
         <p className="flex items-center gap-3 text-muted">
-          <span>{days === 1 ? fmtDayLong(r.end) : `${fmtDay(r.start)} – ${fmtDay(r.end)}`} · güncelleme {formatDateTime(r.generated_at)}</span>
+          <span>{range} · güncelleme {formatDateTime(r.generated_at)}</span>
           <button type="button" onClick={() => startRefresh(() => router.refresh())} disabled={refreshing}
             className="min-h-9 rounded-lg border border-line px-3 font-semibold text-ink transition-colors hover:border-line-strong disabled:opacity-60">
             {refreshing ? "Yenileniyor…" : "Yenile"}
@@ -363,7 +375,7 @@ export function AnalyticsDashboard({ report: r }: { report: AnalyticsReport }) {
       </div>
 
       <KpiGrid totals={r.totals} previous={r.previous} />
-      <TrendChart points={r.series} />
+      <TrendChart points={r.series} note={trendNote} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Mağazalara giden tıklamalar" note={`${num(r.totals.outbound)} tıklama, ${num(r.totals.outbound_sessions)} oturumdan`}>

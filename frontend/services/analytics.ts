@@ -10,7 +10,9 @@ export type Totals = {
 export type Point = { t: string | number; pageviews: number; visitors: number; outbound: number; searches: number };
 export type Named = { name: string | null; sessions: number };
 export type AnalyticsReport = {
-  generated_at: string; days: number; start: string; end: string; bucket: "hour" | "day";
+  /** days: whole local days up to today; hours: rolling window up to now (one is null). */
+  generated_at: string; days: number | null; hours: number | null; start: string; end: string;
+  since: string; until: string; bucket: "hour" | "day";
   totals: Totals; previous: Totals; series: Point[];
   live: { sessions: number; pages: { path: string; sessions: number }[] };
   pages: { path: string; pageviews: number; visitors: number; avg_seconds: number }[];
@@ -40,12 +42,16 @@ export type AnalyticsReport = {
   retention_days: number;
 };
 
+/** key is the page's query string (/admin/analiz?gun=7, ?saat=24) and the API's. */
 export const ANALYTICS_PERIODS = [
-  { days: 1, label: "Bugün" },
-  { days: 7, label: "7 gün" },
-  { days: 30, label: "30 gün" },
-  { days: 90, label: "90 gün" },
-  { days: 365, label: "1 yıl" },
+  { key: "gun=1", api: "days=1", label: "Bugün" },
+  { key: "saat=24", api: "hours=24", label: "Son 24 saat" },
+  { key: "gun=7", api: "days=7", label: "7 gün" },
+  { key: "gun=30", api: "days=30", label: "30 gün" },
+  { key: "gun=90", api: "days=90", label: "90 gün" },
+  { key: "gun=365", api: "days=365", label: "1 yıl" },
 ] as const;
+export type AnalyticsPeriod = (typeof ANALYTICS_PERIODS)[number];
+export const DEFAULT_ANALYTICS_PERIOD = ANALYTICS_PERIODS.find((p) => p.key === "gun=30")!;
 
-export const getAnalytics = (days: number) => getJson<AnalyticsReport>(`/admin/analytics?days=${days}`);
+export const getAnalytics = (period: AnalyticsPeriod) => getJson<AnalyticsReport>(`/admin/analytics?${period.api}`);

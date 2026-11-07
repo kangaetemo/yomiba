@@ -8,7 +8,8 @@ errors.
 
 The report (``build_report``) answers everything the admin analytics page
 shows for one period, with the previous period of the same length for
-comparison. Days and hours are Turkish local time (UTC+3, no DST).
+comparison. A period is whole local days (today, last 7 days, ...) or the
+rolling last 24 hours. Days and hours are Turkish local time (UTC+3, no DST).
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import secrets
 import threading
 import time
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
@@ -338,6 +340,8 @@ def _prune(session: Session, today: date) -> None:
 
 E = AnalyticsEvent
 PERIODS = (1, 7, 30, 90, 365)
+#: Rolling periods in hours (``?hours=24``): up to the minute, not whole days.
+ROLLING_HOURS = (24,)
 
 
 def _days(start: date, end: date) -> list[str]:
@@ -354,11 +358,48 @@ def _utc_bounds(start: date, end: date) -> tuple[datetime, datetime]:
     return lo, hi
 
 
+@dataclass(frozen=True)
+class Window:
+    """A report period: UTC bounds [lo, hi) and the local days it touches.
+    A rolling window also filters on the event time; a whole-day window
+    only on the indexed local day."""
+
+    lo: datetime
+    hi: datetime
+    start: date
+    end: date
+    rolling: bool = False
+
+    @classmethod
+    def days(cls, start: date, end: date) -> "Window":
+        return cls(*_utc_bounds(start, end), start, end)
+
+    @classmethod
+    def between(cls, lo: datetime, hi: datetime) -> "Window":
+        return cls(lo, hi, local_now(lo).date(), local_now(hi).date(), rolling=True)
+
+    @property
+    def cond(self):
+        if self.rolling:
+            return _in(self.start, self.end) & (E.ts >= self.lo) & (E.ts < self.hi)
+        return _in(self.start, self.end)
+
+    def hours(self) -> list[tuple[str, int]]:
+        """Each local clock hour the window touches, as (day, hour)."""
+        t = local_now(self.lo).replace(minute=0, second=0, microsecond=0)
+        last = local_now(self.hi - timedelta(microseconds=1))
+        out = []
+        while t <= last:
+            out.append((t.date().isoformat(), t.hour))
+            t += timedelta(hours=1)
+        return out
+
+
 def _count_if(condition, value=1):
     return func.sum(case((condition, value), else_=0))
 
 
-def _session_rows(session: Session, start: date, end: date) -> list:
+def _session_rows(session: Session, w: Window) -> list:
     """Per session that viewed a page: (session, pageviews, outbound clicks,
     searches, engaged seconds, viewed a volume page)."""
     rows = session.execute(
@@ -369,19 +410,19 @@ def _session_rows(session: Session, start: date, end: date) -> list:
             _count_if(E.kind == "search"),
             _count_if(E.kind == "engage", func.coalesce(E.value, 0)),
             _count_if((E.kind == "pageview") & E.volume_id.is_not(None)),
-        ).where(_in(start, end)).group_by(E.session)
+        ).where(w.cond).group_by(E.session)
     ).all()
     return [r for r in rows if (r[1] or 0) > 0]
 
 
-def _totals(session: Session, start: date, end: date) -> dict:
+def _totals(session: Session, w: Window) -> dict:
     def scalar(expr, *where):
-        return session.scalar(select(expr).where(_in(start, end), *where)) or 0
+        return session.scalar(select(expr).where(w.cond, *where)) or 0
 
     pageviews = scalar(func.count(E.id), E.kind == "pageview")
     visitors = scalar(func.count(distinct(E.visitor)), E.kind == "pageview")
     returning = scalar(func.count(distinct(E.visitor)), E.kind == "pageview", E.is_returning.is_(True))
-    sessions = _session_rows(session, start, end)
+    sessions = _session_rows(session, w)
     n = len(sessions)
     bounces = sum(1 for r in sessions if r[1] == 1 and not r[2])
     engaged = sum(r[4] or 0 for r in sessions)
@@ -405,8 +446,8 @@ def _totals(session: Session, start: date, end: date) -> dict:
     )
 
 
-def _account_totals(session: Session, start: date, end: date) -> dict:
-    lo, hi = _utc_bounds(start, end)
+def _account_totals(session: Session, w: Window) -> dict:
+    lo, hi = w.lo, w.hi
 
     def created(model):
         return session.scalar(select(func.count()).select_from(model).where(
@@ -420,10 +461,10 @@ def _account_totals(session: Session, start: date, end: date) -> dict:
     )
 
 
-def _new_members(session: Session, start: date, end: date, limit: int = 100) -> list[dict]:
+def _new_members(session: Session, w: Window, limit: int = 100) -> list[dict]:
     """Accounts opened in the period, newest first, with how they signed up,
     when they last signed in and what they have saved so far."""
-    lo, hi = _utc_bounds(start, end)
+    lo, hi = w.lo, w.hi
     users = list(session.scalars(select(User).where(User.created_at >= lo, User.created_at < hi)
                                  .order_by(User.created_at.desc()).limit(limit)))
     ids = [u.id for u in users]
@@ -478,9 +519,9 @@ def _series_labels(session: Session, series_ids) -> dict[int, dict]:
     return {sid: dict(title=titles.get(sid), path=f"/series/{slugs[sid]}") for sid in ids if sid in titles}
 
 
-def _breakdown(session: Session, start: date, end: date, column, limit: int = 12) -> list[dict]:
+def _breakdown(session: Session, w: Window, column, limit: int = 12) -> list[dict]:
     """Sessions per value of ``column`` on each session's first page view."""
-    first = (select(func.min(E.id)).where(_in(start, end), E.kind == "pageview")
+    first = (select(func.min(E.id)).where(w.cond, E.kind == "pageview")
              .group_by(E.session)).scalar_subquery()
     rows = session.execute(
         select(column, func.count()).where(E.id.in_(first)).group_by(column).order_by(func.count().desc())
@@ -488,29 +529,51 @@ def _breakdown(session: Session, start: date, end: date, column, limit: int = 12
     return [dict(name=name, sessions=count) for name, count in rows[:limit]]
 
 
-def build_report(session: Session, days: int = 30, now: datetime | None = None) -> dict:
-    if days not in PERIODS:
-        days = 30
+def build_report(session: Session, days: int = 30, now: datetime | None = None,
+                 hours: int | None = None) -> dict:
     stamp = now or utcnow()
     today = local_now(stamp).date()
-    start = today - timedelta(days=days - 1)
-    prev_end = start - timedelta(days=1)
-    prev_start = prev_end - timedelta(days=days - 1)
-    period = _in(start, today)
+    if hours in ROLLING_HOURS:
+        days = None
+        span = timedelta(hours=hours)
+        w = Window.between(stamp - span, stamp)
+        prev = Window.between(stamp - 2 * span, stamp - span)
+    else:
+        hours = None
+        if days not in PERIODS:
+            days = 30
+        start = today - timedelta(days=days - 1)
+        prev_end = start - timedelta(days=1)
+        w = Window.days(start, today)
+        prev = Window.days(prev_end - timedelta(days=days - 1), prev_end)
+    period = w.cond
 
-    totals = _totals(session, start, today) | _account_totals(session, start, today)
-    previous = _totals(session, prev_start, prev_end) | _account_totals(session, prev_start, prev_end)
+    totals = _totals(session, w) | _account_totals(session, w)
+    previous = _totals(session, prev) | _account_totals(session, prev)
 
-    # Time series: hours for a single day, days otherwise.
-    bucket = E.hour if days == 1 else E.day
+    # Time series: clock hours for today or the last 24 hours, days otherwise.
+    # A bucket key is the hour (today), the day, or (day, hour) when rolling.
+    if hours:
+        bucket_cols, keys = (E.day, E.hour), w.hours()
+    elif days == 1:
+        bucket_cols, keys = (E.hour,), list(range(24))
+    else:
+        bucket_cols, keys = (E.day,), _days(w.start, w.end)
+
+    def key_of(row):
+        return tuple(row[:len(bucket_cols)]) if len(bucket_cols) > 1 else row[0]
+
+    def label(key):
+        return f"{key[0]}T{key[1]:02d}:00" if isinstance(key, tuple) else key
+
     rows = session.execute(
-        select(bucket, E.kind, func.count(), func.count(distinct(E.visitor)))
-        .where(period, E.kind.in_(("pageview", "outbound", "search"))).group_by(bucket, E.kind)
+        select(*bucket_cols, E.kind, func.count(), func.count(distinct(E.visitor)))
+        .where(period, E.kind.in_(("pageview", "outbound", "search"))).group_by(*bucket_cols, E.kind)
     ).all()
-    keys = list(range(24)) if days == 1 else _days(start, today)
-    series = {k: dict(t=k, pageviews=0, visitors=0, outbound=0, searches=0) for k in keys}
-    for key, kind, count, visitors in rows:
-        point = series.get(key)
+    series = {k: dict(t=label(k), pageviews=0, visitors=0, outbound=0, searches=0) for k in keys}
+    for row in rows:
+        kind, count, visitors = row[len(bucket_cols):]
+        point = series.get(key_of(row))
         if point is None:
             continue
         if kind == "pageview":
@@ -585,11 +648,11 @@ def build_report(session: Session, days: int = 30, now: datetime | None = None) 
         .order_by(func.count().desc())
     ).all()
     store_day = defaultdict(Counter)
-    for store_id, key, count in session.execute(
-        select(E.store_id, bucket, func.count()).where(period, E.kind == "outbound", E.store_id.is_not(None))
-        .group_by(E.store_id, bucket)
+    for row in session.execute(
+        select(E.store_id, *bucket_cols, func.count()).where(period, E.kind == "outbound", E.store_id.is_not(None))
+        .group_by(E.store_id, *bucket_cols)
     ).all():
-        store_day[store_id][key] = count
+        store_day[row[0]][key_of(row[1:])] = row[-1]
     stores = [dict(
         store_id=s, name=store_names.get(s, f"#{s}"), clicks=c, sessions=sess, volumes=vols,
         trend=[store_day[s].get(k, 0) for k in keys],
@@ -620,7 +683,7 @@ def build_report(session: Session, days: int = 30, now: datetime | None = None) 
         heat[date.fromisoformat(day).weekday()][hour] += count
 
     # Funnel over sessions.
-    session_rows = _session_rows(session, start, today)
+    session_rows = _session_rows(session, w)
     funnel = dict(
         sessions=len(session_rows),
         viewed_volume=sum(1 for r in session_rows if r[5]),
@@ -631,9 +694,12 @@ def build_report(session: Session, days: int = 30, now: datetime | None = None) 
     return dict(
         generated_at=stamp,
         days=days,
-        start=start.isoformat(),
-        end=today.isoformat(),
-        bucket="hour" if days == 1 else "day",
+        hours=hours,
+        start=w.start.isoformat(),
+        end=w.end.isoformat(),
+        since=w.lo,
+        until=min(w.hi, stamp),
+        bucket="hour" if hours or days == 1 else "day",
         totals=totals,
         previous=previous,
         series=list(series.values()),
@@ -649,17 +715,17 @@ def build_report(session: Session, days: int = 30, now: datetime | None = None) 
                   for q, c, a, t in search_rows],
         zero_searches=[dict(query=q, count=c, last=t) for q, c, t in zero_rows],
         search_click_rate=round(len(search_sessions & click_sessions) / len(search_sessions), 4) if search_sessions else None,
-        referrers=_breakdown(session, start, today, E.referrer_host),
-        utm_sources=_breakdown(session, start, today, E.utm_source),
-        utm_campaigns=_breakdown(session, start, today, E.utm_campaign),
-        devices=_breakdown(session, start, today, E.device),
-        browsers=_breakdown(session, start, today, E.browser),
-        systems=_breakdown(session, start, today, E.os),
-        countries=_breakdown(session, start, today, E.country),
+        referrers=_breakdown(session, w, E.referrer_host),
+        utm_sources=_breakdown(session, w, E.utm_source),
+        utm_campaigns=_breakdown(session, w, E.utm_campaign),
+        devices=_breakdown(session, w, E.device),
+        browsers=_breakdown(session, w, E.browser),
+        systems=_breakdown(session, w, E.os),
+        countries=_breakdown(session, w, E.country),
         heatmap=heat,
         funnel=funnel,
         session_depth=[dict(pages=k, sessions=depth.get(k, 0)) for k in range(1, 11)],
         users_total=session.scalar(select(func.count(User.id))) or 0,
-        new_members=_new_members(session, start, today),
+        new_members=_new_members(session, w),
         retention_days=RETENTION_DAYS,
     )
