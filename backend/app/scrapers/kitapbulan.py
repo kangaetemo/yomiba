@@ -46,6 +46,11 @@ The scraper never writes to the database.
 
 from __future__ import annotations
 
+import json
+import math
+import os
+import tempfile
+from pathlib import Path
 import logging
 import re
 import threading
@@ -92,15 +97,17 @@ _catalog: dict[str, dict] = {}
 _catalog_loaded_at: float | None = None
 _catalog_retry_at: float = 0.0
 _catalog_lock = threading.Lock()
+_catalog_disk_loaded = False
 
 
 def reset_catalog() -> None:
     """Forget the snapshot (tests)."""
-    global _catalog, _catalog_loaded_at, _catalog_retry_at
+    global _catalog, _catalog_loaded_at, _catalog_retry_at, _catalog_disk_loaded
     with _catalog_lock:
         _catalog = {}
         _catalog_loaded_at = None
         _catalog_retry_at = 0.0
+        _catalog_disk_loaded = False
 
 
 def _catalog_price(value) -> int | None:
@@ -220,10 +227,12 @@ class KitapbulanScraper(BaseScraper):
                 # (2026-11-05) and each 429 is waited out: failing this
                 # store for the series is cheaper than stalling it.
                 raise ScraperError(
-                    "kitapbulan: product list not available yet (HTTP 429); "
+                    "kitapbulan: product list not available yet; "
                     "search page not used, listings keep their last price"
                 )
             return None
+        self.stats["snapshot_age_seconds"] = round(time.monotonic() - _catalog_loaded_at, 1)
+        self.stats["snapshot_retry_seconds"] = round(max(0.0, _catalog_retry_at - time.monotonic()), 1)
         max_results = max(1, self.settings.kitapbulan_max_search_results)
         items: list[dict] = []
         for handle, product in catalog.items():
@@ -419,6 +428,77 @@ class KitapbulanScraper(BaseScraper):
         in the snapshot or there is no snapshot."""
         return self._catalog().get(handle)
 
+    def _restore_catalog(self, max_age: float) -> None:
+        """Restore only a complete snapshot of these same collections.
+
+        Disk timestamps use wall time; convert its original age to monotonic
+        time rather than treating a restart as a new observation.
+        Caller holds _catalog_lock.
+        """
+        global _catalog, _catalog_loaded_at, _catalog_disk_loaded
+        _catalog_disk_loaded = True
+        path = self.settings.kitapbulan_catalog_cache_path
+        if not path:
+            return
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            if not isinstance(data, dict) or data.get("version") != 1:
+                return
+            if data.get("collections") != list(self.settings.kitapbulan_catalog_collections):
+                return
+            fetched_at = data.get("fetched_at")
+            if type(fetched_at) not in (int, float) or not math.isfinite(fetched_at):
+                return
+            age = time.time() - fetched_at
+            if not 0 <= age < max_age:
+                return
+            products = data.get("products")
+            if not isinstance(products, dict) or not products:
+                return
+            for handle, product in products.items():
+                if (not isinstance(product, dict) or product.get("handle") != handle
+                        or type(product.get("price")) is not int
+                        or product["price"] < 0
+                        or type(product.get("available")) is not bool
+                        or not isinstance(product.get("variants"), list)
+                        or not product["variants"]
+                        or not isinstance(product["variants"][0], dict)):
+                    return
+            _catalog = products
+            _catalog_loaded_at = time.monotonic() - age
+            logger.info("kitapbulan: restored %d products from disk, age %.0fs", len(products), age)
+        except FileNotFoundError:
+            pass  # First successful fetch will create it.
+        except (OSError, ValueError, TypeError):
+            logger.warning("kitapbulan: could not restore catalog snapshot", exc_info=True)
+
+    def _save_catalog(self, products: dict[str, dict], fetched_at: float) -> None:
+        """Atomic replacement after a complete fetch; never overwrite on 429."""
+        path = self.settings.kitapbulan_catalog_cache_path
+        if not path:
+            return
+        temporary = None
+        try:
+            target = Path(path)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent,
+                                             prefix=target.name + ".", suffix=".tmp",
+                                             delete=False) as stream:
+                temporary = stream.name
+                json.dump({"version": 1, "fetched_at": fetched_at,
+                           "collections": list(self.settings.kitapbulan_catalog_collections),
+                           "products": products}, stream, ensure_ascii=False, allow_nan=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, target)
+        except (OSError, ValueError, TypeError):
+            logger.warning("kitapbulan: could not persist catalog snapshot", exc_info=True)
+        finally:
+            if temporary is not None:
+                try:
+                    Path(temporary).unlink(missing_ok=True)
+                except OSError:
+                    pass
+
     def _catalog(self) -> dict[str, dict]:
         """The process-wide snapshot, read again once it is older than
         KITAPBULAN_CATALOG_TTL_MINUTES.
@@ -430,14 +510,19 @@ class KitapbulanScraper(BaseScraper):
         KITAPBULAN_CATALOG_MAX_STALE_MINUTES old; the next refresh is tried
         after _CATALOG_RETRY_SECONDS. 2026-11-11: four 60 s waits on a 429
         during the hourly refresh stopped every series for three minutes.
-        Without any snapshot (after a restart) the first read is waited for
-        by the other workers, still without retrying a 429."""
+        A configured disk snapshot survives restarts with its original age.
+        Without any usable snapshot the first read is waited for by the other
+        workers, still without retrying a 429."""
         global _catalog, _catalog_loaded_at, _catalog_retry_at
         ttl = self.settings.kitapbulan_catalog_ttl_minutes * 60
         collections = self.settings.kitapbulan_catalog_collections
         if ttl <= 0 or not collections:
             return {}
         max_stale = max(ttl, self.settings.kitapbulan_catalog_max_stale_minutes * 60)
+        if not _catalog_disk_loaded:
+            with _catalog_lock:
+                if not _catalog_disk_loaded:
+                    self._restore_catalog(max_stale)
 
         def usable(now: float) -> dict[str, dict]:
             if _catalog_loaded_at is not None and now - _catalog_loaded_at < max_stale:
@@ -456,20 +541,27 @@ class KitapbulanScraper(BaseScraper):
             fresh = _catalog_loaded_at is not None and now - _catalog_loaded_at < ttl
             if fresh or now < _catalog_retry_at:
                 return usable(now)
+            # Age the snapshot from the beginning of collection reads, so
+            # even a slow fetch cannot make earlier pages artificially fresh.
+            fetched_at = time.time()
+            fetched_monotonic = time.monotonic()
             try:
                 products: dict[str, dict] = {}
                 for collection in collections:
                     products.update(self._read_collection(collection))
             except ScraperError as exc:
-                _catalog_retry_at = time.monotonic() + _CATALOG_RETRY_SECONDS
+                delay = max(_CATALOG_RETRY_SECONDS, exc.retry_after_seconds)
+                _catalog_retry_at = time.monotonic() + delay
                 left = usable(time.monotonic())
                 logger.warning(
-                    "kitapbulan: catalog snapshot failed (%s); %s", exc,
+                    "kitapbulan: catalog snapshot failed (%s); %s; retry in %.0fs", exc,
                     f"keeping the previous one ({len(left)} products)" if left else "no snapshot",
+                    delay,
                 )
                 return left
             _catalog = products
-            _catalog_loaded_at = time.monotonic()
+            _catalog_loaded_at = fetched_monotonic
+            self._save_catalog(products, fetched_at)
             logger.info("kitapbulan: catalog snapshot of %d products from %s", len(products), ",".join(collections))
             return _catalog
         finally:

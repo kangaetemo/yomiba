@@ -477,3 +477,144 @@ def test_snapshot_reads_every_configured_collection(snapshot, log):
     scraper = make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0)
     assert sorted(r.volume_number for r in scraper.search("berserk")) == [6, 8]
     assert sorted(log) == ["/collections/kitap-cizgi-roman/products.json", "/collections/kitap-manga/products.json"]
+
+
+def test_snapshot_honors_retry_after_and_recovers(snapshot, log, monkeypatch):
+    from app.scrapers import kitapbulan
+    clock = [10000.0]
+    monkeypatch.setattr(kitapbulan.time, "monotonic", lambda: clock[0])
+    limited = [True]
+
+    def handler(request):
+        log.append(str(request.url))
+        if limited[0]:
+            return httpx.Response(429, headers={"Retry-After": "1800"}, text="slow down")
+        return httpx.Response(200, json={"products": [_catalog_entry(BERSERK_8, "Berserk 8")]})
+
+    scraper = make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0)
+    with pytest.raises(ScraperError):
+        scraper.search("Berserk")
+    assert len(log) == 1
+    clock[0] += 601  # Old fixed ten-minute retry would contact the store too early.
+    with pytest.raises(ScraperError):
+        scraper.search("Berserk")
+    assert len(log) == 1
+    limited[0] = False
+    clock[0] += 1200
+    results = scraper.search("Berserk")
+    assert len(results) == 1
+    assert results[0].price == Decimal("221.20")
+    assert results[0].in_stock is True
+    requests = len(log)
+    scraper.search("Berserk")
+    assert len(log) == requests
+
+
+@pytest.mark.parametrize("value,expected", [(None, 0), ("bad", 0), ("-1", 0),
+                                             ("nan", 0), ("inf", 0), ("1800", 1800)])
+def test_retry_after_seconds_validation(value, expected):
+    from app.scrapers.base import retry_after_seconds
+    assert retry_after_seconds(value) == expected
+
+
+def test_retry_after_supports_http_dates():
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+    from app.scrapers.base import retry_after_seconds
+    future = datetime.now(timezone.utc) + timedelta(hours=1)
+    assert 3590 <= retry_after_seconds(format_datetime(future, usegmt=True)) <= 3600
+
+
+def _disk_scraper(path, handler):
+    return make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0,
+                        kitapbulan_catalog_cache_path=str(path))
+
+
+def _save_test_snapshot(path):
+    def handler(request):
+        return httpx.Response(200, json={"products": [_catalog_entry(BERSERK_8, "Berserk 8")]})
+    assert len(_disk_scraper(path, handler).search("Berserk")) == 1
+
+
+def test_snapshot_survives_restart_without_network(snapshot, tmp_path):
+    from app.scrapers import kitapbulan
+    path = tmp_path / "snapshot.json"
+    _save_test_snapshot(path)
+    saved = json.loads(path.read_text())
+    kitapbulan.reset_catalog()
+
+    def forbidden(request):
+        pytest.fail("fresh persisted snapshot must not contact the store")
+
+    result = _disk_scraper(path, forbidden).search("Berserk")[0]
+    assert (result.price, result.in_stock) == (Decimal("221.20"), True)
+    assert json.loads(path.read_text())["fetched_at"] == saved["fetched_at"]
+
+
+def test_restart_429_keeps_snapshot_original_age_and_file(snapshot, tmp_path, monkeypatch):
+    import time
+    from app.scrapers import kitapbulan
+    path = tmp_path / "snapshot.json"
+    _save_test_snapshot(path)
+    data = json.loads(path.read_text())
+    data["fetched_at"] = time.time() - 2 * 3600
+    path.write_text(json.dumps(data))
+    original = path.read_bytes()
+    kitapbulan.reset_catalog()
+    calls = []
+
+    def limited(request):
+        calls.append(request.url.path)
+        return httpx.Response(429, headers={"Retry-After": "60"}, text="local_rate_limited")
+
+    scraper = _disk_scraper(path, limited)
+    assert scraper.search("Berserk")[0].price == Decimal("221.20")
+    assert len(calls) == 1
+    assert time.monotonic() - kitapbulan._catalog_loaded_at >= 2 * 3600
+    assert path.read_bytes() == original
+    # The same cached data expires at its ORIGINAL maximum age, even
+    # while the failed refresh's retry deadline has not elapsed.
+    monkeypatch.setattr(kitapbulan, "_catalog_loaded_at", time.monotonic() - 7 * 3600)
+    with pytest.raises(ScraperError, match="product list not available"):
+        scraper.search("Berserk")
+
+
+@pytest.mark.parametrize("problem", ["expired", "future", "collections", "corrupt"])
+def test_bad_disk_snapshot_is_not_served(snapshot, tmp_path, problem):
+    import time
+    from app.scrapers import kitapbulan
+    path = tmp_path / "snapshot.json"
+    _save_test_snapshot(path)
+    data = json.loads(path.read_text())
+    if problem == "expired":
+        data["fetched_at"] = time.time() - 7 * 3600
+    elif problem == "future":
+        data["fetched_at"] = time.time() + 3600
+    elif problem == "collections":
+        data["collections"] = ["other"]
+    path.write_text("{broken" if problem == "corrupt" else json.dumps(data))
+    kitapbulan.reset_catalog()
+    with pytest.raises(ScraperError):
+        _disk_scraper(path, lambda r: httpx.Response(429)).search("Berserk")
+
+
+def test_failed_second_collection_does_not_replace_disk_snapshot(snapshot, tmp_path):
+    from app.scrapers import kitapbulan
+    path = tmp_path / "snapshot.json"
+    _save_test_snapshot(path)
+    previous = path.read_bytes()
+    _expire_snapshot(61)
+
+    def partial(request):
+        if "kitap-manga/" in request.url.path:
+            return httpx.Response(200, json={"products": [_catalog_entry(BERSERK_8, "Berserk 8", price="999.00")]})
+        return httpx.Response(429)
+
+    results = _disk_scraper(path, partial).search("Berserk")
+    assert results[0].price == Decimal("221.20")
+    assert path.read_bytes() == previous
+
+
+def test_unwritable_snapshot_does_not_fail_live_prices(snapshot, tmp_path):
+    # Missing parent: persistence failure, but the complete network result is usable.
+    _save_test_snapshot(tmp_path / "missing" / "snapshot.json")

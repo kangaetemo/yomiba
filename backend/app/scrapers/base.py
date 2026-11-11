@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+import math
 import random
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from decimal import Decimal
 from typing import Any
 
@@ -71,6 +74,27 @@ class ScraperError(RuntimeError):
     one failing store never crashes the whole import.
     """
 
+    def __init__(self, message: str, *, retry_after_seconds: float = 0.0) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
+def retry_after_seconds(value: str | None) -> float:
+    """Retry-After supports both seconds and an HTTP date; reject invalid values."""
+    if value is None:
+        return 0.0
+    try:
+        delay = float(value)
+    except ValueError:
+        try:
+            when = parsedate_to_datetime(value)
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            delay = (when - datetime.now(timezone.utc)).total_seconds()
+        except (ValueError, TypeError, OverflowError):
+            return 0.0
+    return max(0.0, delay) if math.isfinite(delay) else 0.0
+
 
 class BaseScraper:
     """Common behaviour for all store scrapers.
@@ -110,6 +134,7 @@ class BaseScraper:
         self.stats: dict = {}
         #: Last request time of this instance (per-store rate limit).
         self._last_request_at: float = 0.0
+        self._throttle_lock = threading.Lock()
         if client is not None:
             self.client = client
             self._owns_client = False
@@ -152,17 +177,18 @@ class BaseScraper:
     def _throttle(self) -> None:
         """Per-store politeness: keep a minimum gap between requests, both
         within this instance and across all concurrent imports."""
-        min_interval = self.settings.scraper_min_request_interval_seconds
-        if min_interval > 0:
-            wait = self._last_request_at + min_interval - time.monotonic()
-            if wait > 0:
-                time.sleep(wait)
-        store_interval = self._store_min_interval()
-        if store_interval > 0:
-            wait = _reserve_store_slot(self._store_key(), store_interval)
-            if wait > 0:
-                time.sleep(wait)
-        self._last_request_at = time.monotonic()
+        with self._throttle_lock:
+            min_interval = self.settings.scraper_min_request_interval_seconds
+            if min_interval > 0:
+                wait = self._last_request_at + min_interval - time.monotonic()
+                if wait > 0:
+                    time.sleep(wait)
+            store_interval = self._store_min_interval()
+            if store_interval > 0:
+                wait = _reserve_store_slot(self._store_key(), store_interval)
+                if wait > 0:
+                    time.sleep(wait)
+            self._last_request_at = time.monotonic()
 
     def _store_key(self) -> str:
         return self.store_id or type(self).__name__
@@ -233,6 +259,11 @@ class BaseScraper:
         rate_limit_retries = max(max_retries, self.settings.scraper_rate_limit_max_retries)
         for attempt in range(1, max(max_retries, rate_limit_retries) + 2):
             self._throttle()
+            # Another request may have exhausted its retries while this
+            # one waited for a slot. Do not send queued detail reads into
+            # an active store cooldown.
+            if _store_cooldowns.get(self._store_key(), 0.0) > time.monotonic():
+                raise ScraperError(f"{self.store_id}: rate limited (HTTP 429), cooldown; skipped {url}")
             try:
                 response = self.client.get(url, **kwargs)
             except httpx.HTTPError as exc:
@@ -249,13 +280,14 @@ class BaseScraper:
                 continue
 
             if response.status_code in self._RETRYABLE_STATUS:
-                if self._is_bot_wall(response):
-                    return response  # fail fast; caller raises the block error
                 rate_limited = response.status_code == 429
                 if rate_limited and fail_fast_429:
                     raise ScraperError(
-                        f"{self.store_id}: HTTP 429 for {url} (not retried)"
+                        f"{self.store_id}: HTTP 429 for {url} (not retried)",
+                        retry_after_seconds=retry_after_seconds(response.headers.get("Retry-After")),
                     )
+                if self._is_bot_wall(response):
+                    return response  # fail fast; caller raises the block error
                 allowed = rate_limit_retries if rate_limited else max_retries
                 if attempt > allowed:
                     if rate_limited and self.settings.scraper_rate_limit_cooldown_seconds > 0:

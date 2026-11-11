@@ -42,6 +42,7 @@ The scraper never writes to the database.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import threading
@@ -437,6 +438,7 @@ class BkmScraper(BaseScraper):
         verified: set[int] = set()
         cached = skipped = 0
         wanted = self.page_read_filter
+        pending: list[int] = []
         for index in order:
             result = results[index]
             node = _cached_node(result.product_url, ttl) if ttl else None
@@ -455,22 +457,35 @@ class BkmScraper(BaseScraper):
                 if budgets[named[index]] <= 0:
                     continue
                 budgets[named[index]] -= 1
-                try:
-                    enriched, from_page = self._enrich_one(result)
-                except ScraperError:
-                    logger.warning(
-                        "bkm: detail enrichment failed for %s (no price from search)",
-                        result.product_url,
-                    )
-                    continue
-                except Exception:
-                    logger.exception(
-                        "bkm: unexpected enrichment error for %s", result.product_url
-                    )
-                    continue
+                pending.append(index)
+                continue
             results[index] = enriched
             if from_page:
                 verified.add(index)
+
+        def read(index: int) -> tuple[int, tuple[SearchResult, bool] | None]:
+            result = results[index]
+            try:
+                return index, self._enrich_one(result)
+            except ScraperError:
+                logger.warning("bkm: detail enrichment failed for %s (no price from search)",
+                               result.product_url)
+            except Exception:
+                logger.exception("bkm: unexpected enrichment error for %s", result.product_url)
+            return index, None
+
+        # Only network work runs here. Budgets, ordering and result mutations
+        # stay on the caller; httpx.Client supports concurrent requests.
+        workers = min(8, max(1, self.settings.bkm_detail_workers))
+        if pending:
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="yomiba-bkm") as pool:
+                for index, outcome in pool.map(read, pending):
+                    if outcome is not None:
+                        results[index], from_page = outcome
+                        if from_page:
+                            verified.add(index)
+        self.stats["detail_requests"] = len(pending)
+        self.stats["detail_workers"] = workers
         for index, result in enumerate(results):
             if index not in verified and result.price is not None:
                 results[index] = result.model_copy(update={"price": None})

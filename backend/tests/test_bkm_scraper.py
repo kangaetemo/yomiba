@@ -487,3 +487,116 @@ def test_pages_of_results_the_importer_rejects_are_not_read():
     assert results[1].price == Decimal("168.00")
     assert results[2].price is None
     assert s.stats["pages_skipped_publisher"] == 1
+
+
+def test_detail_reads_overlap_but_keep_budget_and_prices():
+    """Slow responses overlap; the price budget and result order do not change."""
+    import threading
+    from app.scrapers.search_result import SearchResult
+
+    lock = threading.Lock()
+    pair = threading.Barrier(2)
+    active = peak = calls = 0
+
+    def handler(request):
+        nonlocal active, peak, calls
+        with lock:
+            active += 1
+            calls += 1
+            peak = max(peak, active)
+        try:
+            pair.wait(timeout=5)
+            return httpx.Response(200, text=DETAIL_HTML)
+        finally:
+            with lock:
+                active -= 1
+
+    scraper = make_scraper(handler, bkm_detail_workers=2, bkm_max_detail_requests=4)
+    scraper._page_checked = set()
+    scraper.gone_urls = set()
+    rows = [SearchResult(store_id="bkm", store_name="BKM", title=f"Berserk {i}",
+                         product_url=f"https://bkmkitap.com/parallel-{i}",
+                         price=Decimal("999"), in_stock=True) for i in range(6)]
+    results = scraper._enrich_with_details(rows, "Berserk")
+    assert calls == 4
+    assert peak == 2
+    assert [r.product_url for r in results] == [r.product_url for r in rows]
+    assert all(r.price is not None and r.price != Decimal("999") for r in results[:4])
+    assert all(r.price is None for r in results[4:])
+    assert scraper.stats["price_unverified"] == 2
+
+
+def test_concurrent_requests_keep_per_scraper_spacing():
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    starts = []
+    lock = threading.Lock()
+
+    def handler(request):
+        with lock:
+            starts.append(time.monotonic())
+        time.sleep(0.08)
+        return httpx.Response(200, text=PRODUCT_PAGE)
+
+    scraper = make_scraper(handler, scraper_min_request_interval_seconds=0.04)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(scraper.get, [f"https://bkmkitap.com/pacing-{i}" for i in range(4)]))
+    assert len(starts) == 4
+    assert all(b - a >= 0.035 for a, b in zip(starts, starts[1:]))
+
+
+def test_queued_detail_request_obeys_new_store_cooldown(monkeypatch):
+    import time
+    from app.scrapers.base import ScraperError, _store_cooldowns
+
+    def handler(request):
+        pytest.fail("a queued request must not contact a store in cooldown")
+
+    scraper = make_scraper(handler)
+    def throttle():
+        # A different in-flight request starts the cooldown while we wait.
+        monkeypatch.setitem(_store_cooldowns, scraper._store_key(), time.monotonic() + 60)
+    monkeypatch.setattr(scraper, "_throttle", throttle)
+    with pytest.raises(ScraperError, match="cooldown"):
+        scraper.get("https://bkmkitap.com/queued")
+
+
+@pytest.mark.parametrize("workers", [1, 4])
+def test_detail_completion_order_cannot_mix_prices_or_restore_search_price(workers):
+    """Compare sequential and concurrent reads against distinct live offers,
+    including incomplete and failed pages. Search prices are all stale 210 TL.
+    """
+    import threading
+
+    second_finished = threading.Event()
+    completion_order = []
+
+    def handler(request):
+        if "search_v2" in request.url.path:
+            return httpx.Response(200, json={"res": [_sekiro_item(i) for i in range(1, 5)],
+                                             "total_item_count": 4})
+        n = int(request.url.path.rsplit("-", 1)[1])
+        if n == 1:
+            if workers > 1:
+                assert second_finished.wait(timeout=5)
+            completion_order.append(n)
+            return httpx.Response(200, text=_offer_page("168.00", "OutOfStock"))
+        if n == 2:
+            completion_order.append(n)
+            second_finished.set()
+            return httpx.Response(200, text=_offer_page("245.50", "InStock"))
+        if n == 3:
+            return httpx.Response(200, text=PRODUCT_PAGE)
+        return httpx.Response(404)
+
+    scraper = make_scraper(handler, bkm_detail_workers=workers)
+    results = {r.volume_number: r for r in scraper.search("SEKIRO-Yan Hikâye: Ölümsüz Hanbei")}
+    assert (results[1].price, results[1].in_stock) == (Decimal("168.00"), False)
+    assert (results[2].price, results[2].in_stock) == (Decimal("245.50"), True)
+    assert results[3].price is None
+    assert results[4].price is None
+    assert scraper.stats["price_unverified"] == 2
+    if workers > 1:
+        assert completion_order == [2, 1]
