@@ -49,3 +49,7 @@ fiyatsızlar.txt
 
 # Server-only secrets (deploy kit)
 r2.env
+
+# Local Kitapbulan catalog snapshot
+kitapbulan-catalog.json
+kitapbulan-catalog.json.*.tmp

@@ -87,6 +87,8 @@ class Settings:
     bkm_max_detail_requests: int = int(os.getenv("BKM_MAX_DETAIL_REQUESTS", "100"))
     #: A BKM product page read by one query is reused by the others of the
     #: same price refresh for this long (related titles list the same books).
+    # Overlap response latency while retaining the shared request pace.
+    bkm_detail_workers: int = int(os.getenv("BKM_DETAIL_WORKERS", "4"))
     bkm_page_cache_minutes: float = float(os.getenv("BKM_PAGE_CACHE_MINUTES", "180"))
 
     # Long series need deep searches: Kitapbulan shows 6 products a page and
@@ -103,6 +105,8 @@ class Settings:
     #: request, ~5 requests for the comics collection) and kept this long, so
     #: a search only fetches ``/products/<handle>.js`` for products missing
     #: from the snapshot. 0 turns the snapshot off.
+    # Optional durable snapshot; production stores this on its /data volume.
+    kitapbulan_catalog_cache_path: str = os.getenv("KITAPBULAN_CATALOG_CACHE_PATH", "")
     kitapbulan_catalog_ttl_minutes: float = float(os.getenv("KITAPBULAN_CATALOG_TTL_MINUTES", "60"))
     #: When a refresh fails (HTTP 429) the previous snapshot keeps serving
     #: searches up to this age; older, Kitapbulan reports an error for the

@@ -540,6 +540,8 @@ class ImportService:
                 return exc
             finally:
                 scraper.search_seconds = time.monotonic() - started
+                logger.info("import search finished: store=%s query=%r search=%.1fs stats=%s",
+                            scraper.store_id, query, scraper.search_seconds, scraper.stats)
 
         if len(scrapers) < 2 or not get_settings().import_parallel_stores:
             return [search(scraper) for scraper in scrapers]

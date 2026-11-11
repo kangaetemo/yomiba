@@ -98,3 +98,23 @@ fresh Python 3.12 venv, run the tests, and replace the pinned lines with
 `pip freeze`. The "Dependency audit" workflow checks `constraints.txt` and the
 frontend's production packages for known vulnerabilities on every PR and
 weekly.
+
+
+### Kitapbulan snapshot continuity
+
+The Compose backend stores successful, complete Shopify catalog snapshots in
+`/data/kitapbulan-catalog.json` (`KITAPBULAN_CATALOG_CACHE_PATH`). Keep this on
+the existing persistent data volume. No migration or credentials are needed.
+Outside Compose, an empty setting disables disk persistence.
+
+On restart the original fetch timestamp is restored. The normal 60-minute
+refresh and 360-minute maximum stale age still apply. A 429 never overwrites
+the last complete file or resets its age. Invalid, expired, future-dated or
+wrong-collection files are ignored. Cache write errors do not fail an otherwise
+successful live import. A cold install still needs one successful catalog read;
+this does not remove a store-side rate limit.
+
+Search stats now include `snapshot_age_seconds` and `snapshot_retry_seconds`;
+restore and fetch logs distinguish disk restoration from a new store response.
+The retry delay is at least ten minutes and respects a longer `Retry-After`.
+Do not increase import concurrency to compensate for Kitapbulan 429s.
