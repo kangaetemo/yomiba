@@ -465,3 +465,25 @@ def test_results_beyond_the_page_budget_carry_no_price():
     results = s.search("SEKIRO-Yan Hikâye: Ölümsüz Hanbei")
     assert sorted(str(r.price) for r in results) == ["168.00"] * 3 + ["None"] * 2
     assert s.stats["price_unverified"] == 2
+
+
+def test_pages_of_results_the_importer_rejects_are_not_read():
+    """"Testere Adam", 2026-11-11: 149 of 178 BKM results were İkinci Adam
+    Yayınları novels, each a product page read at BKM's request pace. The
+    importer's ``page_read_filter`` says which results can never match."""
+    pages = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "search_v2" in request.url.path:
+            items = [_sekiro_item(1), dict(_sekiro_item(2), brand="İkinci Adam Yayınları")]
+            return httpx.Response(200, json={"res": items, "total_item_count": 2})
+        pages.append(request.url.path)
+        return httpx.Response(200, text=_offer_page("168.00", "OutOfStock"))
+
+    s = make_scraper(handler)
+    s.page_read_filter = lambda result: result.publisher != "İkinci Adam Yayınları"
+    results = {r.volume_number: r for r in s.search("SEKIRO-Yan Hikâye: Ölümsüz Hanbei")}
+    assert pages == ["/sekiro-1"]  # no page read, no gone check for volume 2
+    assert results[1].price == Decimal("168.00")
+    assert results[2].price is None
+    assert s.stats["pages_skipped_publisher"] == 1

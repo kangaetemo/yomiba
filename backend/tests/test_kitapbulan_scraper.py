@@ -365,17 +365,82 @@ def test_product_missing_from_snapshot_uses_product_json(snapshot, log):
     ]
 
 
-def test_failed_snapshot_falls_back_and_is_not_retried_every_search(snapshot, log):
+def test_failed_snapshot_fails_the_store_without_the_search_page(snapshot, log):
+    """No snapshot (its read failed): the search page answers 429 for nearly
+    every series and each 429 used to be waited out, so the store fails at
+    once for the series instead, and the snapshot is not re-read on every
+    search."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        log.append(str(request.url))
+        if request.url.path.endswith("/products.json"):
+            return httpx.Response(404, text="not found")
+        return _handler(BERSERK_PAGES, BERSERK_PRODUCTS)(request)
+
+    with pytest.raises(ScraperError, match="product list not available"):
+        make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0).search("Berserk")
+    with pytest.raises(ScraperError):
+        make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0).search("Berserk")
+    assert sum(url.endswith("/products.json?limit=250&page=1") for url in log) == 1
+    assert not any("/search" in url for url in log)
+
+
+def test_snapshot_off_still_uses_the_search_page(snapshot, log):
+    scraper = make_scraper(_handler(BERSERK_PAGES, BERSERK_PRODUCTS, log), kitapbulan_catalog_ttl_minutes=0.0)
+    assert len(scraper.search("Berserk")) == 2
+    assert any("/search" in url for url in log)
+
+
+def _expire_snapshot(minutes: float) -> None:
+    import time as _time
+    from app.scrapers import kitapbulan
+    kitapbulan._catalog_loaded_at = _time.monotonic() - minutes * 60
+    kitapbulan._catalog_retry_at = 0.0
+
+
+def test_snapshot_refresh_429_keeps_the_old_snapshot_without_waiting(snapshot, log):
+    """2026-11-11: the hourly refresh got 429 and waited 4x60 s while every
+    import worker waited for it. Now one request, no retry, no store
+    cooldown: the previous snapshot keeps serving searches."""
+    state = {"limited": False}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/collections/kitap-cizgi-roman/products.json":
+            log.append(str(request.url))
+            if state["limited"]:
+                return httpx.Response(429, headers={"Retry-After": "60"}, text="slow down")
+            return httpx.Response(200, text=json.dumps({"products": [_catalog_entry(BERSERK_8, "Berserk 8")]}))
+        if request.url.path.endswith("/products.json"):
+            return httpx.Response(200, text=json.dumps({"products": []}))
+        return _handler([], BERSERK_PRODUCTS, log)(request)
+
+    assert [r.title for r in make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0).search("berserk")] == ["Berserk 8"]
+    _expire_snapshot(61)
+    state["limited"] = True
+    log.clear()
+    scraper = make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0)
+    assert [r.title for r in scraper.search("berserk")] == ["Berserk 8"]
+    assert log == ["https://kitapbulan.com/collections/kitap-cizgi-roman/products.json?limit=250&page=1"]
+    # No cooldown: the store's product JSON is still requested.
+    assert scraper.check_listing(f"https://kitapbulan.com/products/{BERSERK_CILT_6}") is not None
+
+
+def test_too_old_snapshot_is_not_used(snapshot, log):
+    state = {"limited": False}
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/products.json"):
-            log.append(str(request.url))
-            return httpx.Response(404, text="not found")
-        return _handler(BERSERK_PAGES, BERSERK_PRODUCTS, log)(request)
+            if state["limited"]:
+                return httpx.Response(429, text="slow down")
+            items = [_catalog_entry(BERSERK_8, "Berserk 8")] if "cizgi" in request.url.path else []
+            return httpx.Response(200, text=json.dumps({"products": items}))
+        return _handler([], BERSERK_PRODUCTS, log)(request)
 
-    scraper = make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0)
-    assert len(scraper.search("Berserk")) == 2
-    assert make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0).search("Berserk")
-    assert sum(url.endswith("/products.json?limit=250&page=1") for url in log) == 1
+    make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0).search("berserk")
+    _expire_snapshot(7 * 60)
+    state["limited"] = True
+    with pytest.raises(ScraperError, match="product list not available"):
+        make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0,
+                     kitapbulan_catalog_max_stale_minutes=360.0).search("berserk")
 
 
 def test_snapshot_search_never_requests_the_search_page(snapshot, log):

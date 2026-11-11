@@ -104,6 +104,13 @@ class Settings:
     #: a search only fetches ``/products/<handle>.js`` for products missing
     #: from the snapshot. 0 turns the snapshot off.
     kitapbulan_catalog_ttl_minutes: float = float(os.getenv("KITAPBULAN_CATALOG_TTL_MINUTES", "60"))
+    #: When a refresh fails (HTTP 429) the previous snapshot keeps serving
+    #: searches up to this age; older, Kitapbulan reports an error for the
+    #: series instead (listings keep their last price) rather than falling
+    #: back to the rate-limited search page.
+    kitapbulan_catalog_max_stale_minutes: float = float(
+        os.getenv("KITAPBULAN_CATALOG_MAX_STALE_MINUTES", "360")
+    )
     #: Look series up in the snapshot instead of the store's search page
     #: (Shopify rate-limits /search: 429 for 523 series on 2026-11-05).
     kitapbulan_snapshot_search: bool = os.getenv("KITAPBULAN_SNAPSHOT_SEARCH", "1") not in ("0", "false", "False")

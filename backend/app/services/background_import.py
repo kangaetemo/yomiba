@@ -30,6 +30,7 @@ import re
 import queue
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 from uuid import uuid4
@@ -42,7 +43,7 @@ from ..models import CatalogSeries, ImportRecord, Series, StoreListing, Volume
 from ..normalization import normalize_text, original_title_parts, original_title_parts
 from ..scrapers.registry import get_scrapers
 from ..utils import utcnow
-from .import_service import _SUBTITLE_SEPARATOR_RE, ImportReport, ImportService
+from .import_service import _SUBTITLE_SEPARATOR_RE, ImportReport, ImportService, fetch_unseen_checks
 
 logger = logging.getLogger("yomiba.import.background")
 
@@ -629,6 +630,7 @@ class BackgroundImportRunner:
             # --- scrape + import --------------------------------------------------
             try:
                 started = utcnow()
+                clock = time.monotonic()
                 service = ImportService(
                     session, scrapers=self._scraper_factory(self._store_ids)
                 )
@@ -653,13 +655,18 @@ class BackgroundImportRunner:
                     needed &= stores_needing_fallback(session, query, report)
                     if not needed:
                         break
+                phases = {"import": time.monotonic() - clock}
+                mark = time.monotonic()
                 self._verify_unseen(session, query, report, started)
+                phases["recheck"] = time.monotonic() - mark
                 record = record_import_result(session, key, report)
+                mark = time.monotonic()
                 self._check_price_alerts(session, query)
                 self._refresh_special_sets(session, query)
+                phases["alerts"] = time.monotonic() - mark
                 logger.info(
                     "background import for %r finished: status=%s ok=%d failed=%d "
-                    "found=%d created=%d updated=%d",
+                    "found=%d created=%d updated=%d in %.0fs (%s)",
                     query,
                     record.status,
                     record.stores_ok,
@@ -667,6 +674,8 @@ class BackgroundImportRunner:
                     record.results_found,
                     record.created,
                     record.updated,
+                    time.monotonic() - clock,
+                    " ".join(f"{k}={v:.0f}s" for k, v in phases.items()),
                 )
             except Exception as exc:  # noqa: BLE001 - isolation by design
                 logger.exception("background import for %r failed", query)
@@ -732,18 +741,50 @@ class BackgroundImportRunner:
         ok = {s.store_code for s in report.stores if s.error is None}
         if not target or not ok:
             return
+        service = ImportService(session)
+        work = []
         for scraper in self._scraper_factory(self._store_ids):
             if scraper.store_id not in ok or not getattr(scraper, "verifies_unseen_listings", False):
                 continue
             try:
-                with scraper:
-                    n = ImportService(session).verify_unseen_listings(scraper, target, started)
-                if n:
-                    logger.info("background import for %r: re-checked %d unseen %s listings",
-                                query, n, scraper.store_id)
+                picked = service.unseen_listings(scraper, target, started)
             except Exception:  # noqa: BLE001 - verification is best effort
                 logger.exception("unseen-listing check for %r at %s failed", query, scraper.store_id)
                 session.rollback()
+                continue
+            if picked:
+                work.append((scraper, picked))
+        if not work:
+            return
+
+        # The product pages are on different hosts: every store is read at
+        # the same time (each keeps its own request pace), the database
+        # writes stay on this thread. One after another this step took up
+        # to a minute and a half per series (2026-11-11).
+        def fetch(item):
+            scraper, picked = item
+            mark = time.monotonic()
+            try:
+                with scraper:
+                    return fetch_unseen_checks(scraper, picked), time.monotonic() - mark
+            except Exception:  # noqa: BLE001 - verification is best effort
+                logger.exception("unseen-listing check for %r at %s failed", query, scraper.store_id)
+                return [], time.monotonic() - mark
+
+        if len(work) > 1 and get_settings().import_parallel_stores:
+            with ThreadPoolExecutor(max_workers=len(work), thread_name_prefix="yomiba-recheck") as pool:
+                fetched = list(pool.map(fetch, work))
+        else:
+            fetched = [fetch(item) for item in work]
+        for (scraper, picked), (checks, seconds) in zip(work, fetched):
+            try:
+                n = service.store_unseen_checks(scraper, checks)
+            except Exception:  # noqa: BLE001 - verification is best effort
+                logger.exception("unseen-listing check for %r at %s failed", query, scraper.store_id)
+                session.rollback()
+                continue
+            logger.info("background import for %r: re-checked %d/%d unseen %s listings in %.0fs",
+                        query, n, len(picked), scraper.store_id, seconds)
 
 
 def upsert_failed_record(session: Session, key: str, query: str, error: str) -> None:

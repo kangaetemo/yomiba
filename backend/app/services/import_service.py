@@ -32,6 +32,7 @@ from __future__ import annotations
 import logging
 import random
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -49,6 +50,7 @@ from ..models import (
     Publisher,
     PublisherAlias,
     Series,
+    SharedIsbn,
     Store,
     StoreListing,
     StoreObservation,
@@ -227,10 +229,12 @@ class ImportService:
         report = ImportReport(query=query, started_at=utcnow())
         scrapers = self.scrapers if self.scrapers is not None else get_scrapers(store_ids)
         known = {scraper.store_id: self._known_isbns(scraper.store_id) for scraper in scrapers}
+        page_filter = self._page_read_filter()
         for scraper in scrapers:
             # Scrapers that read detail pages for ISBNs skip products whose
             # ISBN an earlier run already read (same URL and title).
             scraper.known_isbns = known[scraper.store_id]
+            scraper.page_read_filter = page_filter
         touched: set[int] = set()
 
         fetched = self._search_all(scrapers, query)
@@ -351,9 +355,11 @@ class ImportService:
                     reason = self.last_reason or "skipped"
                     store_report.reasons[reason] = store_report.reasons.get(reason, 0) + 1
 
-            logger.info("import matching summary: store=%s results=%d matched=%d rejected=%s errors=%d",
+            logger.info("import matching summary: store=%s results=%d matched=%d rejected=%s errors=%d "
+                        "search=%.1fs",
                         store_report.store_code, store_report.results_found,
-                        store_report.created + store_report.updated, store_report.reasons, store_report.errors)
+                        store_report.created + store_report.updated, store_report.reasons, store_report.errors,
+                        getattr(scraper, "search_seconds", 0.0))
             if conflict_publishers:
                 top = sorted(conflict_publishers.items(), key=lambda kv: -kv[1])[:5]
                 logger.info("import publisher conflicts: store=%s query=%r publishers=%s",
@@ -379,6 +385,49 @@ class ImportService:
             .where(Store.code == store_code, StoreObservation.isbn.is_not(None))
         )
         return {url: (title, isbn) for url, title, isbn in rows}
+
+    def _page_read_filter(self):
+        """Predicate for scrapers that read one product page per result
+        (BKM): False when the result can never become a catalog listing,
+        so its page is not worth a request.
+
+        That is a result whose search data names a publisher that owns no
+        catalog series (not by name, alias or family key) AND carries a
+        book ISBN that no catalog volume holds: the title path then only
+        accepts catalog series of the product's own publisher (family), and
+        the ISBN path has nothing to attach to. A result without publisher
+        or ISBN is always read. On 2026-11-11 BKM's "Testere Adam" search
+        returned 149 such books (İkinci Adam Yayınları novels) and "Elveda
+        Eri" 58 of 62, each one a page read at the store's request pace.
+        """
+        catalog = select(CatalogSeries.series_id).distinct()
+        owners = select(Series.publisher_id).where(Series.id.in_(catalog)).distinct()
+        names: set[str] = set()
+        families: set[str] = set()
+        for (name,) in self.session.execute(select(Publisher.name).where(Publisher.id.in_(owners))):
+            names.add(normalize_publisher(name))
+            families.add(publisher_family_key(name))
+        names.update(self.session.scalars(
+            select(PublisherAlias.normalized_alias).where(PublisherAlias.publisher_id.in_(owners))))
+        names.discard("")
+        families.discard("")
+        if not names:
+            return None  # empty catalog (tests, fresh install): read everything
+        catalog_volumes = select(Volume.id).where(Volume.series_id.in_(catalog))
+        isbns = set(self.session.scalars(
+            select(Volume.isbn).where(Volume.series_id.in_(catalog), Volume.isbn.is_not(None))))
+        isbns.update(self.session.scalars(
+            select(SharedIsbn.isbn).where(SharedIsbn.volume_id.in_(catalog_volumes))))
+
+        def wanted(result: SearchResult) -> bool:
+            publisher = (result.publisher or "").strip()
+            isbn = book_isbn(result.isbn)
+            if not publisher or not isbn or isbn in isbns:
+                return True
+            return (normalize_publisher(publisher) in names
+                    or publisher_family_key(publisher) in families)
+
+        return wanted
 
     @staticmethod
     def _with_known_isbn(result: SearchResult, known: dict[str, tuple[str, str]]) -> SearchResult:
@@ -483,11 +532,14 @@ class ImportService:
         """
         def search(scraper: BaseScraper) -> list[SearchResult] | Exception:
             scraper.gone_urls = set()
+            started = time.monotonic()
             try:
                 with scraper:
                     return scraper.search(query)
             except Exception as exc:  # noqa: BLE001 - isolation by design
                 return exc
+            finally:
+                scraper.search_seconds = time.monotonic() - started
 
         if len(scrapers) < 2 or not get_settings().import_parallel_stores:
             return [search(scraper) for scraper in scrapers]
@@ -536,30 +588,46 @@ class ImportService:
         number of listings updated; the caller's session is committed per
         listing.
         """
+        picked = self.unseen_listings(scraper, series_ids, since)
+        return self.store_unseen_checks(scraper, fetch_unseen_checks(scraper, picked))
+
+    def unseen_listings(
+        self, scraper: BaseScraper, series_ids: set[int], since: datetime
+    ) -> list[tuple[int, str]]:
+        """(listing id, product URL) pairs ``verify_unseen_listings`` would
+        re-check: the store's listings of ``series_ids`` not seen since
+        ``since``, a random sample of at most ``unseen_recheck_max``."""
         if not getattr(scraper, "verifies_unseen_listings", False) or not series_ids:
-            return 0
+            return []
         store = self.session.scalar(select(Store).where(Store.code == scraper.store_id))
         if store is None:
-            return 0
+            return []
         since = _aware(since)
         rows = self.session.execute(
-            select(StoreListing, Volume)
+            select(StoreListing.id, StoreListing.product_url, StoreListing.last_checked)
             .join(Volume, Volume.id == StoreListing.volume_id)
             .where(StoreListing.store_id == store.id, Volume.series_id.in_(series_ids))
             .order_by(StoreListing.id)
         ).all()
-        unseen = [(l, v) for l, v in rows if l.last_checked is None or _aware(l.last_checked) < since]
+        unseen = [(lid, url) for lid, url, checked in rows if checked is None or _aware(checked) < since]
         budget = max(0, get_settings().unseen_recheck_max)
         if len(unseen) > budget:
             unseen = random.sample(unseen, budget)
+        return unseen
+
+    def store_unseen_checks(self, scraper: BaseScraper, checks: list[tuple[int, object]]) -> int:
+        """Write the product-page answers of ``fetch_unseen_checks``; one
+        commit per listing. Returns the number of listings updated."""
+        store = self.session.scalar(select(Store).where(Store.code == scraper.store_id))
+        if store is None:
+            return 0
         updated = 0
-        for listing, volume in unseen:
-            try:
-                check = scraper.check_listing(listing.product_url)
-            except Exception:  # noqa: BLE001 - one page must not stop the rest
-                logger.warning("import: stock re-check failed for %s", listing.product_url)
+        for listing_id, check in checks:
+            listing = self.session.get(StoreListing, listing_id)
+            if listing is None or listing.store_id != store.id:
                 continue
-            if check is None:
+            volume = self.session.get(Volume, listing.volume_id)
+            if volume is None:
                 continue
             result = SearchResult(
                 store_id=scraper.store_id,
@@ -1632,3 +1700,19 @@ class ImportService:
                 in_stock=listing.in_stock, product_url=listing.product_url,
             ))
         return ImportAction.UPDATED
+
+
+def fetch_unseen_checks(scraper: BaseScraper, picked: list[tuple[int, str]]) -> list[tuple[int, object]]:
+    """Product-page answers for ``picked`` (listing id, URL) pairs, without
+    touching the database (safe on a worker thread, one per store).
+    Unknown answers and failed requests are left out."""
+    out: list[tuple[int, object]] = []
+    for listing_id, url in picked:
+        try:
+            check = scraper.check_listing(url)
+        except Exception:  # noqa: BLE001 - one page must not stop the rest
+            logger.warning("import: stock re-check failed for %s", url)
+            continue
+        if check is not None:
+            out.append((listing_id, check))
+    return out

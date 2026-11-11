@@ -208,11 +208,21 @@ class KitapbulanScraper(BaseScraper):
         search page goes through). Shopify rate-limits its search page hard
         (2026-11-05: 523 series failed with 429 on /search); a snapshot costs
         a few requests an hour for every series. None when snapshot search is
-        off or there is no snapshot: the store's search page is used then."""
+        off or the snapshot is switched off (TTL 0 / no collections): the store's
+        search page is used then. Snapshot on but unavailable (its read got a
+        429): ScraperError, the search page is not tried."""
         if not self.settings.kitapbulan_snapshot_search or not query_tokens:
             return None
         catalog = self._catalog()
         if not catalog:
+            if self.settings.kitapbulan_catalog_ttl_minutes > 0 and self.settings.kitapbulan_catalog_collections:
+                # The search page answers 429 for nearly every series
+                # (2026-11-05) and each 429 is waited out: failing this
+                # store for the series is cheaper than stalling it.
+                raise ScraperError(
+                    "kitapbulan: product list not available yet (HTTP 429); "
+                    "search page not used, listings keep their last price"
+                )
             return None
         max_results = max(1, self.settings.kitapbulan_max_search_results)
         items: list[dict] = []
@@ -411,38 +421,67 @@ class KitapbulanScraper(BaseScraper):
 
     def _catalog(self) -> dict[str, dict]:
         """The process-wide snapshot, read again once it is older than
-        KITAPBULAN_CATALOG_TTL_MINUTES. Concurrent imports wait for one
-        read instead of each starting their own. A failed read keeps the
-        previous snapshot (or none) for _CATALOG_RETRY_SECONDS."""
+        KITAPBULAN_CATALOG_TTL_MINUTES.
+
+        A refresh never holds the import workers: while one thread re-reads
+        the collections the others keep using the previous snapshot, and a
+        429 during the refresh is not waited out (``fail_fast_429``). The
+        previous snapshot stays in use until it is
+        KITAPBULAN_CATALOG_MAX_STALE_MINUTES old; the next refresh is tried
+        after _CATALOG_RETRY_SECONDS. 2026-11-11: four 60 s waits on a 429
+        during the hourly refresh stopped every series for three minutes.
+        Without any snapshot (after a restart) the first read is waited for
+        by the other workers, still without retrying a 429."""
         global _catalog, _catalog_loaded_at, _catalog_retry_at
         ttl = self.settings.kitapbulan_catalog_ttl_minutes * 60
         collections = self.settings.kitapbulan_catalog_collections
         if ttl <= 0 or not collections:
             return {}
-        with _catalog_lock:
+        max_stale = max(ttl, self.settings.kitapbulan_catalog_max_stale_minutes * 60)
+
+        def usable(now: float) -> dict[str, dict]:
+            if _catalog_loaded_at is not None and now - _catalog_loaded_at < max_stale:
+                return _catalog
+            return {}
+
+        now = time.monotonic()
+        fresh = _catalog_loaded_at is not None and now - _catalog_loaded_at < ttl
+        if fresh or now < _catalog_retry_at:
+            return usable(now)
+        have = bool(usable(now))
+        if not _catalog_lock.acquire(blocking=not have):
+            return usable(now)  # another worker is refreshing it
+        try:
             now = time.monotonic()
             fresh = _catalog_loaded_at is not None and now - _catalog_loaded_at < ttl
             if fresh or now < _catalog_retry_at:
-                return _catalog
+                return usable(now)
             try:
                 products: dict[str, dict] = {}
                 for collection in collections:
                     products.update(self._read_collection(collection))
             except ScraperError as exc:
-                logger.warning("kitapbulan: catalog snapshot failed (%s); using product JSON", exc)
                 _catalog_retry_at = time.monotonic() + _CATALOG_RETRY_SECONDS
-                return _catalog
+                left = usable(time.monotonic())
+                logger.warning(
+                    "kitapbulan: catalog snapshot failed (%s); %s", exc,
+                    f"keeping the previous one ({len(left)} products)" if left else "no snapshot",
+                )
+                return left
             _catalog = products
             _catalog_loaded_at = time.monotonic()
             logger.info("kitapbulan: catalog snapshot of %d products from %s", len(products), ",".join(collections))
             return _catalog
+        finally:
+            _catalog_lock.release()
 
     def _read_collection(self, collection: str) -> dict[str, dict]:
         products: dict[str, dict] = {}
         for page in range(1, _CATALOG_MAX_PAGES + 1):
             data = self.get_json(
                 f"{self.base_url}/collections/{collection}/products.json"
-                f"?limit={_CATALOG_PAGE_SIZE}&page={page}"
+                f"?limit={_CATALOG_PAGE_SIZE}&page={page}",
+                fail_fast_429=True,
             )
             items = data.get("products") if isinstance(data, dict) else None
             if not isinstance(items, list):
