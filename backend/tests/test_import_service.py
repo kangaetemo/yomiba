@@ -620,3 +620,27 @@ def test_any_original_title_part_bridges(import_service, db_session):
     assert db_session.scalar(
         select(func.count()).select_from(StoreListing).where(StoreListing.volume_id == vol7.id)
     ) == 1
+
+
+def test_page_read_filter_skips_only_books_that_can_never_match(import_service, db_session):
+    """BKM reads one product page per result; a result whose publisher owns
+    no catalog series and whose ISBN no catalog volume holds is rejected
+    whatever its page says (2026-11-11, "Testere Adam": 149 İkinci Adam
+    novels), so its page is not read."""
+    from app.models import PublisherAlias, Volume as V
+
+    series = seed_catalog_series(db_session, "Testere Adam", "Gerekli Şeyler Yayıncılık")
+    volume = db_session.scalar(select(V).where(V.series_id == series.id))
+    volume.isbn = "9786051234567"
+    db_session.add(PublisherAlias(normalized_alias="gs yayinlari", publisher_id=series.publisher_id))
+    db_session.commit()
+    wanted = import_service._page_read_filter()
+
+    novel = make_result("bkm", "Adam 3", "100", isbn="9789750000001", publisher="İkinci Adam Yayınları")
+    assert wanted(novel) is False
+    # Same publisher family, alias, no publisher, no ISBN, catalog ISBN: read.
+    assert wanted(novel.model_copy(update={"publisher": "Gerekli Şeyler"}))
+    assert wanted(novel.model_copy(update={"publisher": "GS Yayınları"}))
+    assert wanted(novel.model_copy(update={"publisher": None}))
+    assert wanted(novel.model_copy(update={"isbn": None}))
+    assert wanted(novel.model_copy(update={"isbn": "9786051234567"}))

@@ -93,6 +93,13 @@ class BaseScraper:
     #: {product URL: (title, ISBN)} the importer already read for this
     #: store; detail-page enrichment spends its budget on the rest.
     known_isbns: dict[str, tuple[str, str]] = {}
+    #: Set by the importer before a search: False for a result that cannot
+    #: become a catalog listing whatever its product page says (another
+    #: publisher's book, see ImportService._page_read_filter). Scrapers that
+    #: read a product page per result skip those pages. None: read all.
+    page_read_filter = None
+    #: Wall time of the last search (set by the importer, logged per store).
+    search_seconds: float = 0.0
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         settings = get_settings()
@@ -197,7 +204,7 @@ class BaseScraper:
         if delay > 0:
             time.sleep(delay)
 
-    def get(self, url: str, **kwargs: Any) -> httpx.Response:
+    def get(self, url: str, *, fail_fast_429: bool = False, **kwargs: Any) -> httpx.Response:
         """GET ``url`` with per-store rate limiting and bounded retries.
 
         Transient failures (transport errors, 429/5xx) are retried up to
@@ -210,6 +217,11 @@ class BaseScraper:
 
         The minimum request interval applies to every attempt, including
         retries (throttling happens at the top of the loop).
+
+        ``fail_fast_429``: an HTTP 429 raises at once (no waiting, no store
+        pause, no cooldown). For background reads that have something to
+        fall back on (Kitapbulan's collection snapshot): waiting 4x60s for
+        them held every import worker on 2026-11-11.
         """
         cooldown_left = _store_cooldowns.get(self._store_key(), 0.0) - time.monotonic()
         if cooldown_left > 0:
@@ -240,6 +252,10 @@ class BaseScraper:
                 if self._is_bot_wall(response):
                     return response  # fail fast; caller raises the block error
                 rate_limited = response.status_code == 429
+                if rate_limited and fail_fast_429:
+                    raise ScraperError(
+                        f"{self.store_id}: HTTP 429 for {url} (not retried)"
+                    )
                 allowed = rate_limit_retries if rate_limited else max_retries
                 if attempt > allowed:
                     if rate_limited and self.settings.scraper_rate_limit_cooldown_seconds > 0:
@@ -272,7 +288,9 @@ class BaseScraper:
         # Unreachable: every loop path returns or raises.
         raise ScraperError(f"{self.store_id}: request to {url} exhausted retries")
 
-    def get_json(self, url: str, **kwargs: Any) -> Any:
+    def get_json(self, url: str, *, fail_fast_429: bool = False, **kwargs: Any) -> Any:
+        if fail_fast_429:
+            kwargs["fail_fast_429"] = True
         response = self.get(url, **kwargs)
         if response.status_code >= 400:
             raise ScraperError(

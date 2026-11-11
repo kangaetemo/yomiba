@@ -425,7 +425,8 @@ class BkmScraper(BaseScraper):
         last page price), counted in ``stats["price_unverified"]``. Keeping
         it flipped Berserk 18-20 back to 210 TL on 2026-11-06 (a related
         title's query read only 15 pages); reading every page of every query
-        made the price refresh three times slower.
+        made the price refresh three times slower. Results the importer
+        would reject for their publisher (``page_read_filter``) are not read.
         """
         core = normalize_text(parse_volume_title(query).base_title or query) if query else ""
         ttl = max(0.0, self.settings.bkm_page_cache_minutes) * 60
@@ -434,7 +435,8 @@ class BkmScraper(BaseScraper):
         named = {i: self._names_query(core, r.title) for i, r in enumerate(results)}
         order = sorted(range(len(results)), key=lambda i: not named[i])
         verified: set[int] = set()
-        cached = 0
+        cached = skipped = 0
+        wanted = self.page_read_filter
         for index in order:
             result = results[index]
             node = _cached_node(result.product_url, ttl) if ttl else None
@@ -443,6 +445,13 @@ class BkmScraper(BaseScraper):
                 self._page_checked.add(result.product_url)
                 enriched, from_page = self._apply_node(result, node)
             else:
+                if wanted is not None and not wanted(result):
+                    # Another publisher's book ("Testere Adam": 121 İkinci
+                    # Adam novels): the importer rejects it whatever the
+                    # page says, so its page is not read.
+                    skipped += 1
+                    self._page_checked.add(result.product_url)  # no gone check either
+                    continue
                 if budgets[named[index]] <= 0:
                     continue
                 budgets[named[index]] -= 1
@@ -467,6 +476,7 @@ class BkmScraper(BaseScraper):
                 results[index] = result.model_copy(update={"price": None})
         self.stats["price_unverified"] = len(results) - len(verified)
         self.stats["pages_cached"] = cached
+        self.stats["pages_skipped_publisher"] = skipped
         return results
 
     #: Out-of-stock results whose page is checked for a removed product.
