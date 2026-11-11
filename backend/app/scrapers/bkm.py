@@ -121,15 +121,21 @@ class BkmScraper(BaseScraper):
         for the series."""
         results = self._search_once(query)
         core = normalize_text(parse_volume_title(query).base_title or query)
+        if results and self.query_result_filter is not None:
+            return results  # Catalog aliases/ISBNs already identified target candidates.
         if not core or "cilt" in normalize_text(query).split():
             return results
-        if any(core in normalize_text(r.title) for r in results):
+        if any(self._names_query(core, r.title) for r in results):
             return results
         first_stats, first_gone = self.stats, set(self.gone_urls)
         retry = self._search_once(f"{query} cilt")
         self.gone_urls |= first_gone
         self.stats["retry_query"] = f"{query} cilt"
-        self.stats["first_query"] = {k: first_stats.get(k) for k in ("raw_products", "rejected", "accepted")}
+        self.stats["first_query"] = {k: first_stats.get(k) for k in (
+            "raw_products", "rejected", "accepted", "pages_fetched",
+            "detail_requests", "gone_checks", "query_filtered")}
+        for key in ("pages_fetched", "detail_requests", "gone_checks"):
+            self.stats[f"total_{key}"] = first_stats.get(key, 0) + self.stats.get(key, 0)
         seen = {r.product_url for r in retry}
         return retry + [r for r in results if r.product_url not in seen]
 
@@ -176,6 +182,10 @@ class BkmScraper(BaseScraper):
 
         self.gone_urls = set()
         self._page_checked: set[str] = set()
+        if self.query_result_filter is not None:
+            scoped = [result for result in results if self.query_result_filter(result)]
+            self.stats["query_filtered"] = len(results) - len(scoped)
+            results = scoped
         results = self._enrich_with_details(results, query)
         results = self._drop_gone(results)
         results = filter_manga_results(results, stats=self.stats)
@@ -517,6 +527,7 @@ class BkmScraper(BaseScraper):
                 continue
             if response.status_code in (404, 410):
                 self.gone_urls.add(result.product_url)
+        self.stats["gone_checks"] = checks
         if self.gone_urls:
             self.stats["rejected"]["gone"] = len(self.gone_urls)
         return [r for r in results if r.product_url not in self.gone_urls]
