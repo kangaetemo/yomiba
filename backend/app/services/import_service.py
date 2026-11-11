@@ -230,11 +230,13 @@ class ImportService:
         scrapers = self.scrapers if self.scrapers is not None else get_scrapers(store_ids)
         known = {scraper.store_id: self._known_isbns(scraper.store_id) for scraper in scrapers}
         page_filter = self._page_read_filter()
+        query_filter = self._query_result_filter(query)
         for scraper in scrapers:
             # Scrapers that read detail pages for ISBNs skip products whose
             # ISBN an earlier run already read (same URL and title).
             scraper.known_isbns = known[scraper.store_id]
             scraper.page_read_filter = page_filter
+            scraper.query_result_filter = query_filter
         touched: set[int] = set()
 
         fetched = self._search_all(scrapers, query)
@@ -385,6 +387,49 @@ class ImportService:
             .where(Store.code == store_code, StoreObservation.isbn.is_not(None))
         )
         return {url: (title, isbn) for url, title, isbn in rows}
+
+    def _query_result_filter(self, query: str):
+        """Read-only evidence for the requested catalog title, not the whole
+        catalog. Unknown/ad-hoc queries retain normal search behaviour.
+        All database work happens before scraper threads start.
+        """
+        catalog = select(CatalogSeries.series_id).distinct()
+        key = normalize_text(query)
+        series = list(self.session.scalars(select(Series).where(
+            Series.id.in_(catalog), Series.normalized_title == key)))
+        if not series:
+            # Background fallback searches use the original title (e.g.
+            # Testere Adam -> chainsaw man); keep that search scoped too.
+            series = [row for row in self.session.scalars(select(Series).where(
+                Series.id.in_(catalog), Series.original_title.is_not(None)))
+                if key in original_title_parts(row.original_title)]
+        if not series:
+            return None
+        ids = [row.id for row in series]
+        aliases = {normalize_text(row.title) for row in series}
+        for row in series:
+            aliases.update(original_title_parts(row.original_title))
+        aliases.discard("")
+        volumes = select(Volume.id).where(Volume.series_id.in_(ids))
+        isbns = set(self.session.scalars(select(Volume.isbn).where(
+            Volume.series_id.in_(ids), Volume.isbn.is_not(None))))
+        isbns.update(self.session.scalars(select(SharedIsbn.isbn).where(
+            SharedIsbn.volume_id.in_(volumes))))
+        urls = set(self.session.scalars(select(StoreListing.product_url).where(
+            StoreListing.volume_id.in_(volumes))))
+
+        def wanted(result: SearchResult) -> bool:
+            if result.product_url in urls or book_isbn(result.isbn) in isbns:
+                return True
+            title = normalize_text(result.title)
+            base = normalize_text(parse_volume_title(result.title).base_title or "")
+            # Store titles can abbreviate a catalog subtitle or use its
+            # original name. Keep ambiguous prefixes rather than losing a
+            # real volume; the importer still enforces identity/publisher.
+            return any(alias in title or (len(base) >= 3 and base in alias)
+                       for alias in aliases)
+
+        return wanted
 
     def _page_read_filter(self):
         """Predicate for scrapers that read one product page per result

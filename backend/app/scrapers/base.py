@@ -122,6 +122,10 @@ class BaseScraper:
     #: publisher's book, see ImportService._page_read_filter). Scrapers that
     #: read a product page per result skip those pages. None: read all.
     page_read_filter = None
+    # Optional catalog-query scope, built on the caller's DB thread. BKM
+    # uses it before detail reads so fuzzy unrelated hits do not hide an
+    # empty target search or consume product-page requests.
+    query_result_filter = None
     #: Wall time of the last search (set by the importer, logged per store).
     search_seconds: float = 0.0
 

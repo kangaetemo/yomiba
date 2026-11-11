@@ -644,3 +644,86 @@ def test_page_read_filter_skips_only_books_that_can_never_match(import_service, 
     assert wanted(novel.model_copy(update={"publisher": None}))
     assert wanted(novel.model_copy(update={"isbn": None}))
     assert wanted(novel.model_copy(update={"isbn": "9786051234567"}))
+
+
+def test_query_scope_preserves_alias_isbn_and_existing_url(db_session, import_service):
+    target = seed_catalog_series(db_session, "Jujutsu Kaisen - Lanet Savaşları", "Gerekli Şeyler",
+                                 original="jujutsu kaisen", volumes=(1,))
+    seed_catalog_series(db_session, "Başka Kitap", "Gerekli Şeyler", volumes=(1,))
+    volume = db_session.scalar(select(Volume).where(Volume.series_id == target.id))
+    volume.isbn = "9786256031791"
+    db_session.commit()
+    wanted = import_service._query_result_filter(target.title)
+    assert wanted(make_result("bkm", "Jujutsu Kaisen 1", "210"))
+    assert wanted(make_result("bkm", "Farklı mağaza başlığı", "210", isbn=volume.isbn))
+    assert not wanted(make_result("bkm", "Başka Kitap 1", "210", publisher="Gerekli Şeyler"))
+    assert import_service._query_result_filter("ad hoc unknown query") is None
+    original_query = import_service._query_result_filter("jujutsu kaisen")
+    assert original_query(make_result("bkm", "Jujutsu Kaisen 1", "210"))
+    assert not original_query(make_result("bkm", "Başka Kitap 1", "210"))
+
+    r = make_result("bkm", "Jujutsu Kaisen 1", "168", publisher="Gerekli Şeyler")
+    import_service.import_result(r)
+    db_session.commit()
+    wanted = import_service._query_result_filter(target.title)
+    assert wanted(r.model_copy(update={"title": "Renamed product", "isbn": None}))
+
+
+def test_bkm_unrelated_results_cost_no_detail_reads_and_allow_fallback(db_session):
+    import httpx
+    from tests.test_bkm_scraper import make_scraper, _sekiro_item
+    from app.services.background_import import stores_needing_fallback
+
+    target = seed_catalog_series(db_session, "Testere Adam", "Gerekli Şeyler",
+                                 original="chainsaw man", volumes=(1,))
+    # Unrelated products belonging to a valid catalog publisher previously
+    # survived the publisher filter, consumed pages and hid an empty search.
+    seed_catalog_series(db_session, "Başka Kitap", "Gerekli Şeyler", volumes=(1,))
+    # Even a previously priced series must retry its original title when
+    # this store returned only unrelated products.
+    ImportService(db_session).import_result(make_result(
+        "bkm", "Testere Adam 1", "168", publisher="Gerekli Şeyler"))
+    db_session.commit()
+    from app.services.background_import import catalog_series_unpriced
+    assert not catalog_series_unpriced(db_session, target.title)
+    calls = []
+    def handler(request):
+        calls.append(request.url.path)
+        if "search_v2" in request.url.path:
+            item = dict(_sekiro_item(1), title="Başka Kitap 1", brand="Gerekli Şeyler", stock_level="0")
+            return httpx.Response(200, json={"res": [item], "total_item_count": 1})
+        pytest.fail("unrelated detail/gone check must not run")
+
+    scraper = make_scraper(handler)
+    service = ImportService(db_session, scrapers=[scraper])
+    report = service.run_import(target.title)
+    assert report.stores[0].results_found == 0
+    assert "bkm" in stores_needing_fallback(db_session, target.title, report)
+    assert len(calls) == 2  # primary and cilt search; no product requests
+    assert scraper.stats["total_detail_requests"] == 0
+    assert scraper.stats["total_gone_checks"] == 0
+
+
+def test_bkm_catalog_alias_reads_live_offer_without_redundant_retry(db_session):
+    import httpx
+    from tests.test_bkm_scraper import make_scraper, _sekiro_item, _offer_page
+    target = seed_catalog_series(db_session, "Jujutsu Kaisen - Lanet Savaşları", "Athica",
+                                 original="jujutsu kaisen", volumes=(1,))
+    calls = []
+    def handler(request):
+        calls.append(request.url.path)
+        if "search_v2" in request.url.path:
+            item = dict(_sekiro_item(1), title="Jujutsu Kaisen 1")
+            unrelated = dict(_sekiro_item(2), title="Başka Kitap 1", stock_level="0")
+            return httpx.Response(200, json={"res": [item, unrelated], "total_item_count": 2})
+        assert request.url.path == "/sekiro-1"
+        return httpx.Response(200, text=_offer_page("168.00", "OutOfStock"))
+
+    scraper = make_scraper(handler)
+    report = ImportService(db_session, scrapers=[scraper]).run_import(target.title)
+    assert report.stores[0].results_found == 1
+    listing = db_session.scalar(select(StoreListing))
+    assert listing.price == 16800
+    assert listing.in_stock is False
+    assert len(calls) == 2
+    assert scraper.stats["query_filtered"] == 1
