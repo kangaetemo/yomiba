@@ -80,9 +80,10 @@ for servis in backend frontend; do
 done
 docker image prune -f >/dev/null
 # Her deploy yeni bir derleme önbelleği bırakır; image prune ona dokunmaz.
-# 10 Kasım'da 89 kayıt / 6,3 GB birikmişti ve disk doldu. Son 7 günde
-# kullanılmayanlar silinir (haftalık deploy önbelleği sıcak tutar).
-docker builder prune -af --filter until=168h >/dev/null || true
+# 10 Kasım'da 89 kayıt / 6,3 GB birikmişti ve disk doldu. Bir derleme
+# ~2 GB önbellek bırakıyor (12 Kasım: bir günde 3 deploy, 5,8 GB), bu
+# yüzden son 24 saatte kullanılmayanlar silinir.
+docker builder prune -af --filter until=24h >/dev/null || true
 domain="$(sed -n 's/^SITE_DOMAIN=//p' .env)"
 # Frontend'in sağlık kontrolü yok: --wait onu "çalışıyor" görür görmez
 # bırakır, Next ise birkaç saniye sonra dinlemeye başlar (o arada Caddy 502
