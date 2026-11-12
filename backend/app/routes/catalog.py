@@ -26,7 +26,7 @@ from ..database import SessionLocal, get_db
 from ..auth import require_admin
 from ..services.background_import import SYNC_GATE_KEY
 from ..services import isbn_conflict_fix as isbn_fix
-from ..services.catalog_sync import CatalogSyncService
+from ..services.catalog_sync import CatalogSyncService, describe_changes
 from ..services import catalog_audit
 from ..services import catalog_state
 from ..utils import utcnow
@@ -173,6 +173,11 @@ def _run_sync(runner) -> None:
     try:
         with SessionLocal() as session:
             report = CatalogSyncService(session).sync()
+            try:
+                changes = describe_changes(session, report)
+            except Exception:  # noqa: BLE001 - the list never fails a sync
+                logger.exception("catalog sync: could not describe the changes")
+                changes = {}
         _last = {
             "status": "success" if report.ok else "failed",
             "finished_at": utcnow().isoformat(),
@@ -197,6 +202,7 @@ def _run_sync(runner) -> None:
             "isbn_conflict_details": report.isbn_conflict_details,
             "isbn_phantoms_merged": report.isbn_phantoms_merged,
             "errors": report.errors,
+            **changes,
         }
         catalog_state.record_finish(_last)
         logger.info(
@@ -292,6 +298,13 @@ def start_catalog_sync(request: Request) -> dict:
 def catalog_sync_status() -> dict:
     with _state_lock:
         return {"running": _running, "last": _last_summary()}
+
+
+@router.get("/catalog/sync/history")
+def catalog_sync_history() -> dict:
+    """Recent finished syncs with the volumes and series each one added
+    (kept beside the database, so a redeploy does not lose them)."""
+    return {"runs": catalog_state.history()}
 
 
 @router.post("/catalog/isbn-fix")

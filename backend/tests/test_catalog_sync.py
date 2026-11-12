@@ -687,3 +687,38 @@ def test_new_image_before_release_is_still_a_placeholder(db_session):
     _sync_new_mangakol_image(db_session, released=False)
     db_session.refresh(vol)
     assert vol.cover_origin_url.endswith("/tr.webp") and vol.cover_provisional is True
+
+
+def test_sync_lists_new_volumes_new_series_and_released_volumes(db_session):
+    """The admin list names what a sync added (series, number, link
+    data), not only the counts."""
+    from app.services.catalog_sync import describe_changes
+
+    _, series = _seed_athica_berserk(db_session)
+    announced = db_session.scalar(
+        select(Volume).where(Volume.series_id == series.id, Volume.volume_number == 2)
+    )
+    announced.catalog_released = False
+    db_session.commit()
+    berserk = _manga("berserk-athica", "Berserk (Athica)", pub="Athica", volumes=(1, 2, 3))
+    berserk.volumes[2] = CatalogVolume(number=3, cover_url=None, released=False)
+    fresh = _manga("dandadan", "Dandadan", pub="Gerekli Şeyler", volumes=(1,))
+    report = CatalogSyncService(
+        db_session, scraper=FakeMangakolScraper([berserk, fresh])
+    ).sync()
+    changes = describe_changes(db_session, report)
+
+    added = [(r["series_title"], r["volume_number"], r["released"], r["new_series"])
+             for r in changes["new_volumes"]]
+    assert added == [("Berserk", 3, False, False), ("Dandadan", 1, True, True)]
+    assert all(r["series_slug"] and r["volume_id"] for r in changes["new_volumes"])
+    assert [r["series_title"] for r in changes["new_series"]] == ["Dandadan"]
+    assert [(r["series_title"], r["volume_number"]) for r in changes["released_volumes"]] == [
+        ("Berserk", 2)
+    ]
+
+    # A second identical sync adds nothing.
+    again = CatalogSyncService(
+        db_session, scraper=FakeMangakolScraper([berserk, fresh])
+    ).sync()
+    assert describe_changes(db_session, again)["new_volumes"] == []
