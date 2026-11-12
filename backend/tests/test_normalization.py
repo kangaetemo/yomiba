@@ -39,3 +39,14 @@ def test_different_titles_stay_different():
     # Critical: must not merge unrelated series that share a prefix.
     assert normalize_text("Berserk") != normalize_text("Berserk of Gluttony")
     assert normalize_text("One Piece") != normalize_text("One Piece Colored")
+
+
+def test_inner_apostrophe_is_dropped_not_spaced():
+    # Stores and Mangakol write Turkish suffixes with and without it.
+    key = "ilahi bahcenin avcisi"
+    assert normalize_text("İlahi Bahçe'nin Avcısı") == key
+    assert normalize_text("İlahi Bahçe’nin Avcısı") == key
+    assert normalize_text("İlahi Bahçenin Avcısı") == key
+    assert normalize_text("Hell's Paradise") == "hells paradise"
+    # Quotes around a word are punctuation as before.
+    assert normalize_text("'Kara' Kitap") == "kara kitap"

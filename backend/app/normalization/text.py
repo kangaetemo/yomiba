@@ -34,6 +34,11 @@ def _strip_accents(text: str) -> str:
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
+#: An apostrophe (straight, curly, modifier letter, backtick or acute
+#: accent used as one) with a letter or digit on both sides.
+_INNER_APOSTROPHE_RE = re.compile(r"(?<=[^\W_])['\u2019\u2018\u02bc`\u00b4](?=[^\W_])")
+
+
 def ascii_fold(value: str) -> str:
     """Turkish letters and accents to ASCII, everything else kept:
     "Titana Saldırı" -> "Titana Saldiri" (Turkish capitals come out lower
@@ -49,8 +54,12 @@ def normalize_text(value: str | None) -> str:
       2. Strip diacritics (é -> e).
       3. Fold Turkish characters (ş -> s, İ/I/ı/i -> i, ...).
       4. Casefold.
-      5. Replace every run of non-alphanumerics with a single space.
-      6. Trim.
+      5. Drop an apostrophe between two letters/digits ("Bahçe'nin" ->
+         "bahcenin"): Turkish stores and the catalog write the same suffix
+         both with and without it ("İlahi Bahçe'nin Avcısı" vs "İlahi
+         Bahçenin Avcısı", 2026-11-12).
+      6. Replace every run of non-alphanumerics with a single space.
+      7. Trim.
 
     >>> normalize_text("  Athica   Yayınları ")
     'athica yayinlari'
@@ -61,6 +70,7 @@ def normalize_text(value: str | None) -> str:
     text = _strip_accents(text)
     text = text.translate(_TURKISH_FOLD)
     text = text.casefold()
+    text = _INNER_APOSTROPHE_RE.sub("", text)
     text = re.sub(r"[^a-z0-9]+", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text

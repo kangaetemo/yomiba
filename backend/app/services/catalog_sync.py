@@ -305,6 +305,7 @@ class CatalogSyncService:
                 self.session.delete(row)  # dangling manifest row
             else:
                 report.series_merged += 1
+                self._follow_title(series, cleaned_title)
         if series is None:
             publisher = self._resolve_publisher(manga.local_publisher)
             series_key = normalize_text(cleaned_title)
@@ -566,6 +567,38 @@ class CatalogSyncService:
             select(CatalogSeries.series_id)
             .where(CatalogSeries.mangakol_slug == slug.split(VARIANT_SEP)[0])
         )
+
+    def _follow_title(self, series: Series, title: str) -> None:
+        """Rename a series when Mangakol renamed it ("The Broken Ring: This
+        Marriage Will Fail Anyway" -> "Kırık Yüzük: Kaçınılmaz Ayrılık",
+        2026-11-12). Price refresh searches the stores by ``Series.title``,
+        so a stale name finds nothing once the stores sell the new one.
+
+        Only a different comparison key renames (case or punctuation never
+        does). The slug, i.e. the public URL, stays. Skipped for a series
+        that several Mangakol entries feed (the titles would take turns)
+        and when another edition of the publisher already has the key.
+        """
+        key = normalize_text(title)
+        if not key or key == series.normalized_title:
+            return
+        aliases = self.session.scalar(select(func.count()).select_from(CatalogSeries).where(
+            CatalogSeries.series_id == series.id
+        ))
+        if aliases != 1:
+            return
+        taken = self.session.scalar(select(Series.id).where(
+            Series.publisher_id == series.publisher_id,
+            Series.normalized_title == key,
+            Series.id != series.id,
+        ).limit(1))
+        if taken is not None:
+            logger.warning("catalog sync: series %s not renamed to %r (series %s has that title)",
+                           series.id, title, taken)
+            return
+        logger.info("catalog sync: series %s renamed %r -> %r", series.id, series.title, title)
+        series.title = title
+        series.normalized_title = key
 
     @staticmethod
     def _original_title_key(raw: str) -> str:

@@ -59,7 +59,7 @@ def test_init_db_builds_full_schema_on_fresh_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0036_special_sets"
+        ).fetchone()[0] == "0037_apostrophe_keys"
     finally:
         conn.close()
 
@@ -84,7 +84,7 @@ def test_init_db_migrates_unstamped_legacy_database(alembic_url):
         assert "original_title" in cols
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "0036_special_sets"
+        ).fetchone()[0] == "0037_apostrophe_keys"
     finally:
         conn.close()
 
@@ -99,7 +99,7 @@ def test_init_db_is_noop_when_already_at_head(alembic_url):
     try:
         assert conn.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchall() == [("0036_special_sets",)]
+        ).fetchall() == [("0037_apostrophe_keys",)]
     finally:
         conn.close()
 
@@ -147,7 +147,7 @@ def test_auth_downgrade_refuses_to_discard_user_data(alembic_url):
         command.downgrade(config, "0004_catalog_exclusion")
     with sqlite3.connect(alembic_url) as conn:
         # 0023 refuses before any downgrade; neither evidence nor user data are removed.
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0036_special_sets",)
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0037_apostrophe_keys",)
         assert conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'users'").fetchone() == (1,)
 
 
@@ -243,3 +243,31 @@ def series_volumes(session):
     from app.models import Volume
 
     return session.query(Volume).all()
+
+
+def test_0037_recomputes_apostrophe_keys_and_keeps_slug(alembic_url):
+    from app import database
+
+    database.init_db()
+    conn = sqlite3.connect(alembic_url)
+    try:
+        conn.execute("INSERT INTO publishers (id, name, normalized_name) VALUES (1, 'Tokyo Manga', 'tokyo manga')")
+        conn.execute("INSERT INTO series (id, publisher_id, title, slug, normalized_title) VALUES "
+                     "(1, 1, 'İlahi Bahçe''nin Avcısı', 'ilahi-bahce-nin-avcisi', 'ilahi bahce nin avcisi'),"
+                     "(2, 1, 'Kedi''nin Günü', 'kedi-nin-gunu', 'kedi nin gunu'),"
+                     "(3, 1, 'Kedinin Günü', 'kedinin-gunu', 'kedinin gunu')")
+        conn.execute("UPDATE alembic_version SET version_num = '0036_special_sets'")
+        conn.commit()
+    finally:
+        conn.close()
+
+    database.init_db()
+    conn = sqlite3.connect(alembic_url)
+    try:
+        rows = dict((r[0], r[1:]) for r in conn.execute("SELECT id, normalized_title, slug FROM series"))
+        assert rows[1] == ("ilahi bahcenin avcisi", "ilahi-bahce-nin-avcisi")
+        # The new key is taken by another edition: the old key stays.
+        assert rows[2] == ("kedi nin gunu", "kedi-nin-gunu")
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0037_apostrophe_keys",)
+    finally:
+        conn.close()
