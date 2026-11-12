@@ -16,6 +16,7 @@ from sqlalchemy import select
 import pytest
 
 from app.models import CatalogSeries, Publisher, Series, Volume
+from app.normalization import normalize_text
 from app.scrapers.base import ScraperError
 from app.scrapers.mangakol import CatalogManga, CatalogMangaRef, CatalogVolume
 from app.services.catalog_sync import CatalogSyncService, _names_related
@@ -722,3 +723,57 @@ def test_sync_lists_new_volumes_new_series_and_released_volumes(db_session):
         db_session, scraper=FakeMangakolScraper([berserk, fresh])
     ).sync()
     assert describe_changes(db_session, again)["new_volumes"] == []
+
+
+def _seed_linked(db_session, title, slug="the-broken-ring", extra_aliases=()):
+    pub = Publisher(name="Artemis", normalized_name="artemis")
+    db_session.add(pub)
+    db_session.flush()
+    series = Series(publisher_id=pub.id, title=title, normalized_title=normalize_text(title),
+                    slug="the-broken-ring-this-marriage-will-fail-anyway")
+    db_session.add(series)
+    db_session.flush()
+    db_session.add(Volume(series_id=series.id, volume_number=1))
+    for s in (slug, *extra_aliases):
+        db_session.add(CatalogSeries(series_id=series.id, mangakol_slug=s))
+    db_session.commit()
+    return series
+
+
+def test_sync_follows_mangakol_rename_and_keeps_slug(db_session):
+    series = _seed_linked(db_session, "The Broken Ring: This Marriage Will Fail Anyway")
+    manga = _manga("the-broken-ring", "Kırık Yüzük: Kaçınılmaz Ayrılık", pub="Artemis", volumes=(1,))
+    CatalogSyncService(db_session, scraper=FakeMangakolScraper([manga])).sync()
+    db_session.refresh(series)
+    assert series.title == "Kırık Yüzük: Kaçınılmaz Ayrılık"
+    assert series.normalized_title == "kirik yuzuk kacinilmaz ayrilik"
+    assert series.slug == "the-broken-ring-this-marriage-will-fail-anyway"
+    assert len(_series(db_session)) == 1
+
+
+def test_sync_keeps_title_when_only_punctuation_differs(db_session):
+    series = _seed_linked(db_session, "İlahi Bahçe'nin Avcısı")
+    manga = _manga("the-broken-ring", "İlahi Bahçenin Avcısı", pub="Artemis", volumes=(1,))
+    CatalogSyncService(db_session, scraper=FakeMangakolScraper([manga])).sync()
+    db_session.refresh(series)
+    assert series.title == "İlahi Bahçe'nin Avcısı"
+
+
+def test_sync_does_not_rename_series_fed_by_several_entries(db_session):
+    series = _seed_linked(db_session, "Old Name", extra_aliases=("old-name-2",))
+    manga = _manga("the-broken-ring", "New Name", pub="Artemis", volumes=(1,))
+    report = CatalogSyncService(db_session, scraper=FakeMangakolScraper([manga])).sync()
+    assert report.series_merged == 1
+    db_session.refresh(series)
+    assert series.title == "Old Name"
+
+
+def test_sync_rename_skips_title_taken_by_another_edition(db_session):
+    series = _seed_linked(db_session, "Old Name")
+    db_session.add(Series(publisher_id=series.publisher_id, title="New Name",
+                          normalized_title="new name", slug="new-name"))
+    db_session.commit()
+    manga = _manga("the-broken-ring", "New Name", pub="Artemis", volumes=(1,))
+    CatalogSyncService(db_session, scraper=FakeMangakolScraper([manga])).sync()
+    db_session.refresh(series)
+    assert series.title == "Old Name"
