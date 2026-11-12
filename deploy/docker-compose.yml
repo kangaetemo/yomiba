@@ -12,6 +12,16 @@
 
 name: yomiba
 
+# Public resolvers instead of the host's systemd-resolved: on 2026-11-12 the
+# VDS resolver got stuck (Errno -3 "Temporary failure in name resolution")
+# and every store, Mangakol and R2 became unreachable from the containers
+# while the network itself was fine. Container names (backend, frontend)
+# still resolve through Docker's own DNS.
+x-dns: &dns
+  - 1.1.1.1
+  - 8.8.8.8
+  - 9.9.9.9
+
 x-logging: &logging
   driver: json-file
   options:
@@ -35,6 +45,7 @@ services:
       - ${DATA_DIR:-/srv/yomiba/data}:/data
     # Let in-flight imports and SQLite writes finish on restart.
     stop_grace_period: 60s
+    dns: *dns
     logging: *logging
 
   frontend:
@@ -53,6 +64,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    dns: *dns
     logging: *logging
 
   caddy:
@@ -92,6 +104,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    dns: *dns
     logging: *logging
 
   # One-shot copies run by yedekle.sh (nightly backups and covers to R2).
@@ -106,6 +119,7 @@ services:
       RCLONE_CONFIG_R2_PROVIDER: Cloudflare
       # A bucket-scoped token may not list or create buckets.
       RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+    dns: *dns
     volumes:
       - ${DATA_DIR:-/srv/yomiba/data}/covers:/covers:ro
       - ${BACKUP_DIR:-/srv/yomiba/backups}:/backups:ro
