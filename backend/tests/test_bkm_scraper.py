@@ -600,3 +600,36 @@ def test_detail_completion_order_cannot_mix_prices_or_restore_search_price(worke
     assert scraper.stats["price_unverified"] == 2
     if workers > 1:
         assert completion_order == [2, 1]
+
+
+def test_search_pages_after_the_first_are_requested_together():
+    """The WAW service took ~20 s per page on 2026-11-12, five pages in a
+    row = 100 s per BKM search. Pages 2..n now overlap; results keep page
+    order."""
+    import threading
+    import time as _time
+
+    active = {"now": 0, "max": 0}
+    lock = threading.Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "search_v2" not in request.url.path:
+            return httpx.Response(200, text=PRODUCT_PAGE)
+        page = _page_from_request(request)
+        with lock:
+            active["now"] += 1
+            active["max"] = max(active["max"], active["now"])
+        _time.sleep(0.05)
+        with lock:
+            active["now"] -= 1
+        res = [_item(page * 10 + i, f"Berserk {page * 10 + i}", "Kitap", None,
+                     f"https://www.bkmkitap.com/berserk-{page * 10 + i}") for i in range(3)]
+        return httpx.Response(200, json={"res": res, "total_item_count": 12})
+
+    s = make_scraper(handler, bkm_search_page_size=3, bkm_max_search_pages=5, bkm_detail_workers=4)
+    s.stats = {"pages_fetched": 0, "raw_products": 0, "duplicates_skipped": 0, "stop_reason": None}
+    raw = s._search_v2("Berserk")
+    assert [item["title"] for item in raw] == [f"Berserk {p * 10 + i}" for p in range(1, 5) for i in range(3)]
+    assert s.stats["pages_fetched"] == 4
+    assert s.stats["stop_reason"] == "complete"
+    assert active["max"] >= 2

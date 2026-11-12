@@ -203,10 +203,36 @@ class BkmScraper(BaseScraper):
         items: list[dict] = []
         seen_ids: set[str] = set()
         total_available: int | None = None
+        # The WAW service answers each page in ~20 s (server logs
+        # 2026-11-12: five pages = 100 s per search, BKM's whole share of a
+        # series). Page 1 tells how many results there are; the pages still
+        # needed after it are requested together and read in page order.
+        prefetched: dict[int, dict | ScraperError] = {}
+
+        def prefetch(total: int | None) -> None:
+            wanted_total = max_results if total is None else min(total, max_results)
+            last = min(max_pages, max(1, -(-wanted_total // page_size)))
+            pages = list(range(2, last + 1))
+            workers = min(len(pages), max(1, self.settings.bkm_detail_workers), 8)
+            if workers < 2:
+                return
+
+            def fetch(page: int):
+                try:
+                    return page, self._fetch_searchv2_page(query, page, page_size)
+                except ScraperError as exc:
+                    return page, exc
+
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="yomiba-bkm-search") as pool:
+                prefetched.update(pool.map(fetch, pages))
 
         for page in range(1, max_pages + 1):
             try:
-                data = self._fetch_searchv2_page(query, page, page_size)
+                data = prefetched.pop(page, None)
+                if isinstance(data, ScraperError):
+                    raise data
+                if data is None:
+                    data = self._fetch_searchv2_page(query, page, page_size)
             except ScraperError as exc:
                 if page == 1:
                     raise  # nothing fetched yet -> let the caller fall back
@@ -261,6 +287,8 @@ class BkmScraper(BaseScraper):
             if total_available is not None and len(items) >= total_available:
                 self.stats["stop_reason"] = "complete"
                 break
+            if page == 1 and len(page_items) >= page_size:
+                prefetch(total_available)
         else:
             self.stats["stop_reason"] = "max_pages"
 

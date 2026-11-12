@@ -112,6 +112,11 @@ class Settings:
     #: searches up to this age; older, Kitapbulan reports an error for the
     #: series instead (listings keep their last price) rather than falling
     #: back to the rate-limited search page.
+    #: Gap between two products.json pages of one snapshot read. Shopify
+    #: answered 429 on page 2 at the general 2 s gap (2026-11-12).
+    kitapbulan_catalog_page_interval_seconds: float = float(
+        os.getenv("KITAPBULAN_CATALOG_PAGE_INTERVAL_SECONDS", "8")
+    )
     kitapbulan_catalog_max_stale_minutes: float = float(
         os.getenv("KITAPBULAN_CATALOG_MAX_STALE_MINUTES", "360")
     )

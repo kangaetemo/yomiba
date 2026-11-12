@@ -36,6 +36,7 @@ def fast_scraper_network(monkeypatch):
         kitapbulan_min_request_interval_seconds=0.0,
         scraper_rate_limit_cooldown_seconds=0.0,
         kitapbulan_catalog_ttl_minutes=0.0,
+        kitapbulan_catalog_page_interval_seconds=0.0,
     )
     monkeypatch.setattr(scrapers.base, "get_settings", lambda: fast)
     yield

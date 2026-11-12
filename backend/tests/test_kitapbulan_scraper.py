@@ -618,3 +618,36 @@ def test_failed_second_collection_does_not_replace_disk_snapshot(snapshot, tmp_p
 def test_unwritable_snapshot_does_not_fail_live_prices(snapshot, tmp_path):
     # Missing parent: persistence failure, but the complete network result is usable.
     _save_test_snapshot(tmp_path / "missing" / "snapshot.json")
+
+
+def test_snapshot_read_resumes_after_a_429(snapshot, log):
+    """2026-11-12: products.json answered 429 on page 2 every time; a read
+    that restarted at page 1 never finished. The next attempt continues
+    from the page that failed."""
+    from app.scrapers import kitapbulan
+
+    full = [_catalog_entry(f"x-{i}-978625000{i:04d}", f"X {i}") for i in range(250)]
+    last = [_catalog_entry(BERSERK_8, "Berserk 8")]
+    state = {"limited": True}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/collections/kitap-cizgi-roman/products.json":
+            page = int(request.url.params.get("page", "1"))
+            log.append(f"cizgi:{page}")
+            if page == 2 and state["limited"]:
+                return httpx.Response(429, text="slow down")
+            return httpx.Response(200, text=json.dumps({"products": full if page == 1 else last}))
+        if request.url.path.endswith("/products.json"):
+            return httpx.Response(200, text=json.dumps({"products": []}))
+        return httpx.Response(404)
+
+    with pytest.raises(ScraperError, match="product list not available"):
+        make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0).search("berserk")
+    assert log == ["cizgi:1", "cizgi:2"]
+
+    state["limited"] = False
+    kitapbulan._catalog_retry_at = 0.0
+    log.clear()
+    assert [r.title for r in make_scraper(handler, kitapbulan_catalog_ttl_minutes=60.0).search("berserk")] == ["Berserk 8"]
+    assert log == ["cizgi:2"]  # page 1 was kept
+    assert kitapbulan._partial_pages == {}
