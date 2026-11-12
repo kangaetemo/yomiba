@@ -11,6 +11,7 @@
  */
 
 import { formatDateTime, serverDate } from "@/lib/time";
+import { seriesPath, volumePath } from "@/lib/paths";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getCatalogAuditStatus,
@@ -33,10 +34,15 @@ import {
   startCoverFetch,
   startMissingPriceRefresh,
   startPriceRefresh,
+  cancelPriceRefresh,
+  restartPriceRefresh,
+  getCatalogSyncHistory,
 } from "@/services/admin";
 import type { CatalogAuditStatus } from "@/services/admin";
 import type {
+  CatalogSyncRun,
   CatalogSyncStatus,
+  CatalogSyncVolume,
   CoverStatus,
   ForeignEditionStatus,
   MissingCover,
@@ -562,8 +568,152 @@ function CatalogSyncPanel() {
         </details>
       )}
 
+      <CatalogSyncChanges running={Boolean(status?.running)} />
+
       <IsbnFixBox disabled={Boolean(status?.running)} />
     </section>
+  );
+}
+
+/** Volumes of one series in a list, e.g. "Cilt 3, Cilt 4 (Yakında)". */
+function groupBySeries(volumes: CatalogSyncVolume[]): [CatalogSyncVolume, CatalogSyncVolume[]][] {
+  const groups = new Map<number, CatalogSyncVolume[]>();
+  for (const v of volumes) groups.set(v.series_id, [...(groups.get(v.series_id) ?? []), v]);
+  return [...groups.values()].map((vs) => [vs[0], vs]);
+}
+
+function SyncVolumeList({ volumes, more, empty }: {
+  volumes: CatalogSyncVolume[]; more: number; empty: string;
+}) {
+  if (volumes.length === 0) return <p className="text-muted">{empty}</p>;
+  return (
+    <ul className="max-h-96 space-y-1.5 overflow-y-auto">
+      {groupBySeries(volumes).map(([first, vs]) => (
+        <li key={first.series_id} className="border-t border-line pt-1.5 first:border-t-0 first:pt-0">
+          <a href={seriesPath(first.series_slug)} target="_blank" rel="noreferrer"
+            className="font-semibold text-ink hover:underline">
+            {first.series_title}
+          </a>
+          {first.publisher && <span className="text-muted"> · {first.publisher}</span>}
+          {first.new_series && (
+            <span className="ml-1.5 rounded bg-accent/15 px-1.5 py-0.5 text-[0.68rem] font-semibold text-accent">
+              yeni seri
+            </span>
+          )}
+          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+            {vs.map((v) => (
+              <a key={v.volume_id} href={volumePath(v.series_slug, v.volume_number)} target="_blank"
+                rel="noreferrer" className="text-ink-2 underline decoration-line-strong hover:text-accent">
+                {v.volume_number === null ? "Numarasız" : `Cilt ${v.volume_number}`}
+                {!v.released && <span className="text-warn"> (Yakında)</span>}
+                {v.released && v.release_date && (
+                  <span className="text-muted"> · {formatDate(v.release_date)}</span>
+                )}
+              </a>
+            ))}
+          </div>
+        </li>
+      ))}
+      {more > 0 && <li className="text-muted">ve {more} cilt daha</li>}
+    </ul>
+  );
+}
+
+function formatDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return d && m && y ? `${d}.${m}.${y}` : iso;
+}
+
+/** What the recent syncs added: new volumes (with their series) and
+ * volumes that went from "Yakında" to released. Kept beside the database
+ * on the server, so a redeploy does not empty it. */
+function CatalogSyncChanges({ running }: { running: boolean }) {
+  const [runs, setRuns] = useState<CatalogSyncRun[] | null>(null);
+  const [picked, setPicked] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setRuns((await getCatalogSyncHistory()).runs);
+      setPicked(0);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Senkron geçmişi alınamadı");
+    }
+  }, []);
+
+  // Load on open and again whenever a sync has just finished.
+  useEffect(() => {
+    if (running) return;
+    const id = setTimeout(() => void load(), 0);
+    return () => clearTimeout(id);
+  }, [running, load]);
+
+  if (error) return <p className="text-xs text-bad">{error}</p>;
+  if (runs === null) return null;
+  if (runs.length === 0) {
+    return (
+      <p className="text-xs text-muted">
+        Eklenen cilt listesi bir sonraki senkrondan itibaren burada görünecek.
+      </p>
+    );
+  }
+  const run = runs[Math.min(picked, runs.length - 1)];
+  const added = run.new_volumes ?? [];
+  const released = run.released_volumes ?? [];
+  const addedMore = run.new_volumes_more ?? 0;
+  const releasedMore = run.released_volumes_more ?? 0;
+
+  return (
+    <div className="space-y-2 rounded-lg border border-line bg-surface-2 p-3 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-ink">Senkronda eklenenler</h3>
+        <label className="flex items-center gap-1.5 text-muted">
+          Senkron:
+          <select
+            value={picked}
+            onChange={(e) => setPicked(Number(e.target.value))}
+            className="rounded border border-line-strong bg-surface px-1.5 py-0.5 text-ink"
+          >
+            {runs.map((r, i) => (
+              <option key={`${r.finished_at}-${i}`} value={i}>
+                {formatDateTime(r.finished_at)} · {r.volumes_added ?? 0} yeni cilt
+                {r.status === "failed" ? " · hatalı" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {(run.new_series?.length ?? 0) > 0 && (
+        <p className="text-ink-2">
+          <span className="font-medium">Yeni seriler ({run.new_series!.length}):</span>{" "}
+          {run.new_series!.map((s, i) => (
+            <span key={s.series_id}>
+              {i > 0 && ", "}
+              <a href={seriesPath(s.series_slug)} target="_blank" rel="noreferrer" className="underline hover:text-accent">
+                {s.series_title}
+              </a>
+            </span>
+          ))}
+        </p>
+      )}
+      <details open>
+        <summary className="cursor-pointer font-medium text-ink-2">
+          Yeni ciltler ({added.length + addedMore})
+        </summary>
+        <div className="mt-1.5">
+          <SyncVolumeList volumes={added} more={addedMore} empty="Bu senkronda yeni cilt eklenmedi." />
+        </div>
+      </details>
+      <details>
+        <summary className="cursor-pointer font-medium text-ink-2">
+          Yakında iken çıkan ciltler ({released.length + releasedMore})
+        </summary>
+        <div className="mt-1.5">
+          <SyncVolumeList volumes={released} more={releasedMore} empty="Bu senkronda çıkışı onaylanan cilt yok." />
+        </div>
+      </details>
+    </div>
   );
 }
 
@@ -934,7 +1084,7 @@ function CoveragePanel() {
   const [priceRefresh, setPriceRefresh] = useState<PriceRefreshStatus | null>(null);
   const [recent, setRecent] = useState<ImportRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [warming, setWarming] = useState<"full" | "unpriced" | null>(null);
+  const [warming, setWarming] = useState<"full" | "unpriced" | "cancel" | "restart" | null>(null);
   const [warmupMsg, setWarmupMsg] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -994,6 +1144,35 @@ function CoveragePanel() {
     }
   }
 
+  async function stopCycle(restart: boolean) {
+    if (warming) return;
+    const question = restart
+      ? "Fiyat yenileme durdurulup baştan başlatılsın mı? Şu an taranan seriler bitince yeni döngü başlar."
+      : "Fiyat yenileme durdurulsun mu? Sıradaki seriler bırakılır, şu an taranan seriler bitince döngü kapanır.";
+    if (!window.confirm(question)) return;
+    setWarming(restart ? "restart" : "cancel");
+    setWarmupMsg(null);
+    try {
+      const status = restart ? await restartPriceRefresh() : await cancelPriceRefresh();
+      const finishing = status.running + status.queued;
+      if (status.cancelling) {
+        setWarmupMsg(
+          `Durduruluyor: şu an taranan ${finishing} seri bitince döngü kapanacak` +
+            (restart ? " ve yenisi başlayacak." : "."),
+        );
+      } else {
+        setWarmupMsg(restart ? "Döngü durduruldu ve yeniden başlatıldı." : "Döngü durduruldu.");
+      }
+      await refresh();
+    } catch (e) {
+      setWarmupMsg(e instanceof Error ? e.message : "Döngü durdurulamadı");
+    } finally {
+      setWarming(null);
+    }
+  }
+
+  const cancelling = priceRefresh?.cancelling ?? false;
+
   // During a cycle: what this cycle has refreshed so far; otherwise the
   // most recent refreshes. Newest first (the API's order).
   const cycleStart = priceRefresh?.current_cycle_started_at ?? null;
@@ -1015,13 +1194,37 @@ function CoveragePanel() {
         <h2 className="text-lg font-semibold text-ink">
           Fiyat yenileme ve raf kapsaması
           {cycleActive && (
-            <span className="ml-2 text-sm font-normal text-accent">
+            <span className={`ml-2 text-sm font-normal ${cancelling ? "text-warn" : "text-accent"}`}>
               · {priceRefresh?.current_cycle_mode === "unpriced" ? "fiyatsızlar: " : ""}
-              {running} iş çalışıyor…
+              {cancelling
+                ? `durduruluyor, ${running} seri bitiyor${priceRefresh?.restart_pending ? ", sonra yeniden başlayacak" : ""}…`
+                : `${running} iş çalışıyor…`}
             </span>
           )}
         </h2>
         <div className="flex flex-wrap gap-2">
+          {cycleActive && (
+            <>
+              <button
+                type="button"
+                onClick={() => void stopCycle(true)}
+                disabled={warming !== null || !priceRefresh?.enabled || Boolean(priceRefresh?.restart_pending)}
+                title="Döngüyü durdurur ve aynı türde yeni bir döngü başlatır. Son 1 saatte yenilenen seriler atlanır."
+                className="rounded-lg border border-line-strong bg-surface-2 px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:bg-line disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {warming === "restart" ? "Yeniden başlatılıyor…" : "Yeniden başlat"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void stopCycle(false)}
+                disabled={warming !== null || !priceRefresh?.enabled || cancelling}
+                title="Sıradaki serileri bırakır; şu an taranan seriler bitince döngü kapanır."
+                className="rounded-lg border border-bad/40 bg-surface-2 px-3 py-1.5 text-sm font-semibold text-bad transition-colors hover:bg-line disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {warming === "cancel" ? "Durduruluyor…" : cancelling ? "Durduruluyor" : "Durdur"}
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => void triggerWarmup("unpriced")}
@@ -1061,6 +1264,9 @@ function CoveragePanel() {
             Başlangıç: {formatDateTime(priceRefresh.current_cycle_started_at)} ·{" "}
             son bitiş: {formatDateTime(priceRefresh.last_cycle_completed_at)} ·{" "}
             sonraki: {formatDateTime(priceRefresh.next_scheduled_refresh)}
+            {priceRefresh.last_cycle_cancelled_at && (
+              <> · son durdurma: {formatDateTime(priceRefresh.last_cycle_cancelled_at)}</>
+            )}
           </p>
           <p>
             <a href="/admin/degisiklikler" className="font-medium text-accent underline">

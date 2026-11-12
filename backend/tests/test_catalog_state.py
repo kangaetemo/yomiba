@@ -46,3 +46,18 @@ def test_scheduler_can_catch_up_immediately():
         assert _wait_until(lambda: rec.calls == 1)
     finally:
         sched.stop(timeout=2)
+
+
+def test_history_keeps_recent_syncs_newest_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(catalog_state, "state_path", lambda: tmp_path / "db.catalog-state.json")
+    for i in range(catalog_state.HISTORY_LIMIT + 2):
+        catalog_state.record_finish({
+            "status": "success", "finished_at": f"2026-11-{i + 1:02d}T00:00:00+00:00",
+            "volumes_added": i, "new_volumes": [{"series_title": f"S{i}"}],
+            "isbn_candidates": [{"big": "x"}],
+        })
+    runs = catalog_state.history()
+    assert len(runs) == catalog_state.HISTORY_LIMIT
+    assert runs[0]["volumes_added"] == catalog_state.HISTORY_LIMIT + 1
+    assert runs[0]["new_volumes"] == [{"series_title": f"S{catalog_state.HISTORY_LIMIT + 1}"}]
+    assert "isbn_candidates" not in runs[0]

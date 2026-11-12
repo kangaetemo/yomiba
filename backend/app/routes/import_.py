@@ -367,6 +367,31 @@ def start_missing_price_refresh(request: Request) -> dict:
     return scheduler.status()
 
 
+@router.post("/import/price-refresh/cancel")
+def cancel_price_refresh(request: Request) -> dict:
+    """Admin-only: stop the running cycle. Queued series are dropped, the
+    few already being scraped finish, then the cycle ends."""
+    scheduler = getattr(request.app.state, "price_refresh_scheduler", None)
+    if scheduler is None or not scheduler.is_running:
+        raise HTTPException(status_code=503, detail="Price refresh scheduler disabled")
+    if not scheduler.cancel():
+        raise HTTPException(status_code=409, detail="Çalışan bir fiyat yenileme yok.")
+    return scheduler.status()
+
+
+@router.post("/import/price-refresh/restart")
+def restart_price_refresh(request: Request) -> dict:
+    """Admin-only: stop the running cycle and start the same kind again
+    once the series being scraped finish. Starts a full cycle when none is
+    running."""
+    scheduler = getattr(request.app.state, "price_refresh_scheduler", None)
+    if scheduler is None or not scheduler.is_running:
+        raise HTTPException(status_code=503, detail="Price refresh scheduler disabled")
+    if not scheduler.cancel(restart=True) and not scheduler.manual_refresh():
+        raise HTTPException(status_code=409, detail="Price refresh cycle already running")
+    return scheduler.status()
+
+
 #: Admin change-log windows besides "cycle" (current or last refresh).
 CHANGE_WINDOWS = {"24h": timedelta(hours=24), "7d": timedelta(days=7), "30d": timedelta(days=30)}
 

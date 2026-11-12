@@ -106,3 +106,108 @@ def test_startup_recovers_stale_running_record(engine, monkeypatch):
         ))
         assert record.status == "failed"
         assert record.error
+
+
+def _catalog(sessions, *titles):
+    from app.models import CatalogSeries, Publisher, Series
+
+    with sessions() as session:
+        pub = Publisher(name="Test", normalized_name="test")
+        session.add(pub)
+        session.flush()
+        for title in titles:
+            series = Series(publisher_id=pub.id, title=title, normalized_title=title, slug=title)
+            session.add(series)
+            session.flush()
+            session.add(CatalogSeries(series_id=series.id, mangakol_slug=title))
+        session.commit()
+
+
+def _blocking_runner(sessions, workers=2):
+    runner = BackgroundImportRunner(sessions, max_concurrent=workers, queue_capacity=10)
+    release = threading.Event()
+    started = []
+    lock = threading.Lock()
+
+    def execute(key, query):
+        with lock:
+            started.append(key)
+        assert release.wait(5)
+
+    runner._execute = execute
+    return runner, release, started
+
+
+def _wait(predicate, timeout=5.0):
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def test_cancel_drops_queued_series_and_lets_running_ones_finish(engine):
+    from app.services.price_refresh_scheduler import PriceRefreshScheduler
+
+    sessions = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    _catalog(sessions, "a", "b", "c", "d", "e")
+    runner, release, started = _blocking_runner(sessions)
+    sched = PriceRefreshScheduler(runner, sessions, interval_seconds=3600)
+    try:
+        assert sched.manual_refresh()
+        assert _wait(lambda: len(runner.active_keys()) == 2)
+        assert sched.cancel()
+        status = sched.status()
+        assert status["cancelling"] is True
+        assert status["queued"] == 0 and status["pending"] == 0
+        assert status["running"] == 2
+        assert runner.queued_count == 0
+        assert not sched.manual_refresh()  # still stopping
+        release.set()
+        assert _wait(lambda: not runner.active_keys())
+        sched.tick()
+        status = sched.status()
+        assert status["current_cycle_started_at"] is None
+        assert status["cancelling"] is False
+        assert status["last_cycle_cancelled_at"] is not None
+        assert status["last_cycle_completed_at"] is None
+        assert status["next_scheduled_refresh"] is not None
+        assert len(started) == 2  # the three queued series never ran
+        assert not sched.cancel()  # nothing left to stop
+    finally:
+        release.set()
+        runner.shutdown(5)
+
+
+def test_restart_starts_a_new_cycle_after_running_series_finish(engine):
+    from app.services.price_refresh_scheduler import PriceRefreshScheduler
+
+    sessions = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    _catalog(sessions, "a", "b", "c", "d")
+    runner, release, started = _blocking_runner(sessions, workers=1)
+    sched = PriceRefreshScheduler(runner, sessions, interval_seconds=3600)
+    try:
+        assert sched.manual_refresh()
+        assert _wait(lambda: len(runner.active_keys()) == 1)
+        first_start = sched.status()["current_cycle_started_at"]
+        assert sched.cancel(restart=True)
+        assert sched.status()["restart_pending"] is True
+        release.set()
+        assert _wait(lambda: not runner.active_keys())
+        sched.tick()
+        status = sched.status()
+        assert status["current_cycle_started_at"] is not None
+        assert status["current_cycle_started_at"] != first_start
+        assert status["current_cycle_mode"] == "full"
+        assert status["restart_pending"] is False
+        assert status["cancelling"] is False
+        assert status["last_cycle_cancelled_at"] is not None
+        # The series scraped before the stop is skipped only if it was a
+        # real success; the stub job wrote no record, so all are queued.
+        assert _wait(lambda: len(started) >= 4)
+    finally:
+        release.set()
+        runner.shutdown(5)

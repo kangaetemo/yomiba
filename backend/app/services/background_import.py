@@ -458,6 +458,38 @@ class BackgroundImportRunner:
                     worker.start()
         return True
 
+    def discard_queued(self, keys: set[str]) -> set[str]:
+        """Drop queued (not yet started) jobs for ``keys`` and return the
+        keys dropped. Started jobs are left to finish: stopping a scraper
+        half way would leave a series with half its stores refreshed."""
+        dropped: set[str] = set()
+        if not keys:
+            return dropped
+        with self._lock:
+            kept: list[tuple[str, str]] = []
+            while True:
+                try:
+                    item = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                self._queue.task_done()
+                key = item[0]
+                if key in keys and key not in self._active:
+                    dropped.add(key)
+                    self._running.discard(key)
+                    self._forced.discard(key)
+                    done = self._completion.pop(key, None)
+                    if done is not None:
+                        done.set()
+                else:
+                    kept.append(item)
+            # Same lock as submit(): nothing else filled the queue meanwhile.
+            for item in kept:
+                self._queue.put_nowait(item)
+        if dropped:
+            logger.info("import runner: discarded %d queued jobs", len(dropped))
+        return dropped
+
     def _worker_loop(self) -> None:
         while True:
             with self._lock:

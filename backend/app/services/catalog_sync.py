@@ -100,6 +100,13 @@ class CatalogSyncReport:
     #: that already carries every one of their store products.
     isbn_phantoms_merged: int = 0
     errors: list[str] = field(default_factory=list)
+    #: What this sync added, for the admin "what is new" list:
+    #: ``(series_id, volume_number, released)`` per new volume, the ids of
+    #: the series it opened and the volumes that went from "Yakında" to
+    #: released. Turned into readable rows by :func:`describe_changes`.
+    added_volumes: list[tuple[int, int, bool]] = field(default_factory=list)
+    created_series_ids: list[int] = field(default_factory=list)
+    released_volumes: list[tuple[int, int]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -238,6 +245,11 @@ class CatalogSyncService:
             )
             return
         self.session.commit()
+        added, created, released = getattr(self, "_pending_changes", ([], [], []))
+        report.added_volumes.extend(added)
+        report.created_series_ids.extend(created)
+        report.released_volumes.extend(released)
+        self._pending_changes = ([], [], [])
         if series is not None:
             try:
                 self._backfill_isbns(series, manga, report)
@@ -269,6 +281,9 @@ class CatalogSyncService:
     # Merge logic
     # ------------------------------------------------------------------
     def _merge_manga(self, manga: CatalogManga, report: CatalogSyncReport) -> None:
+        # Filled here, handed to the report only once the merge committed
+        # (a rolled-back or retried savepoint must not list its volumes).
+        self._pending_changes = ([], [], [])
         cleaned_title = self._clean_title(manga.title, manga.local_publisher)
         if not cleaned_title:
             cleaned_title = manga.title.strip()
@@ -297,6 +312,7 @@ class CatalogSyncService:
             if series is None:
                 series = self._create_series(publisher, cleaned_title, series_key)
                 report.series_created += 1
+                self._pending_changes[1].append(series.id)
                 logger.info(
                     "catalog sync: created series %r (publisher %r) from mangakol %s",
                     cleaned_title, publisher.name, manga.slug,
@@ -347,6 +363,8 @@ class CatalogSyncService:
             if existing is not None:
                 if existing.catalog_released != volume.released:
                     report.release_status_updated += 1
+                    if volume.released and existing.catalog_released is False:
+                        self._pending_changes[2].append((series.id, number))
                     if volume.released and (not existing.isbn or existing.page_count is None or existing.release_date is None):
                         existing.details_checked_at = None
                 existing.catalog_present = True
@@ -375,6 +393,7 @@ class CatalogSyncService:
                 )
             )
             report.volumes_added += 1
+            self._pending_changes[0].append((series.id, number, bool(volume.released)))
         return series
 
     @staticmethod
@@ -747,6 +766,73 @@ class CatalogSyncService:
             self.session.add(
                 CatalogSeries(series_id=series.id, mangakol_slug=mangakol_slug)
             )
+
+
+#: Rows kept per list in one sync's change summary. A first sync on an
+#: empty database adds thousands of volumes; the admin list only needs
+#: the ordinary run of a few dozen.
+CHANGE_LIST_LIMIT = 300
+
+
+def describe_changes(session: Session, report: CatalogSyncReport) -> dict:
+    """Readable rows for what one sync added: new volumes (with the series
+    they belong to and whether that series is new) and volumes that went
+    from "Yakında" to released. Rows whose series or volume no longer
+    exists (merged away later in the same sync) are left out."""
+    created = set(report.created_series_ids)
+    keys = [(sid, num) for sid, num, _ in report.added_volumes] + list(report.released_volumes)
+    series_ids = {sid for sid, _ in keys} | created
+    series = {
+        s.id: s for s in session.scalars(select(Series).where(Series.id.in_(series_ids)))
+    } if series_ids else {}
+    publishers = {
+        p.id: p.name for p in session.scalars(
+            select(Publisher).where(Publisher.id.in_({s.publisher_id for s in series.values()}))
+        )
+    } if series else {}
+    volumes: dict[tuple[int, int], Volume] = {}
+    if series_ids:
+        for volume in session.scalars(select(Volume).where(Volume.series_id.in_(series_ids))):
+            volumes[(volume.series_id, volume.volume_number)] = volume
+
+    def row(series_id: int, number: int) -> dict | None:
+        s = series.get(series_id)
+        v = volumes.get((series_id, number))
+        if s is None or v is None:
+            return None
+        return {
+            "series_id": s.id,
+            "series_title": s.title,
+            "series_slug": s.slug,
+            "publisher": publishers.get(s.publisher_id),
+            "volume_id": v.id,
+            "volume_number": None if number < 0 else number,
+            "released": bool(v.catalog_released),
+            "release_date": v.release_date.isoformat() if v.release_date else None,
+            "new_series": s.id in created,
+        }
+
+    def rows(pairs) -> tuple[list[dict], int]:
+        out = [r for r in (row(sid, num) for sid, num in pairs) if r is not None]
+        out.sort(key=lambda r: (r["series_title"].casefold(), r["volume_number"] is None,
+                                r["volume_number"] or 0))
+        return out[:CHANGE_LIST_LIMIT], max(0, len(out) - CHANGE_LIST_LIMIT)
+
+    added, added_more = rows((sid, num) for sid, num, _ in report.added_volumes)
+    released, released_more = rows(report.released_volumes)
+    new_series = sorted(
+        ({"series_id": s.id, "series_title": s.title, "series_slug": s.slug,
+          "publisher": publishers.get(s.publisher_id)}
+         for sid in created if (s := series.get(sid)) is not None),
+        key=lambda r: r["series_title"].casefold(),
+    )
+    return {
+        "new_volumes": added,
+        "new_volumes_more": added_more,
+        "released_volumes": released,
+        "released_volumes_more": released_more,
+        "new_series": new_series[:CHANGE_LIST_LIMIT],
+    }
 
 
 def _prefix_or_substring(short: str, long_: str) -> bool:

@@ -518,3 +518,19 @@ def test_series_and_volume_carry_the_publisher_page_slug(seeded):
     assert detail["publisher_slug"] == "athica-yayinlari"
     volume = seeded.get(f"/volume/{detail['volumes'][0]['id']}").json()
     assert volume["series"]["publisher_slug"] == "athica-yayinlari"
+
+
+def test_cancel_and_restart_need_scheduler(client):
+    assert client.post("/import/price-refresh/cancel").status_code == 503
+    assert client.post("/import/price-refresh/restart").status_code == 503
+
+
+def test_catalog_sync_history_route(client, tmp_path, monkeypatch):
+    from app.services import catalog_state
+
+    monkeypatch.setattr(catalog_state, "state_path", lambda: tmp_path / "state.json")
+    assert client.get("/catalog/sync/history").json() == {"runs": []}
+    catalog_state.record_finish({"status": "success", "finished_at": "2026-11-12T00:00:00+00:00",
+                                 "volumes_added": 1, "new_volumes": [{"series_title": "Berserk"}]})
+    runs = client.get("/catalog/sync/history").json()["runs"]
+    assert runs[0]["new_volumes"] == [{"series_title": "Berserk"}]

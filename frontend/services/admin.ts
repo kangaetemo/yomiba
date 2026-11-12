@@ -26,6 +26,7 @@ export function startCatalogAudit(details: boolean): Promise<{ status: string }>
   return postJson<{ status: string }>(`/catalog/audit?details=${details}`);
 }
 import type {
+  CatalogSyncRun,
   CatalogSyncStatus,
   ImportCoverage,
   ImportRecord,
@@ -45,6 +46,10 @@ export function getCatalogSyncStatus(): Promise<CatalogSyncStatus> {
 
 export function startCatalogSync(): Promise<{ status: string }> {
   return postJson<{ status: string }>("/catalog/sync");
+}
+
+export function getCatalogSyncHistory(): Promise<{ runs: CatalogSyncRun[] }> {
+  return getJson<{ runs: CatalogSyncRun[] }>("/catalog/sync/history");
 }
 
 export function getForeignEditions(): Promise<ForeignEditionStatus> {
@@ -98,6 +103,16 @@ export function getPriceRefreshStatus(): Promise<PriceRefreshStatus> {
 
 export function startPriceRefresh(): Promise<PriceRefreshStatus> {
   return postJson<PriceRefreshStatus>("/import/price-refresh", {});
+}
+
+/** Stop the running cycle (queued series dropped, running ones finish). */
+export function cancelPriceRefresh(): Promise<PriceRefreshStatus> {
+  return postJson<PriceRefreshStatus>("/import/price-refresh/cancel", {});
+}
+
+/** Stop the running cycle and start the same kind again right after. */
+export function restartPriceRefresh(): Promise<PriceRefreshStatus> {
+  return postJson<PriceRefreshStatus>("/import/price-refresh/restart", {});
 }
 
 /** Refresh only the catalog series that have no price yet. */

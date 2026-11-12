@@ -411,6 +411,36 @@ export interface CatalogSyncStatus {
   } | null;
 }
 
+/** One volume a catalog sync added (or moved from "Yakında" to released). */
+export interface CatalogSyncVolume {
+  series_id: number;
+  series_title: string;
+  series_slug: string;
+  publisher: string | null;
+  volume_id: number;
+  /** null = unnumbered item. */
+  volume_number: number | null;
+  /** false = announced ("Yakında"). */
+  released: boolean;
+  release_date: string | null;
+  /** The series itself was opened by this sync. */
+  new_series: boolean;
+}
+
+/** GET /catalog/sync/history: recent finished syncs, newest first. */
+export interface CatalogSyncRun {
+  status: "success" | "failed";
+  finished_at: string | null;
+  series_created?: number;
+  volumes_added?: number;
+  release_status_updated?: number;
+  new_series?: { series_id: number; series_title: string; series_slug: string; publisher: string | null }[];
+  new_volumes?: CatalogSyncVolume[];
+  new_volumes_more?: number;
+  released_volumes?: CatalogSyncVolume[];
+  released_volumes_more?: number;
+}
+
 /** GET /catalog/foreign-editions: foreign-edition clean-up job. */
 export interface ForeignEditionStatus {
   state: "idle" | "scanning" | "ready" | "applying" | "done" | "failed";
@@ -575,6 +605,11 @@ export interface PriceRefreshStatus {
   current_cycle_mode?: "full" | "unpriced" | null;
   /** Start of the last finished full cycle (its change log window). */
   last_cycle_started_at?: string | null;
+  /** True after "Durdur": queued series dropped, running ones finishing. */
+  cancelling?: boolean;
+  /** "Yeniden başlat" asked: a new cycle starts once the stop completes. */
+  restart_pending?: boolean;
+  last_cycle_cancelled_at?: string | null;
   last_cycle_completed_at: string | null;
   last_successful_refresh: string | null;
   next_scheduled_refresh: string | null;

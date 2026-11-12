@@ -66,6 +66,12 @@ class PriceRefreshScheduler:
         #: Full-cycle due time saved while an unpriced-only cycle runs, so
         #: that partial cycle never postpones the regular refresh.
         self._saved_next: datetime | None = None
+        #: Set by cancel(): queued work is dropped, the cycle ends once the
+        #: series already being scraped finish.
+        self._cancelling = False
+        #: Mode to start again right after a cancelled cycle ends (restart).
+        self._restart_mode: str | None = None
+        self._last_cycle_cancelled_at: datetime | None = None
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -216,6 +222,8 @@ class PriceRefreshScheduler:
                 self._skipped += weight
             else:
                 self._pending.append((key, query, weight))
+        self._cancelling = False
+        self._restart_mode = None
         self._cycle_started_at = now
         self._mode = "unpriced" if only_unpriced else "full"
         self._saved_next = self._next_scheduled_at if only_unpriced else None
@@ -245,6 +253,14 @@ class PriceRefreshScheduler:
             if self._cycle_started_at is None:
                 self._start_cycle()
             self._collect_finished()
+            if self._cancelling:
+                if self._inflight:
+                    return 0  # wait for the series already being scraped
+                restart = self._restart_mode
+                self._end_cancelled_cycle()
+                if restart is None:
+                    return 0
+                self._start_cycle(only_unpriced=restart == "unpriced")
             submitted = 0
             while self._pending and self._runner.available_slots() > 0:
                 key, query, weight = self._pending[0]
@@ -280,6 +296,48 @@ class PriceRefreshScheduler:
                 self._saved_next = None
             return submitted
 
+    def _end_cancelled_cycle(self) -> None:
+        ended = utcnow()
+        logger.info(
+            "price refresh cycle cancelled (%s): catalog=%d submitted=%d skipped=%d success=%d failed=%d after %.1fs",
+            self._mode, self._total, self._submitted_jobs, self._skipped,
+            self._successful_jobs, self._failed_jobs,
+            (ended - self._cycle_started_at).total_seconds() if self._cycle_started_at else 0.0,
+        )
+        if self._mode == "unpriced":
+            self._next_scheduled_at = self._saved_next or ended + timedelta(seconds=self._interval)
+        else:
+            # A stopped full cycle waits one interval like a finished one;
+            # "Yeniden başlat" or "Fiyatları yenile" start one sooner.
+            self._next_scheduled_at = ended + timedelta(seconds=self._interval)
+        self._last_cycle_cancelled_at = ended
+        self._cycle_started_at = None
+        self._mode = None
+        self._saved_next = None
+        self._cancelling = False
+        self._restart_mode = None
+
+    def cancel(self, *, restart: bool = False) -> bool:
+        """Stop the running cycle: queued series are dropped at once, the
+        ones already being scraped finish (a few minutes at most) and then
+        the cycle ends. ``restart`` starts the same kind of cycle again as
+        soon as it has ended. Returns False when no cycle is running."""
+        with self._lock:
+            if self._cycle_started_at is None:
+                return False
+            if restart:
+                self._restart_mode = self._mode
+            if not self._cancelling:
+                self._cancelling = True
+                self._pending.clear()
+                queued = set(self._inflight) - self._runner.active_keys()
+                for key in self._runner.discard_queued(queued):
+                    self._inflight.pop(key, None)
+                logger.info("price refresh cycle cancel requested (%s, restart=%s): %d series still running",
+                            self._mode, restart, len(self._inflight))
+            self.tick()
+            return True
+
     def manual_refresh(self, *, only_unpriced: bool = False) -> bool:
         """Start a cycle now; return False if one is already active.
         ``only_unpriced`` refreshes just the catalog series with no price."""
@@ -314,6 +372,9 @@ class PriceRefreshScheduler:
                 "current_cycle_total": self._total,
                 "current_cycle_started_at": self._cycle_started_at,
                 "current_cycle_mode": self._mode,
+                "cancelling": self._cancelling,
+                "restart_pending": self._restart_mode is not None,
+                "last_cycle_cancelled_at": self._last_cycle_cancelled_at,
                 "last_cycle_started_at": self._last_cycle_started_at,
                 "last_cycle_completed_at": self._last_cycle_completed_at,
                 "last_successful_refresh": self._last_successful_refresh,

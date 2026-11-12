@@ -59,9 +59,28 @@ def record_start() -> None:
     _write(state)
 
 
+#: Finished syncs kept for the admin "what did it add" list.
+HISTORY_LIMIT = 10
+#: Summary fields copied into a history entry (the rest, e.g. ISBN
+#: candidates and conflict details, only matter for the last run).
+_HISTORY_FIELDS = (
+    "status", "finished_at", "series_created", "volumes_added",
+    "release_status_updated", "new_series", "new_volumes", "new_volumes_more",
+    "released_volumes", "released_volumes_more",
+)
+
+
+def history() -> list[dict]:
+    """Finished syncs, newest first (only syncs since the history began)."""
+    entries = read_state().get("history")
+    return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
+
+
 def record_finish(summary: dict) -> None:
     state = read_state()
     state.update(last=summary, in_progress=False)
+    entry = {key: summary[key] for key in _HISTORY_FIELDS if key in summary}
+    state["history"] = [entry, *history()][:HISTORY_LIMIT]
     if summary.get("status") == "success":
         state["last_success_at"] = summary["finished_at"]
     _write(state)
