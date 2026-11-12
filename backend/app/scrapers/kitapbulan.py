@@ -98,6 +98,13 @@ _catalog_loaded_at: float | None = None
 _catalog_retry_at: float = 0.0
 _catalog_lock = threading.Lock()
 _catalog_disk_loaded = False
+#: Pages of an unfinished snapshot read: {(collection, page): items}, kept
+#: across a 429 so the next attempt continues where this one stopped.
+#: 2026-11-12 the store answered 429 on page 2 every time, so a read that
+#: always started at page 1 never finished and Kitapbulan failed every
+#: series for hours.
+_partial_pages: dict[tuple[str, int], list] = {}
+_partial_started_at: float | None = None  # wall time of the oldest kept page
 
 
 def reset_catalog() -> None:
@@ -108,6 +115,9 @@ def reset_catalog() -> None:
         _catalog_loaded_at = None
         _catalog_retry_at = 0.0
         _catalog_disk_loaded = False
+        _partial_pages.clear()
+        global _partial_started_at
+        _partial_started_at = None
 
 
 def _catalog_price(value) -> int | None:
@@ -533,32 +543,45 @@ class KitapbulanScraper(BaseScraper):
         fresh = _catalog_loaded_at is not None and now - _catalog_loaded_at < ttl
         if fresh or now < _catalog_retry_at:
             return usable(now)
-        have = bool(usable(now))
-        if not _catalog_lock.acquire(blocking=not have):
-            return usable(now)  # another worker is refreshing it
+        if not _catalog_lock.acquire(blocking=False):
+            # Another worker is reading the store; never wait for it (the
+            # read is paced and may take minutes). Without a snapshot this
+            # series reports Kitapbulan as failed.
+            return usable(now)
         try:
             now = time.monotonic()
             fresh = _catalog_loaded_at is not None and now - _catalog_loaded_at < ttl
             if fresh or now < _catalog_retry_at:
                 return usable(now)
-            # Age the snapshot from the beginning of collection reads, so
-            # even a slow fetch cannot make earlier pages artificially fresh.
-            fetched_at = time.time()
-            fetched_monotonic = time.monotonic()
+            global _partial_started_at
+            if _partial_started_at is not None and time.time() - _partial_started_at >= max_stale:
+                _partial_pages.clear()
+                _partial_started_at = None
+            if _partial_started_at is None:
+                _partial_started_at = time.time()
+            # Age the snapshot from its oldest page, so a read resumed over
+            # several attempts is never younger than what it holds.
+            fetched_at = _partial_started_at
+            fetched_monotonic = time.monotonic() - (time.time() - fetched_at)
+            kept = len(_partial_pages)
             try:
                 products: dict[str, dict] = {}
                 for collection in collections:
                     products.update(self._read_collection(collection))
             except ScraperError as exc:
-                delay = max(_CATALOG_RETRY_SECONDS, exc.retry_after_seconds)
+                # Progress made: come back sooner (the read resumes there).
+                base = _CATALOG_RETRY_SECONDS / 2 if len(_partial_pages) > kept else _CATALOG_RETRY_SECONDS
+                delay = max(base, exc.retry_after_seconds)
                 _catalog_retry_at = time.monotonic() + delay
                 left = usable(time.monotonic())
                 logger.warning(
-                    "kitapbulan: catalog snapshot failed (%s); %s; retry in %.0fs", exc,
+                    "kitapbulan: catalog snapshot failed (%s); %s; %d pages kept; retry in %.0fs", exc,
                     f"keeping the previous one ({len(left)} products)" if left else "no snapshot",
-                    delay,
+                    len(_partial_pages), delay,
                 )
                 return left
+            _partial_pages.clear()
+            _partial_started_at = None
             _catalog = products
             _catalog_loaded_at = fetched_monotonic
             self._save_catalog(products, fetched_at)
@@ -568,16 +591,27 @@ class KitapbulanScraper(BaseScraper):
             _catalog_lock.release()
 
     def _read_collection(self, collection: str) -> dict[str, dict]:
+        """Every page of ``collection``: pages a failed attempt already read
+        come from ``_partial_pages``, new ones are requested at least
+        KITAPBULAN_CATALOG_PAGE_INTERVAL_SECONDS apart. Caller holds
+        _catalog_lock."""
         products: dict[str, dict] = {}
+        gap = max(0.0, self.settings.kitapbulan_catalog_page_interval_seconds)
         for page in range(1, _CATALOG_MAX_PAGES + 1):
-            data = self.get_json(
-                f"{self.base_url}/collections/{collection}/products.json"
-                f"?limit={_CATALOG_PAGE_SIZE}&page={page}",
-                fail_fast_429=True,
-            )
-            items = data.get("products") if isinstance(data, dict) else None
-            if not isinstance(items, list):
-                raise ScraperError(f"kitapbulan: unexpected products.json for {collection} page {page}")
+            items = _partial_pages.get((collection, page))
+            if items is None:
+                wait = self._last_request_at + gap - time.monotonic()
+                if self._last_request_at and wait > 0:
+                    time.sleep(wait)
+                data = self.get_json(
+                    f"{self.base_url}/collections/{collection}/products.json"
+                    f"?limit={_CATALOG_PAGE_SIZE}&page={page}",
+                    fail_fast_429=True,
+                )
+                items = data.get("products") if isinstance(data, dict) else None
+                if not isinstance(items, list):
+                    raise ScraperError(f"kitapbulan: unexpected products.json for {collection} page {page}")
+                _partial_pages[(collection, page)] = items
             for item in items:
                 product = _snapshot_product(item) if isinstance(item, dict) else None
                 if product is not None:
